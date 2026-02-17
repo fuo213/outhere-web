@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="description" content="OutHere — offline hiking map viewer for Utah trails, contours, and points of interest">
+  <title>OutHere — Utah Hiking Map</title>
+
+  <!-- Boot emoji favicon (matches booot-landing) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🥾</text></svg>">
+
+  <!-- MapLibre GL JS -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- PMTiles protocol handler -->
+  <script src="https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js"></script>
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Header bar -->
+  <header class="header">
+    <div>
+      <span class="header-title">OutHere</span>
+      <span class="header-subtitle">Utah Hiking Map</span>
+    </div>
+    <div class="header-right">
+      <button class="layers-btn" id="layersBtn" aria-label="Toggle layer controls">
+        Layers
+      </button>
+    </div>
+  </header>
+
+  <!-- Map container -->
+  <div id="map"></div>
+
+  <!-- Layer control panel (hidden by default) -->
+  <aside class="layer-panel" id="layerPanel" role="region" aria-label="Map layers">
+    <h3>Layers</h3>
+    <div id="layerList">
+      <!-- Populated by app.js -->
+    </div>
+  </aside>
+
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="loading">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">Loading map tiles&hellip;</p>
+  </div>
+
+  <!-- Error banner (hidden by default) -->
+  <div class="error-banner" id="errorBanner"></div>
+
+  <!-- App scripts — config first, then app logic -->
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
