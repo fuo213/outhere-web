@@ -11,7 +11,7 @@
 // Replace with your actual R2 public URL after running deploy_to_r2.py.
 // Format: https://pub-{account-id}.r2.dev/utah/utah_hiking.pmtiles
 //    or:  https://tiles.yourdomain.com/utah/utah_hiking.pmtiles
-const TILE_URL = "https://pub-YOUR_ACCOUNT_ID.r2.dev/utah/utah_hiking.pmtiles";
+const TILE_URL = "https://pub-facc37c75f49450988b436c5307ce8dd.r2.dev/utah/utah_hiking.pmtiles";
 
 // ---------------------------------------------------------------------------
 // Map defaults
