@@ -255,6 +255,118 @@ const errorEl = document.getElementById("errorBanner");
 
 map.on("load", () => {
   loadingEl.classList.add("hidden");
+
+  // -------------------------------------------------------------------
+  // Trip planning GeoJSON source + layers
+  // -------------------------------------------------------------------
+  map.addSource("trip", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  // Trip routes — bold orange dashed line
+  map.addLayer({
+    id: "trip-routes",
+    type: "line",
+    source: "trip",
+    filter: ["==", ["get", "type"], "route"],
+    paint: {
+      "line-color": "#e85d04",
+      "line-width": 3.5,
+      "line-dasharray": [3, 2],
+    },
+  });
+
+  // Trip camps — green circles with tent-like styling
+  map.addLayer({
+    id: "trip-camps",
+    type: "circle",
+    source: "trip",
+    filter: ["==", ["get", "type"], "camp"],
+    paint: {
+      "circle-radius": 9,
+      "circle-color": "#2d6a4f",
+      "circle-stroke-width": 2.5,
+      "circle-stroke-color": "#fff",
+    },
+  });
+
+  // Trip waypoints — colored by subtype
+  map.addLayer({
+    id: "trip-waypoints",
+    type: "circle",
+    source: "trip",
+    filter: ["==", ["get", "type"], "waypoint"],
+    paint: {
+      "circle-radius": 7,
+      "circle-color": [
+        "match",
+        ["get", "subtype"],
+        "water", "#3b82f6",
+        "hazard", "#ef4444",
+        "scenic", "#eab308",
+        "resupply", "#8b5cf6",
+        "#6b7280",
+      ],
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  });
+
+  // Trip feature labels
+  map.addLayer({
+    id: "trip-labels",
+    type: "symbol",
+    source: "trip",
+    filter: ["all", ["has", "name"], ["!=", ["get", "name"], ""]],
+    layout: {
+      "text-field": ["get", "name"],
+      "text-size": 12,
+      "text-offset": [0, 1.5],
+      "text-anchor": "top",
+      "text-optional": true,
+    },
+    paint: {
+      "text-color": "#1f2937",
+      "text-halo-color": "#ffffff",
+      "text-halo-width": 1.5,
+    },
+  });
+
+  // Camp night number labels
+  map.addLayer({
+    id: "trip-camp-numbers",
+    type: "symbol",
+    source: "trip",
+    filter: ["==", ["get", "type"], "camp"],
+    layout: {
+      "text-field": ["to-string", ["get", "night_number"]],
+      "text-size": 11,
+      "text-font": ["Open Sans Bold"],
+      "text-allow-overlap": true,
+    },
+    paint: {
+      "text-color": "#ffffff",
+    },
+  });
+
+  // -------------------------------------------------------------------
+  // Initialize trip planning tools
+  // -------------------------------------------------------------------
+  try {
+    initDrawing(map);
+  } catch (err) {
+    console.error("Failed to initialize drawing tools:", err);
+  }
+  initTripPanel();
+
+  // Trip feature click — show popup
+  map.on("click", "trip-camps", showTripFeaturePopup);
+  map.on("click", "trip-waypoints", showTripFeaturePopup);
+  map.on("mouseenter", "trip-camps", () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "trip-camps", () => { map.getCanvas().style.cursor = ""; });
+  map.on("mouseenter", "trip-waypoints", () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "trip-waypoints", () => { map.getCanvas().style.cursor = ""; });
 });
 
 map.on("error", (e) => {
@@ -388,3 +500,33 @@ map.on("mouseenter", "pois", () => {
 map.on("mouseleave", "pois", () => {
   map.getCanvas().style.cursor = "";
 });
+
+// ---------------------------------------------------------------------------
+// Trip feature popup
+// ---------------------------------------------------------------------------
+
+function showTripFeaturePopup(e) {
+  if (!e.features || e.features.length === 0) return;
+  e.originalEvent.stopPropagation();
+
+  const f = e.features[0];
+  const props = f.properties;
+  const coords = f.geometry.coordinates.slice();
+
+  let html = `<strong>${props.name || props.type}</strong>`;
+  if (props.type === "camp") {
+    html += `<br><span style="color:#6b7280;font-size:0.85em">Night ${props.night_number || "?"}`;
+    if (props.water_nearby) html += " &middot; Water nearby";
+    html += "</span>";
+  } else if (props.type === "waypoint") {
+    html += `<br><span style="color:#6b7280;font-size:0.85em">${props.subtype || "waypoint"}</span>`;
+  }
+  if (props.notes) {
+    html += `<br><span style="color:#6b7280;font-size:0.8em">${props.notes}</span>`;
+  }
+
+  new maplibregl.Popup({ offset: 12, maxWidth: "260px" })
+    .setLngLat(coords)
+    .setHTML(html)
+    .addTo(map);
+}
