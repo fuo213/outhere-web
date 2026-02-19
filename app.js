@@ -351,6 +351,60 @@ map.on("load", () => {
   });
 
   // -------------------------------------------------------------------
+  // Route drawing in-progress visualization (for custom snap-to-trail)
+  // -------------------------------------------------------------------
+  map.addSource("route-drawing", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "route-drawing-line",
+    type: "line",
+    source: "route-drawing",
+    filter: ["==", ["geometry-type"], "LineString"],
+    paint: {
+      "line-color": "#e85d04",
+      "line-width": 3,
+      "line-dasharray": [2, 2],
+      "line-opacity": 0.7,
+    },
+  });
+
+  map.addLayer({
+    id: "route-drawing-vertices",
+    type: "circle",
+    source: "route-drawing",
+    filter: ["==", ["geometry-type"], "Point"],
+    paint: {
+      "circle-radius": 6,
+      "circle-color": ["case", ["get", "snapped"], "#3b82f6", "#e85d04"],
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  });
+
+  // Snap preview — ghost marker showing where next click will land
+  map.addSource("snap-preview", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "snap-preview-marker",
+    type: "circle",
+    source: "snap-preview",
+    paint: {
+      "circle-radius": 8,
+      "circle-color": ["case", ["get", "snapped"], "#3b82f6", "#e85d04"],
+      "circle-opacity": 0.6,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+      "circle-stroke-opacity": 0.8,
+    },
+  });
+
+  // -------------------------------------------------------------------
   // Initialize trip planning tools
   // -------------------------------------------------------------------
   try {
@@ -360,9 +414,31 @@ map.on("load", () => {
   }
   initTripPanel();
 
-  // Trip feature click — show popup
-  map.on("click", "trip-camps", showTripFeaturePopup);
-  map.on("click", "trip-waypoints", showTripFeaturePopup);
+  // -------------------------------------------------------------------
+  // Click handlers for route drawing + trip features
+  // -------------------------------------------------------------------
+  map.on("click", (e) => {
+    if (isDrawingRoute) {
+      handleMapClickForRoute(e);
+    }
+  });
+
+  map.on("dblclick", (e) => {
+    if (isDrawingRoute) {
+      e.preventDefault();
+      handleMapDblClickForRoute(e);
+    }
+  });
+
+  // Trip feature click — show popup (skip during route drawing)
+  map.on("click", "trip-camps", (e) => {
+    if (isDrawingRoute) return;
+    showTripFeaturePopup(e);
+  });
+  map.on("click", "trip-waypoints", (e) => {
+    if (isDrawingRoute) return;
+    showTripFeaturePopup(e);
+  });
   map.on("mouseenter", "trip-camps", () => { map.getCanvas().style.cursor = "pointer"; });
   map.on("mouseleave", "trip-camps", () => { map.getCanvas().style.cursor = ""; });
   map.on("mouseenter", "trip-waypoints", () => { map.getCanvas().style.cursor = "pointer"; });
@@ -471,6 +547,7 @@ map.on("click", () => {
 // ---------------------------------------------------------------------------
 
 map.on("click", "pois", (e) => {
+  if (isDrawingRoute) return;
   if (!e.features || e.features.length === 0) return;
 
   const f = e.features[0];

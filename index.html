@@ -20,6 +20,9 @@
   <script src="https://unpkg.com/terra-draw@1.0.0/dist/terra-draw.umd.js"></script>
   <script src="https://unpkg.com/terra-draw-maplibre-gl-adapter@1.0.0/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>
 
+  <!-- Turf.js — geospatial utilities for trail snapping -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
   <!-- App styles -->
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -56,6 +59,19 @@
 
   <!-- Drawing hint overlay -->
   <div class="drawing-hint" id="drawingHint"></div>
+
+  <!-- Route drawing instruction modal -->
+  <div class="route-modal" id="routeModal">
+    <div class="route-modal-content">
+      <p class="route-modal-title">Drawing Route</p>
+      <ul class="route-modal-steps">
+        <li><strong>Click</strong> to place points along your route</li>
+        <li>Points <strong>snap to trails</strong> automatically when nearby</li>
+        <li><strong>Double-click</strong> to finish the route</li>
+        <li>Press <strong>Esc</strong> to cancel</li>
+      </ul>
+    </div>
+  </div>
 
   <!-- Map container -->
   <div id="map"></div>
