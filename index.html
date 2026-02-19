@@ -60,19 +60,6 @@
   <!-- Drawing hint overlay -->
   <div class="drawing-hint" id="drawingHint"></div>
 
-  <!-- Route drawing instruction modal -->
-  <div class="route-modal" id="routeModal">
-    <div class="route-modal-content">
-      <p class="route-modal-title">Drawing Route</p>
-      <ul class="route-modal-steps">
-        <li><strong>Click</strong> to place points along your route</li>
-        <li>Points <strong>snap to trails</strong> automatically when nearby</li>
-        <li><strong>Double-click</strong> to finish the route</li>
-        <li>Press <strong>Esc</strong> to cancel</li>
-      </ul>
-    </div>
-  </div>
-
   <!-- Map container -->
   <div id="map"></div>
 
@@ -109,6 +96,20 @@
         <input type="file" id="loadTripInput" accept=".geojson,.json" hidden />
       </label>
       <button class="trip-action-btn trip-action-danger" id="newTripBtn">New Trip</button>
+    </div>
+
+    <!-- Route drawing instructions (expands when drawing a route) -->
+    <div class="route-instructions" id="routeInstructions">
+      <div class="route-instructions-inner">
+        <p class="route-instructions-title">Drawing Route</p>
+        <ul class="route-instructions-steps">
+          <li><strong>Click</strong> to place points along your route</li>
+          <li>Points <strong>snap to trails</strong> when nearby</li>
+          <li><strong>Double-click</strong> to finish the route</li>
+          <li>Hold <strong>Shift</strong> to disable snapping</li>
+          <li>Press <strong>Esc</strong> to cancel</li>
+        </ul>
+      </div>
     </div>
   </aside>
 

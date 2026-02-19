@@ -357,77 +357,58 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Route drawing instruction modal
+   Route drawing instructions (collapsible section inside trip panel)
    --------------------------------------------------------------------------- */
 
-.route-modal {
-  position: absolute;
-  top: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 4;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s ease;
+.route-instructions {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease;
 }
 
-.route-modal.visible {
-  opacity: 1;
-  pointer-events: auto;
-  animation: route-modal-in 0.4s ease;
+.route-instructions.visible {
+  max-height: 200px;
 }
 
-@keyframes route-modal-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-.route-modal-content {
-  background: rgba(31, 41, 55, 0.75);
+.route-instructions-inner {
+  background: rgba(31, 41, 55, 0.85);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   color: #fff;
-  padding: 16px 22px;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  max-width: 300px;
+  margin: 8px 10px 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
 }
 
-.route-modal-title {
-  font-size: 0.9rem;
+.route-instructions-title {
+  font-size: 0.8rem;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   letter-spacing: 0.02em;
 }
 
-.route-modal-steps {
+.route-instructions-steps {
   list-style: none;
   padding: 0;
   margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.6;
+  font-size: 0.75rem;
+  line-height: 1.7;
   color: rgba(255, 255, 255, 0.9);
 }
 
-.route-modal-steps li {
-  padding-left: 16px;
+.route-instructions-steps li {
+  padding-left: 14px;
   position: relative;
 }
 
-.route-modal-steps li::before {
+.route-instructions-steps li::before {
   content: "\2022";
   position: absolute;
   left: 0;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.4);
 }
 
-.route-modal-steps strong {
+.route-instructions-steps strong {
   color: #93c5fd;
   font-weight: 600;
 }

@@ -22,7 +22,7 @@ let isDrawingRoute = false;
 let routeCoords = [];
 let routeSnapped = []; // parallel array: true if vertex was snapped
 
-const SNAP_PIXEL_RADIUS = 100; // pixel radius for trail query + snap threshold
+const SNAP_PIXEL_RADIUS = 30; // pixel radius for trail query + snap threshold
 
 // Bound handler reference so we can add/remove the mousemove listener
 let _routeMouseMoveHandler = null;
@@ -93,7 +93,9 @@ function handleMapClickForRoute(e) {
   if (!isDrawingRoute) return;
 
   const coord = [e.lngLat.lng, e.lngLat.lat];
-  const result = snapToTrail(coord);
+  const result = e.originalEvent.shiftKey
+    ? { coordinates: coord, snapped: false }
+    : snapToTrail(coord);
 
   routeCoords.push(result.coordinates);
   routeSnapped.push(result.snapped);
@@ -110,7 +112,9 @@ function handleMouseMoveForRoute(e) {
   if (!isDrawingRoute) return;
 
   const coord = [e.lngLat.lng, e.lngLat.lat];
-  const result = snapToTrail(coord);
+  const result = e.originalEvent.shiftKey
+    ? { coordinates: coord, snapped: false }
+    : snapToTrail(coord);
   updateSnapPreview(result);
 
   // Also update the in-progress line to extend to the preview point
@@ -375,11 +379,11 @@ function hideDrawingHint() {
 // ---------------------------------------------------------------------------
 
 function showRouteModal() {
-  const el = document.getElementById("routeModal");
+  const el = document.getElementById("routeInstructions");
   if (el) el.classList.add("visible");
 }
 
 function hideRouteModal() {
-  const el = document.getElementById("routeModal");
+  const el = document.getElementById("routeInstructions");
   if (el) el.classList.remove("visible");
 }
