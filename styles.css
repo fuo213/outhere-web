@@ -357,6 +357,63 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Route drawing instructions (collapsible section inside trip panel)
+   --------------------------------------------------------------------------- */
+
+.route-instructions {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease;
+}
+
+.route-instructions.visible {
+  max-height: 200px;
+}
+
+.route-instructions-inner {
+  background: rgba(31, 41, 55, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  margin: 8px 10px 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+}
+
+.route-instructions-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+.route-instructions-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.route-instructions-steps li {
+  padding-left: 14px;
+  position: relative;
+}
+
+.route-instructions-steps li::before {
+  content: "\2022";
+  position: absolute;
+  left: 0;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.route-instructions-steps strong {
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
    Trip planning panel (left sidebar)
    --------------------------------------------------------------------------- */
 
