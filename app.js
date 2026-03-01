@@ -277,6 +277,20 @@ map.on("load", () => {
     },
   });
 
+  // Trip dayhike spurs — amber dashed line
+  map.addLayer({
+    id: "trip-dayhike-spurs",
+    type: "line",
+    source: "trip",
+    filter: ["==", ["get", "type"], "dayhike_spur"],
+    paint: {
+      "line-color": "#d97706",
+      "line-width": 2.5,
+      "line-dasharray": [2, 2],
+      "line-opacity": 0.7,
+    },
+  });
+
   // Trip camps — green circles
   map.addLayer({
     id: "trip-camps",
@@ -386,16 +400,37 @@ map.on("load", () => {
     data: { type: "FeatureCollection", features: [] },
   });
 
+  // Main route drawing line (excludes dayhike spurs)
   map.addLayer({
     id: "route-drawing-line",
     type: "line",
     source: "route-drawing",
-    filter: ["==", ["geometry-type"], "LineString"],
+    filter: ["all",
+      ["==", ["geometry-type"], "LineString"],
+      ["any", ["!", ["has", "segment_type"]], ["!=", ["get", "segment_type"], "dayhike"]],
+    ],
     paint: {
       "line-color": "#e85d04",
       "line-width": 3,
       "line-dasharray": [2, 2],
       "line-opacity": 0.7,
+    },
+  });
+
+  // Dayhike spur drawing line
+  map.addLayer({
+    id: "route-drawing-dayhike-line",
+    type: "line",
+    source: "route-drawing",
+    filter: ["all",
+      ["==", ["geometry-type"], "LineString"],
+      ["==", ["get", "segment_type"], "dayhike"],
+    ],
+    paint: {
+      "line-color": "#d97706",
+      "line-width": 2,
+      "line-dasharray": [1, 2],
+      "line-opacity": 0.6,
     },
   });
 

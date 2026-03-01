@@ -194,6 +194,7 @@ const FEATURE_ICONS = {
   route: "\u{1F6A9}",      // flag
   camp: "\u{26FA}",        // tent
   dayhike: "\u{1F97E}",    // hiking boot
+  dayhike_spur: "\u{1F97E}", // hiking boot (spur line)
   rest: "\u{1F4A4}",       // zzz / sleep
   waypoint: "\u{1F4CD}",   // pin (backward compat)
 };
@@ -202,6 +203,7 @@ const POINT_TYPE_LABELS = {
   route: "Route",
   camp: "Camp",
   dayhike: "Day Hike",
+  dayhike_spur: "Day Hike Spur",
   rest: "Rest Day",
   waypoint: "Waypoint",
 };
@@ -233,7 +235,7 @@ function renderFeatureList() {
 
   features.forEach((feature, index) => {
     const props = feature.properties;
-    if (props.type === "route") {
+    if (props.type === "route" || props.type === "dayhike_spur") {
       routes.push({ feature, index });
     } else if (props.date) {
       datedPoints.push({ feature, index });
@@ -324,8 +326,17 @@ function buildFeatureRow(feature, index) {
   if (type === "camp" && props.water_nearby) {
     subtitle = "Water nearby";
   } else if (type === "route") {
-    const numPts = feature.geometry.coordinates?.length || 0;
-    subtitle = `${numPts} points`;
+    const mainDist = props.main_route_distance_mi;
+    const dhDist = props.dayhike_distance_mi;
+    if (mainDist && mainDist > 0) {
+      subtitle = `${mainDist.toFixed(1)} mi`;
+      if (dhDist && dhDist > 0) subtitle += ` + ${dhDist.toFixed(1)} mi day hikes`;
+    } else {
+      const numPts = feature.geometry.coordinates?.length || 0;
+      subtitle = `${numPts} points`;
+    }
+  } else if (type === "dayhike_spur") {
+    subtitle = "Day hike spur";
   } else if (type === "waypoint" && props.subtype) {
     subtitle = WAYPOINT_LABELS[props.subtype] || props.subtype;
   }
@@ -497,6 +508,44 @@ function zoomToFeature(index) {
     );
     map.fitBounds(bounds, { padding: 60, duration: 800 });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Drawing progress live preview (shown in sidebar during route drawing)
+// ---------------------------------------------------------------------------
+
+function updateDrawingPreview(info) {
+  let previewEl = document.getElementById("drawingPreview");
+
+  if (!info || info.vertexCount === 0) {
+    if (previewEl) previewEl.remove();
+    return;
+  }
+
+  const container = document.getElementById("tripFeatureList");
+  if (!container) return;
+
+  if (!previewEl) {
+    previewEl = document.createElement("div");
+    previewEl.id = "drawingPreview";
+    previewEl.className = "trip-feature-row drawing-preview";
+    container.insertBefore(previewEl, container.firstChild);
+  }
+
+  const mainDist = info.mainDistanceMi.toFixed(1);
+  const dhDist = info.dayhikeDistanceMi.toFixed(1);
+  let subtitle = `${info.vertexCount} point${info.vertexCount !== 1 ? "s" : ""}`;
+  if (parseFloat(mainDist) > 0) subtitle = `Route: ${mainDist} mi`;
+  if (parseFloat(dhDist) > 0) subtitle += ` | Day hikes: ${dhDist} mi`;
+
+  previewEl.innerHTML = `
+    <span class="trip-feature-icon">\u{1F6A9}</span>
+    <div class="trip-feature-info">
+      <span class="trip-feature-name">Drawing in progress\u2026</span>
+      <span class="trip-feature-sub">${subtitle}</span>
+    </div>
+    <span class="drawing-preview-pulse"></span>
+  `;
 }
 
 // ---------------------------------------------------------------------------
