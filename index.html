@@ -16,10 +16,6 @@
   <!-- PMTiles protocol handler -->
   <script src="https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js"></script>
 
-  <!-- Terra Draw — drawing tools for trip planning -->
-  <script src="https://unpkg.com/terra-draw@1.0.0/dist/terra-draw.umd.js"></script>
-  <script src="https://unpkg.com/terra-draw-maplibre-gl-adapter@1.0.0/dist/terra-draw-maplibre-gl-adapter.umd.js"></script>
-
   <!-- Turf.js — geospatial utilities for trail snapping -->
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
@@ -47,14 +43,14 @@
   <!-- Planning toolbar (hidden until Plan panel is open) -->
   <div class="planning-toolbar" id="planningToolbar">
     <button class="tool-btn" id="drawRouteBtn" title="Draw a route on the map">
-      Route
+      Draw Route
     </button>
-    <button class="tool-btn" id="dropCampBtn" title="Place a camp on the map">
-      Camp
-    </button>
-    <button class="tool-btn" id="addWaypointBtn" title="Place a waypoint on the map">
-      Waypoint
-    </button>
+    <div class="point-type-selector" id="pointTypeSelector">
+      <button class="point-type-btn active" data-point-type="route"><kbd>1</kbd> Route</button>
+      <button class="point-type-btn" data-point-type="camp"><kbd>2</kbd> Camp</button>
+      <button class="point-type-btn" data-point-type="dayhike"><kbd>3</kbd> Dayhike</button>
+      <button class="point-type-btn" data-point-type="rest"><kbd>4</kbd> Rest</button>
+    </div>
   </div>
 
   <!-- Drawing hint overlay -->
@@ -103,7 +99,8 @@
       <div class="route-instructions-inner">
         <p class="route-instructions-title">Drawing Route</p>
         <ul class="route-instructions-steps">
-          <li><strong>Click</strong> to place points along your route</li>
+          <li><strong>Click</strong> to place route points</li>
+          <li>Press <strong>1-4</strong> to switch: Route, Camp, Dayhike, Rest</li>
           <li>Points <strong>snap to trails</strong> when nearby</li>
           <li><strong>Double-click</strong> to finish the route</li>
           <li>Hold <strong>Shift</strong> to disable snapping</li>

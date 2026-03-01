@@ -7,7 +7,7 @@
  *
  * Dependencies (loaded before this script):
  *   - map        (global, from app.js)
- *   - planning.js (cancelDrawing, etc.)
+ *   - planning.js (cancelDrawing, initPointTypeSelector, getTripDateRange, etc.)
  */
 
 // ---------------------------------------------------------------------------
@@ -27,6 +27,7 @@ const TripManager = {
         name: name || "Untitled Trip",
         created: new Date().toISOString(),
         sharing: "private",
+        _schema_version: 2,
       },
       features: [],
     };
@@ -45,13 +46,6 @@ const TripManager = {
 
   removeFeature(index) {
     this.currentTrip.features.splice(index, 1);
-    // Renumber camp night_numbers
-    let nightNum = 1;
-    for (const f of this.currentTrip.features) {
-      if (f.properties.type === "camp") {
-        f.properties.night_number = nightNum++;
-      }
-    }
     this.render();
     this.save();
   },
@@ -60,11 +54,6 @@ const TripManager = {
     Object.assign(this.currentTrip.features[index].properties, properties);
     this.render();
     this.save();
-  },
-
-  getNextNightNumber() {
-    if (!this.currentTrip) return 1;
-    return this.currentTrip.features.filter((f) => f.properties.type === "camp").length + 1;
   },
 
   /** Update MapLibre source and sidebar list. */
@@ -86,7 +75,7 @@ const TripManager = {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        this.currentTrip = JSON.parse(saved);
+        this.currentTrip = migrateTrip(JSON.parse(saved));
         this.render();
         return true;
       } catch (_) {
@@ -111,7 +100,7 @@ const TripManager = {
         ...geojson.properties,
       };
     }
-    this.currentTrip = geojson;
+    this.currentTrip = migrateTrip(geojson);
     this.render();
     this.save();
   },
@@ -135,6 +124,26 @@ const TripManager = {
     this.render();
   },
 };
+
+// ---------------------------------------------------------------------------
+// Data migration
+// ---------------------------------------------------------------------------
+
+function migrateTrip(trip) {
+  if (!trip || !trip.properties) return trip;
+  if (trip.properties._schema_version >= 2) return trip;
+
+  for (const f of trip.features) {
+    if (f.properties.type === "waypoint" && !f.properties.point_type) {
+      f.properties.point_type = "dayhike";
+    }
+    if (f.properties.type === "camp" && !f.properties.point_type) {
+      f.properties.point_type = "camp";
+    }
+  }
+  trip.properties._schema_version = 2;
+  return trip;
+}
 
 // ---------------------------------------------------------------------------
 // Sidebar: trip metadata
@@ -178,16 +187,26 @@ function onTripMetaChange() {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: feature list
+// Sidebar: feature list (date-grouped)
 // ---------------------------------------------------------------------------
 
 const FEATURE_ICONS = {
-  route: "\u{1F6A9}",    // flag
-  camp: "\u{26FA}",      // tent
-  waypoint: "\u{1F4CD}", // pin
-  photo: "\u{1F4F7}",    // camera
+  route: "\u{1F6A9}",      // flag
+  camp: "\u{26FA}",        // tent
+  dayhike: "\u{1F97E}",    // hiking boot
+  rest: "\u{1F4A4}",       // zzz / sleep
+  waypoint: "\u{1F4CD}",   // pin (backward compat)
 };
 
+const POINT_TYPE_LABELS = {
+  route: "Route",
+  camp: "Camp",
+  dayhike: "Day Hike",
+  rest: "Rest Day",
+  waypoint: "Waypoint",
+};
+
+// Legacy waypoint labels for backward compat
 const WAYPOINT_LABELS = {
   water: "Water",
   hazard: "Hazard",
@@ -201,61 +220,133 @@ function renderFeatureList() {
   container.innerHTML = "";
 
   if (!TripManager.currentTrip || TripManager.currentTrip.features.length === 0) {
-    container.innerHTML = '<p class="trip-empty">No features yet. Use the toolbar to add routes, camps, and waypoints.</p>';
+    container.innerHTML = '<p class="trip-empty">No features yet. Use the toolbar to draw a route.</p>';
     return;
   }
 
-  TripManager.currentTrip.features.forEach((feature, index) => {
+  const features = TripManager.currentTrip.features;
+
+  // Separate routes from points
+  const routes = [];
+  const datedPoints = [];
+  const undatedPoints = [];
+
+  features.forEach((feature, index) => {
     const props = feature.properties;
-    const row = document.createElement("div");
-    row.className = "trip-feature-row";
-    row.dataset.index = index;
-
-    const icon = FEATURE_ICONS[props.type] || "\u{1F4CD}";
-    let label = props.name || "";
-    if (!label) {
-      switch (props.type) {
-        case "route":
-          label = "Untitled Route";
-          break;
-        case "camp":
-          label = `Camp Night ${props.night_number}`;
-          break;
-        case "waypoint":
-          label = `${WAYPOINT_LABELS[props.subtype] || "Waypoint"} Point`;
-          break;
-        default:
-          label = props.type;
-      }
+    if (props.type === "route") {
+      routes.push({ feature, index });
+    } else if (props.date) {
+      datedPoints.push({ feature, index });
+    } else {
+      undatedPoints.push({ feature, index });
     }
-
-    let subtitle = "";
-    if (props.type === "camp" && props.water_nearby) {
-      subtitle = "Water nearby";
-    } else if (props.type === "waypoint" && props.subtype) {
-      subtitle = WAYPOINT_LABELS[props.subtype] || props.subtype;
-    } else if (props.type === "route") {
-      const numPts = feature.geometry.coordinates?.length || 0;
-      subtitle = `${numPts} points`;
-    }
-
-    row.innerHTML = `
-      <span class="trip-feature-icon">${icon}</span>
-      <div class="trip-feature-info">
-        <span class="trip-feature-name">${label}</span>
-        ${subtitle ? `<span class="trip-feature-sub">${subtitle}</span>` : ""}
-      </div>
-      <div class="trip-feature-actions">
-        <button class="trip-feat-btn trip-feat-edit" title="Edit" data-index="${index}">&#9998;</button>
-        <button class="trip-feat-btn trip-feat-zoom" title="Zoom to" data-index="${index}">&#8982;</button>
-        <button class="trip-feat-btn trip-feat-delete" title="Delete" data-index="${index}">&times;</button>
-      </div>
-    `;
-
-    container.appendChild(row);
   });
 
-  // Event delegation for feature actions
+  // Render routes first
+  for (const { feature, index } of routes) {
+    container.appendChild(buildFeatureRow(feature, index));
+  }
+
+  // Group dated points by date
+  const byDate = {};
+  for (const { feature, index } of datedPoints) {
+    const date = feature.properties.date;
+    if (!byDate[date]) byDate[date] = [];
+    byDate[date].push({ feature, index });
+  }
+
+  // Render date groups
+  const sortedDates = Object.keys(byDate).sort();
+  for (const date of sortedDates) {
+    const header = document.createElement("div");
+    header.className = "trip-date-header";
+    header.textContent = formatDateHeader(date);
+    container.appendChild(header);
+
+    for (const { feature, index } of byDate[date]) {
+      container.appendChild(buildFeatureRow(feature, index));
+    }
+  }
+
+  // Render undated points (legacy or unscheduled)
+  if (undatedPoints.length > 0 && datedPoints.length > 0) {
+    const header = document.createElement("div");
+    header.className = "trip-date-header";
+    header.textContent = "Unscheduled";
+    container.appendChild(header);
+  }
+  for (const { feature, index } of undatedPoints) {
+    container.appendChild(buildFeatureRow(feature, index));
+  }
+
+  // Wire up action buttons
+  wireFeatureActions(container);
+}
+
+function formatDateHeader(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function buildFeatureRow(feature, index) {
+  const props = feature.properties;
+  const row = document.createElement("div");
+  row.className = "trip-feature-row";
+  row.dataset.index = index;
+
+  const type = props.point_type || props.type;
+  const icon = FEATURE_ICONS[type] || FEATURE_ICONS[props.type] || "\u{1F4CD}";
+
+  let label = props.name || "";
+  if (!label) {
+    switch (type) {
+      case "route":
+        label = "Untitled Route";
+        break;
+      case "camp":
+        label = props.night_number ? `Camp Night ${props.night_number}` : "Camp";
+        break;
+      case "dayhike":
+        label = "Day Hike";
+        break;
+      case "rest":
+        label = "Rest Day";
+        break;
+      case "waypoint":
+        label = `${WAYPOINT_LABELS[props.subtype] || "Waypoint"} Point`;
+        break;
+      default:
+        label = POINT_TYPE_LABELS[type] || type;
+    }
+  }
+
+  let subtitle = "";
+  if (type === "camp" && props.water_nearby) {
+    subtitle = "Water nearby";
+  } else if (type === "route") {
+    const numPts = feature.geometry.coordinates?.length || 0;
+    subtitle = `${numPts} points`;
+  } else if (type === "waypoint" && props.subtype) {
+    subtitle = WAYPOINT_LABELS[props.subtype] || props.subtype;
+  }
+
+  row.innerHTML = `
+    <span class="trip-feature-icon">${icon}</span>
+    <div class="trip-feature-info">
+      <span class="trip-feature-name">${label}</span>
+      ${subtitle ? `<span class="trip-feature-sub">${subtitle}</span>` : ""}
+    </div>
+    <div class="trip-feature-actions">
+      <button class="trip-feat-btn trip-feat-edit" title="Edit" data-index="${index}">&#9998;</button>
+      <button class="trip-feat-btn trip-feat-zoom" title="Zoom to" data-index="${index}">&#8982;</button>
+      <button class="trip-feat-btn trip-feat-delete" title="Delete" data-index="${index}">&times;</button>
+    </div>
+  `;
+
+  return row;
+}
+
+function wireFeatureActions(container) {
   container.querySelectorAll(".trip-feat-edit").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -284,6 +375,15 @@ function renderFeatureList() {
 // Feature edit form (shown in-panel)
 // ---------------------------------------------------------------------------
 
+function buildDateOptions(selectedDate) {
+  const tripDates = getTripDateRange();
+  let html = '<option value="">No date</option>';
+  for (const d of tripDates) {
+    html += `<option value="${d}" ${selectedDate === d ? "selected" : ""}>${d}</option>`;
+  }
+  return html;
+}
+
 function openFeatureForm(index) {
   const feature = TripManager.currentTrip?.features[index];
   if (!feature) return;
@@ -297,9 +397,9 @@ function openFeatureForm(index) {
   container.classList.add("visible");
 
   const props = feature.properties;
-  const type = props.type;
+  const type = props.point_type || props.type;
 
-  let formHTML = `<h4>${FEATURE_ICONS[type] || ""} Edit ${type.charAt(0).toUpperCase() + type.slice(1)}</h4>`;
+  let formHTML = `<h4>${FEATURE_ICONS[type] || ""} Edit ${POINT_TYPE_LABELS[type] || type}</h4>`;
 
   // Name field (all types)
   formHTML += `<label>Name<input type="text" id="featName" value="${escapeAttr(props.name || "")}" /></label>`;
@@ -313,14 +413,20 @@ function openFeatureForm(index) {
     `;
   } else if (type === "camp") {
     formHTML += `
-      <label>Night #<input type="number" id="featNight" value="${props.night_number || 1}" min="1" /></label>
+      <label>Date<select id="featDate">${buildDateOptions(props.date)}</select></label>
       <label class="checkbox-label">
         <input type="checkbox" id="featWaterNearby" ${props.water_nearby ? "checked" : ""} /> Water nearby
       </label>
       <label>Water notes<input type="text" id="featWaterNotes" value="${escapeAttr(props.water_notes || "")}" /></label>
       <label>Notes<textarea id="featNotes" rows="2">${escapeHTML(props.notes || "")}</textarea></label>
     `;
+  } else if (type === "dayhike" || type === "rest") {
+    formHTML += `
+      <label>Date<select id="featDate">${buildDateOptions(props.date)}</select></label>
+      <label>Notes<textarea id="featNotes" rows="2">${escapeHTML(props.notes || "")}</textarea></label>
+    `;
   } else if (type === "waypoint") {
+    // Backward compat for old waypoints
     formHTML += `
       <label>Type
         <select id="featSubtype">
@@ -350,9 +456,12 @@ function openFeatureForm(index) {
       updates.planned = document.getElementById("featPlanned").checked;
       updates.notes = document.getElementById("featNotes").value;
     } else if (type === "camp") {
-      updates.night_number = parseInt(document.getElementById("featNight").value) || 1;
+      updates.date = document.getElementById("featDate").value;
       updates.water_nearby = document.getElementById("featWaterNearby").checked;
       updates.water_notes = document.getElementById("featWaterNotes").value;
+      updates.notes = document.getElementById("featNotes").value;
+    } else if (type === "dayhike" || type === "rest") {
+      updates.date = document.getElementById("featDate").value;
       updates.notes = document.getElementById("featNotes").value;
     } else if (type === "waypoint") {
       updates.subtype = document.getElementById("featSubtype").value;
@@ -432,14 +541,11 @@ function initTripPanel() {
     }
   });
 
-  // Drawing tool buttons
+  // Drawing tool button — unified route drawing
   document.getElementById("drawRouteBtn").addEventListener("click", startRouteDrawing);
-  document.getElementById("dropCampBtn").addEventListener("click", startCampDrop);
 
-  // Waypoint button — cycles through subtypes or just uses scenic default
-  document.getElementById("addWaypointBtn").addEventListener("click", () => {
-    startWaypointDrop("scenic");
-  });
+  // Point-type selector buttons
+  initPointTypeSelector();
 
   // Cancel drawing on Escape
   document.addEventListener("keydown", (e) => {

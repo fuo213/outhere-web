@@ -277,7 +277,7 @@ map.on("load", () => {
     },
   });
 
-  // Trip camps — green circles with tent-like styling
+  // Trip camps — green circles
   map.addLayer({
     id: "trip-camps",
     type: "circle",
@@ -291,7 +291,35 @@ map.on("load", () => {
     },
   });
 
-  // Trip waypoints — colored by subtype
+  // Trip dayhike points — amber circles
+  map.addLayer({
+    id: "trip-dayhikes",
+    type: "circle",
+    source: "trip",
+    filter: ["==", ["get", "type"], "dayhike"],
+    paint: {
+      "circle-radius": 7,
+      "circle-color": "#d97706",
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  });
+
+  // Trip rest points — purple circles
+  map.addLayer({
+    id: "trip-rest",
+    type: "circle",
+    source: "trip",
+    filter: ["==", ["get", "type"], "rest"],
+    paint: {
+      "circle-radius": 7,
+      "circle-color": "#7c3aed",
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  });
+
+  // Legacy waypoints — colored by subtype (backward compat)
   map.addLayer({
     id: "trip-waypoints",
     type: "circle",
@@ -377,8 +405,21 @@ map.on("load", () => {
     source: "route-drawing",
     filter: ["==", ["geometry-type"], "Point"],
     paint: {
-      "circle-radius": 6,
-      "circle-color": ["case", ["get", "snapped"], "#3b82f6", "#e85d04"],
+      "circle-radius": [
+        "case",
+        ["==", ["get", "point_type"], "camp"], 8,
+        ["==", ["get", "point_type"], "dayhike"], 7,
+        ["==", ["get", "point_type"], "rest"], 7,
+        6,
+      ],
+      "circle-color": [
+        "case",
+        ["==", ["get", "point_type"], "camp"], "#2d6a4f",
+        ["==", ["get", "point_type"], "dayhike"], "#d97706",
+        ["==", ["get", "point_type"], "rest"], "#7c3aed",
+        ["get", "snapped"], "#3b82f6",
+        "#e85d04",
+      ],
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
     },
@@ -407,11 +448,6 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   // Initialize trip planning tools
   // -------------------------------------------------------------------
-  try {
-    initDrawing(map);
-  } catch (err) {
-    console.error("Failed to initialize drawing tools:", err);
-  }
   initTripPanel();
 
   // -------------------------------------------------------------------
@@ -431,18 +467,14 @@ map.on("load", () => {
   });
 
   // Trip feature click — show popup (skip during route drawing)
-  map.on("click", "trip-camps", (e) => {
-    if (isDrawingRoute) return;
-    showTripFeaturePopup(e);
-  });
-  map.on("click", "trip-waypoints", (e) => {
-    if (isDrawingRoute) return;
-    showTripFeaturePopup(e);
-  });
-  map.on("mouseenter", "trip-camps", () => { map.getCanvas().style.cursor = "pointer"; });
-  map.on("mouseleave", "trip-camps", () => { map.getCanvas().style.cursor = ""; });
-  map.on("mouseenter", "trip-waypoints", () => { map.getCanvas().style.cursor = "pointer"; });
-  map.on("mouseleave", "trip-waypoints", () => { map.getCanvas().style.cursor = ""; });
+  for (const layerId of ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"]) {
+    map.on("click", layerId, (e) => {
+      if (isDrawingRoute) return;
+      showTripFeaturePopup(e);
+    });
+    map.on("mouseenter", layerId, () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; });
+  }
 });
 
 map.on("error", (e) => {
@@ -589,14 +621,19 @@ function showTripFeaturePopup(e) {
   const f = e.features[0];
   const props = f.properties;
   const coords = f.geometry.coordinates.slice();
+  const type = props.point_type || props.type;
+  const typeLabel = (typeof POINT_TYPE_LABELS !== "undefined" && POINT_TYPE_LABELS[type]) || type;
 
-  let html = `<strong>${props.name || props.type}</strong>`;
-  if (props.type === "camp") {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">Night ${props.night_number || "?"}`;
-    if (props.water_nearby) html += " &middot; Water nearby";
-    html += "</span>";
-  } else if (props.type === "waypoint") {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${props.subtype || "waypoint"}</span>`;
+  let html = `<strong>${props.name || typeLabel}</strong>`;
+  if (props.date) {
+    html += `<br><span style="color:#6b7280;font-size:0.85em">${props.date}</span>`;
+  }
+  if (type === "camp") {
+    let detail = "";
+    if (props.water_nearby) detail += "Water nearby";
+    if (detail) html += `<br><span style="color:#6b7280;font-size:0.85em">${detail}</span>`;
+  } else if (type === "waypoint" && props.subtype) {
+    html += `<br><span style="color:#6b7280;font-size:0.85em">${props.subtype}</span>`;
   }
   if (props.notes) {
     html += `<br><span style="color:#6b7280;font-size:0.8em">${props.notes}</span>`;

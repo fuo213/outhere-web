@@ -1,92 +1,62 @@
 /**
  * OutHere Trip Planning — Drawing Tools
  *
- * Route drawing uses a custom click-based system with trail snapping
- * (via turf.js nearestPointOnLine). A live preview marker follows the
- * cursor and snaps to trails in real time. Camp/waypoint placement
- * uses terra-draw's PointMode.
+ * Unified route drawing with switchable point types (route/camp/dayhike/rest).
+ * Uses a custom click-based system with trail snapping via turf.js
+ * nearestPointOnLine. A live preview marker follows the cursor and snaps
+ * to trails in real time.
+ *
+ * Hotkeys 1-4 switch point type during drawing.
  *
  * Dependencies (loaded before this script):
- *   - terraDraw          (global, via terra-draw.umd.js)
- *   - terraDrawMaplibreGlAdapter (global, via terra-draw-maplibre-gl-adapter.umd.js)
  *   - turf               (global, via turf.min.js)
  *   - map                (global, from app.js)
  */
 
-let draw = null;
-let pendingFeatureType = null; // "route" | "camp" | "waypoint"
-let pendingWaypointSubtype = "scenic";
+let pendingFeatureType = null; // "route" when drawing
 
-// Route drawing state (custom, not terra-draw)
+// Route drawing state
 let isDrawingRoute = false;
 let routeCoords = [];
-let routeSnapped = []; // parallel array: true if vertex was snapped
+let routeSnapped = [];      // parallel array: true if vertex was snapped
+let routeVertexTypes = [];   // parallel array: "route" | "camp" | "dayhike" | "rest"
+let currentPointType = "route";
 
 const SNAP_PIXEL_RADIUS = 30; // pixel radius for trail query + snap threshold
 
-// Bound handler reference so we can add/remove the mousemove listener
+const POINT_TYPES = ["route", "camp", "dayhike", "rest"];
+
+// Bound handler references so we can add/remove listeners
 let _routeMouseMoveHandler = null;
-
-// ---------------------------------------------------------------------------
-// Initialization (terra-draw for camps/waypoints only)
-// ---------------------------------------------------------------------------
-
-function initDrawing(mapInstance) {
-  if (typeof terraDraw === "undefined" || typeof terraDrawMaplibreGlAdapter === "undefined") {
-    console.warn("terra-draw libraries not loaded — drawing tools disabled");
-    return;
-  }
-
-  const { TerraDraw, TerraDrawPointMode, TerraDrawRenderMode } = terraDraw;
-  const { TerraDrawMapLibreGLAdapter } = terraDrawMaplibreGlAdapter;
-
-  draw = new TerraDraw({
-    adapter: new TerraDrawMapLibreGLAdapter({ map: mapInstance, lib: maplibregl }),
-    modes: [
-      new TerraDrawPointMode({
-        styles: {
-          pointColor: "#2d6a4f",
-          pointWidth: 8,
-          pointOutlineColor: "#fff",
-          pointOutlineWidth: 2,
-        },
-      }),
-      // Idle mode — no drawing, just viewing
-      new TerraDrawRenderMode({ modeName: "static" }),
-    ],
-  });
-
-  draw.start();
-
-  draw.on("finish", (id) => {
-    handlePointFinish(id);
-  });
-}
+let _routeKeyHandler = null;
 
 // ---------------------------------------------------------------------------
 // Route drawing — custom click-based with trail snapping
 // ---------------------------------------------------------------------------
 
 function startRouteDrawing() {
-  // Cancel any active terra-draw mode
-  if (draw) {
-    try { draw.setMode("static"); } catch (_) {}
-  }
-
   isDrawingRoute = true;
   routeCoords = [];
   routeSnapped = [];
+  routeVertexTypes = [];
+  currentPointType = "route";
   pendingFeatureType = "route";
   setActiveToolBtn("drawRouteBtn");
+  showPointTypeSelector();
+  setActivePointType("route");
   showRouteModal();
   map.doubleClickZoom.disable();
   map.getCanvas().style.cursor = "crosshair";
   updateRouteDrawing();
-  updateSnapPreview(null); // clear any stale preview
+  updateSnapPreview(null);
 
   // Wire up mousemove for live snap preview
   _routeMouseMoveHandler = handleMouseMoveForRoute;
   map.on("mousemove", _routeMouseMoveHandler);
+
+  // Wire up keyboard hotkeys for point type switching
+  _routeKeyHandler = handleRouteKeyDown;
+  document.addEventListener("keydown", _routeKeyHandler);
 }
 
 function handleMapClickForRoute(e) {
@@ -99,6 +69,7 @@ function handleMapClickForRoute(e) {
 
   routeCoords.push(result.coordinates);
   routeSnapped.push(result.snapped);
+  routeVertexTypes.push(currentPointType);
   updateRouteDrawing();
 }
 
@@ -129,29 +100,79 @@ function finishRouteDrawing() {
     return;
   }
 
+  // 1. Create the route LineString
   const geometry = { type: "LineString", coordinates: routeCoords };
-  const properties = { type: "route", name: "", planned: true, notes: "" };
-  const idx = TripManager.addFeature(geometry, properties);
+  const properties = {
+    type: "route",
+    name: "",
+    planned: true,
+    notes: "",
+    vertex_types: [...routeVertexTypes],
+    vertex_snapped: [...routeSnapped],
+  };
+  const routeIdx = TripManager.addFeature(geometry, properties);
+
+  // 2. Create Point features for special points (camp/dayhike/rest)
+  const tripDates = getTripDateRange();
+  let dateIndex = 0;
+
+  for (let i = 0; i < routeCoords.length; i++) {
+    const vtype = routeVertexTypes[i];
+    if (vtype === "route") continue;
+
+    const pointGeom = { type: "Point", coordinates: routeCoords[i] };
+    const pointDate = tripDates[dateIndex] || "";
+
+    const pointProps = {
+      type: vtype,
+      point_type: vtype,
+      route_index: routeIdx,
+      route_vertex_index: i,
+      date: pointDate,
+      name: "",
+      notes: "",
+    };
+
+    if (vtype === "camp") {
+      pointProps.water_nearby = false;
+      pointProps.water_notes = "";
+      dateIndex++; // camp advances to next day
+    } else if (vtype === "rest") {
+      dateIndex++; // rest day consumes a day
+    }
+    // dayhike does NOT advance the date (same-day activity)
+
+    TripManager.addFeature(pointGeom, pointProps);
+  }
 
   resetRouteDrawing();
   cancelDrawing();
-  openFeatureForm(idx);
+  openFeatureForm(routeIdx);
 }
 
 function resetRouteDrawing() {
   isDrawingRoute = false;
   routeCoords = [];
   routeSnapped = [];
+  routeVertexTypes = [];
+  currentPointType = "route";
   map.doubleClickZoom.enable();
   map.getCanvas().style.cursor = "";
   updateRouteDrawing();
   updateSnapPreview(null);
   hideRouteModal();
+  hidePointTypeSelector();
 
   // Remove mousemove handler
   if (_routeMouseMoveHandler) {
     map.off("mousemove", _routeMouseMoveHandler);
     _routeMouseMoveHandler = null;
+  }
+
+  // Remove keyboard handler
+  if (_routeKeyHandler) {
+    document.removeEventListener("keydown", _routeKeyHandler);
+    _routeKeyHandler = null;
   }
 }
 
@@ -184,7 +205,11 @@ function updateRouteDrawing(previewCoord) {
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: coord },
-      properties: { snapped: routeSnapped[i] || false, vertex: true },
+      properties: {
+        snapped: routeSnapped[i] || false,
+        vertex: true,
+        point_type: routeVertexTypes[i] || "route",
+      },
     });
   });
 
@@ -274,71 +299,6 @@ function snapToTrail(coord) {
 }
 
 // ---------------------------------------------------------------------------
-// Camp & waypoint drawing — terra-draw PointMode
-// ---------------------------------------------------------------------------
-
-function startCampDrop() {
-  if (!draw) return;
-  if (isDrawingRoute) resetRouteDrawing();
-  pendingFeatureType = "camp";
-  draw.setMode("point");
-  setActiveToolBtn("dropCampBtn");
-  showDrawingHint("Click on the map to place camp.");
-}
-
-function startWaypointDrop(subtype) {
-  if (!draw) return;
-  if (isDrawingRoute) resetRouteDrawing();
-  pendingFeatureType = "waypoint";
-  pendingWaypointSubtype = subtype || "scenic";
-  draw.setMode("point");
-  setActiveToolBtn("addWaypointBtn");
-  showDrawingHint("Click on the map to place waypoint.");
-}
-
-/** Handle terra-draw point finish (camps and waypoints only). */
-function handlePointFinish(id) {
-  const snapshot = draw.getSnapshot();
-  const feature = snapshot.find((f) => f.id === id);
-  if (!feature || !pendingFeatureType) return;
-
-  const geometry = {
-    type: feature.geometry.type,
-    coordinates: feature.geometry.coordinates,
-  };
-
-  let properties;
-  if (pendingFeatureType === "camp") {
-    properties = {
-      type: "camp",
-      night_number: TripManager.getNextNightNumber(),
-      name: "",
-      notes: "",
-      water_nearby: false,
-      planned: true,
-    };
-  } else if (pendingFeatureType === "waypoint") {
-    properties = {
-      type: "waypoint",
-      subtype: pendingWaypointSubtype,
-      name: "",
-      notes: "",
-    };
-  } else {
-    return;
-  }
-
-  const idx = TripManager.addFeature(geometry, properties);
-
-  try {
-    draw.removeFeatures([id]);
-  } catch (_) {}
-
-  cancelDrawing();
-  openFeatureForm(idx);
-}
-
-// ---------------------------------------------------------------------------
 // Cancel / shared UI
 // ---------------------------------------------------------------------------
 
@@ -346,13 +306,11 @@ function cancelDrawing() {
   if (isDrawingRoute) {
     resetRouteDrawing();
   }
-  if (draw) {
-    try { draw.setMode("static"); } catch (_) {}
-  }
   pendingFeatureType = null;
   setActiveToolBtn(null);
   hideDrawingHint();
   hideRouteModal();
+  hidePointTypeSelector();
 }
 
 function setActiveToolBtn(id) {
@@ -386,4 +344,71 @@ function showRouteModal() {
 function hideRouteModal() {
   const el = document.getElementById("routeInstructions");
   if (el) el.classList.remove("visible");
+}
+
+// ---------------------------------------------------------------------------
+// Point type selector
+// ---------------------------------------------------------------------------
+
+function showPointTypeSelector() {
+  const el = document.getElementById("pointTypeSelector");
+  if (el) el.classList.add("visible");
+}
+
+function hidePointTypeSelector() {
+  const el = document.getElementById("pointTypeSelector");
+  if (el) el.classList.remove("visible");
+}
+
+function setActivePointType(pointType) {
+  currentPointType = pointType;
+  document.querySelectorAll(".point-type-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.pointType === pointType);
+  });
+}
+
+function initPointTypeSelector() {
+  document.querySelectorAll(".point-type-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setActivePointType(btn.dataset.pointType);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard hotkeys for point type switching (1-4)
+// ---------------------------------------------------------------------------
+
+function handleRouteKeyDown(e) {
+  if (!isDrawingRoute) return;
+
+  // Ignore if user is typing in a form input
+  const tag = e.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+  const keyMap = { "1": "route", "2": "camp", "3": "dayhike", "4": "rest" };
+  const pointType = keyMap[e.key];
+  if (pointType) {
+    e.preventDefault();
+    setActivePointType(pointType);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Trip date range helper
+// ---------------------------------------------------------------------------
+
+function getTripDateRange() {
+  if (!TripManager.currentTrip) return [];
+  const meta = TripManager.currentTrip.properties;
+  if (!meta.dates?.start || !meta.dates?.end) return [];
+
+  const dates = [];
+  const start = new Date(meta.dates.start + "T00:00:00");
+  const end = new Date(meta.dates.end + "T00:00:00");
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  return dates;
 }

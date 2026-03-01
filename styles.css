@@ -332,6 +332,59 @@ body {
   border-color: #667eea;
 }
 
+/* Point type selector — segmented control, visible only during route drawing */
+.point-type-selector {
+  display: none;
+  gap: 2px;
+  background: #e5e7eb;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.point-type-selector.visible {
+  display: flex;
+}
+
+.point-type-btn {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.point-type-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: #374151;
+}
+
+.point-type-btn.active {
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.point-type-btn.active[data-point-type="camp"]    { color: #2d6a4f; }
+.point-type-btn.active[data-point-type="dayhike"] { color: #d97706; }
+.point-type-btn.active[data-point-type="rest"]    { color: #7c3aed; }
+
+.point-type-btn kbd {
+  font-family: inherit;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  margin-right: 2px;
+}
+
+.point-type-btn.active kbd {
+  color: inherit;
+  opacity: 0.6;
+}
+
 /* ---------------------------------------------------------------------------
    Drawing hint overlay
    --------------------------------------------------------------------------- */
@@ -483,10 +536,12 @@ body {
 .trip-dates-row {
   display: flex;
   gap: 8px;
+  overflow: hidden;
 }
 
 .trip-dates-row label {
   flex: 1;
+  min-width: 0;
 }
 
 .trip-panel-divider {
@@ -504,6 +559,17 @@ body {
   color: #9ca3af;
   text-align: center;
   padding: 12px 0;
+}
+
+.trip-date-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+  padding: 10px 0 4px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-top: 4px;
 }
 
 .trip-feature-row {
