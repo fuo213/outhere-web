@@ -584,6 +584,26 @@ body {
   border-bottom: none;
 }
 
+.drawing-preview {
+  background: #fffbeb;
+  border-left: 3px solid #e85d04;
+  padding-left: 5px;
+}
+
+.drawing-preview-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e85d04;
+  flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
 .trip-feature-icon {
   font-size: 1.1rem;
   flex-shrink: 0;
