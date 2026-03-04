@@ -486,6 +486,12 @@ map.on("load", () => {
   initTripPanel();
 
   // -------------------------------------------------------------------
+  // Apply saved layer style overrides
+  // -------------------------------------------------------------------
+  LayerStyleManager.load();
+  LayerStyleManager.applyAll();
+
+  // -------------------------------------------------------------------
   // Click handlers for route drawing + trip features
   // -------------------------------------------------------------------
   map.on("click", (e) => {
@@ -563,6 +569,22 @@ function buildLayerControls() {
 
     label.appendChild(checkbox);
     label.appendChild(nameSpan);
+
+    // Style customize button (gear icon)
+    if (group.styleLayers && group.styleLayers.length > 0) {
+      const gearBtn = document.createElement("button");
+      gearBtn.type = "button";
+      gearBtn.className = "style-expand-btn";
+      gearBtn.innerHTML = "&#9881;";
+      gearBtn.title = "Customize style";
+      gearBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleStyleControls(group.id);
+      });
+      label.appendChild(gearBtn);
+    }
+
     container.appendChild(label);
 
     // Legend swatches (if any)
@@ -580,6 +602,16 @@ function buildLayerControls() {
       });
 
       container.appendChild(legendDiv);
+    }
+
+    // Style controls (expandable, hidden by default)
+    if (group.styleLayers && group.styleLayers.length > 0) {
+      const styleDiv = document.createElement("div");
+      styleDiv.className = "style-controls";
+      styleDiv.id = `style-controls-${group.id}`;
+      styleDiv.style.display = "none";
+      buildStyleControls(group, styleDiv);
+      container.appendChild(styleDiv);
     }
 
     // Divider between groups (except after last)

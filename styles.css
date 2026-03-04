@@ -179,6 +179,137 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Layer style customization controls
+   --------------------------------------------------------------------------- */
+
+.style-expand-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.style-expand-btn:hover {
+  color: #667eea;
+}
+
+.style-controls {
+  padding: 8px 16px 12px 42px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.style-sub-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+  margin: 8px 0 4px;
+}
+
+.style-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.style-row-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  width: 50px;
+  flex-shrink: 0;
+}
+
+.style-row input[type="color"] {
+  width: 32px;
+  height: 24px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 1px;
+  cursor: pointer;
+  background: none;
+}
+
+.style-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: #667eea;
+  height: 4px;
+}
+
+.style-row .style-value {
+  font-size: 0.75rem;
+  color: #6b7280;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.dash-selector {
+  display: flex;
+  gap: 2px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.dash-btn {
+  background: transparent;
+  border: none;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.dash-btn.active {
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.dash-btn:hover:not(.active) {
+  color: #374151;
+}
+
+.style-data-driven-note {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  font-style: italic;
+  margin-top: -2px;
+  margin-bottom: 4px;
+}
+
+.style-reset-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.style-reset-btn:hover {
+  background: #f3f4f6;
+}
+
+/* ---------------------------------------------------------------------------
    MapLibre control overrides
    --------------------------------------------------------------------------- */
 

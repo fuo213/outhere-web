@@ -42,6 +42,7 @@ const LAYER_GROUPS = [
     id: "trails",
     label: "Trails",
     layers: ["trails"],
+    styleLayers: ["trails"],
     defaultVisible: true,
     legend: [
       { color: "#2d7a2d", label: "Easy" },
@@ -54,6 +55,7 @@ const LAYER_GROUPS = [
     id: "contours",
     label: "Contours",
     layers: ["contours-minor", "contours-major", "contour-labels"],
+    styleLayers: ["contours-minor", "contours-major"],
     defaultVisible: true,
     legend: [
       { color: "#b09070", label: "Major (200ft)" },
@@ -64,6 +66,7 @@ const LAYER_GROUPS = [
     id: "pois",
     label: "Points of Interest",
     layers: ["pois", "poi-labels"],
+    styleLayers: ["pois"],
     defaultVisible: true,
     legend: [
       { color: "#8b4513", label: "Trailhead" },
@@ -77,6 +80,7 @@ const LAYER_GROUPS = [
     id: "water",
     label: "Water",
     layers: ["water-fill", "waterways"],
+    styleLayers: ["water-fill", "waterways"],
     defaultVisible: true,
     legend: [{ color: "#a5bfdd", label: "Rivers & lakes" }],
   },
@@ -84,6 +88,7 @@ const LAYER_GROUPS = [
     id: "roads",
     label: "Roads",
     layers: ["roads"],
+    styleLayers: ["roads"],
     defaultVisible: true,
     legend: [],
   },
@@ -91,7 +96,81 @@ const LAYER_GROUPS = [
     id: "protected-areas",
     label: "Protected Areas",
     layers: ["protected-areas-fill"],
+    styleLayers: ["protected-areas-fill"],
     defaultVisible: true,
     legend: [{ color: "#d4e8d4", label: "Parks & wilderness" }],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Dash pattern presets
+// ---------------------------------------------------------------------------
+const DASH_PRESETS = {
+  solid:  [1, 0],
+  dashed: [2, 1],
+  dotted: [1, 1],
+};
+
+// ---------------------------------------------------------------------------
+// Layer style defaults — single source of truth for reset behaviour
+// ---------------------------------------------------------------------------
+// Each entry mirrors the paint values from buildStyle() in app.js.
+// "line-width" is the base (low zoom) value; "line-width-max" is the high
+// zoom value, used to preserve the zoom-interpolation ratio when the user
+// adjusts width.
+const LAYER_STYLE_DEFAULTS = {
+  trails: {
+    type: "line",
+    "line-color": "#666666",
+    "line-width": 1,
+    "line-width-max": 3,
+    "line-dasharray": [2, 1],
+    hasDataDrivenColor: true,
+  },
+  "contours-minor": {
+    type: "line",
+    "line-color": "#c4a882",
+    "line-width": 0.5,
+    "line-opacity": 0.4,
+    "line-dasharray": [1, 0],
+  },
+  "contours-major": {
+    type: "line",
+    "line-color": "#b09070",
+    "line-width": 0.8,
+    "line-width-max": 1.5,
+    "line-opacity": 0.6,
+    "line-dasharray": [1, 0],
+  },
+  waterways: {
+    type: "line",
+    "line-color": "#a5bfdd",
+    "line-width": 0.5,
+    "line-width-max": 2,
+    "line-dasharray": [1, 0],
+  },
+  roads: {
+    type: "line",
+    "line-color": "#ffffff",
+    "line-width": 0.5,
+    "line-width-max": 3,
+    "line-dasharray": [1, 0],
+  },
+  "water-fill": {
+    type: "fill",
+    "fill-color": "#a5bfdd",
+    "fill-opacity": 1.0,
+  },
+  "protected-areas-fill": {
+    type: "fill",
+    "fill-color": "#d4e8d4",
+    "fill-opacity": 0.3,
+  },
+  pois: {
+    type: "circle",
+    "circle-color": "#64748b",
+    "circle-radius": 4,
+    hasDataDrivenColor: true,
+    hasDataDrivenRadius: true,
+  },
+};
