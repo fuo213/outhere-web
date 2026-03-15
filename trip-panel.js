@@ -498,7 +498,7 @@ function buildFeatureTile(feature, dayId) {
       ${stats ? `<span class="tile-stats">${escapeHTML(stats)}</span>` : ""}
     </div>
     <div class="tile-actions">
-      <button class="tile-duration-btn" title="Set estimated duration">${durText || "&#9200;"}</button>
+      <button class="tile-duration-btn" title="Set estimated duration">${durText || "ETA"}</button>
       <button class="tile-delete-btn" title="Remove feature">&#10005;</button>
     </div>
     <div class="tile-drag-handle" title="Drag to reorder">&#9776;</div>
@@ -587,13 +587,30 @@ function showDurationInput(tile, featureId, currentDuration) {
   }
 
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); commitDuration(); }
-    if (e.key === "Escape") { TripManager.render(); }
+    if (e.key === "Enter") { e.preventDefault(); outsideHandler.cleanup(); commitDuration(); }
+    if (e.key === "Escape") { outsideHandler.cleanup(); TripManager.render(); }
     e.stopPropagation();
   });
-  input.addEventListener("blur", commitDuration);
   input.addEventListener("click", (e) => e.stopPropagation());
   input.addEventListener("dragstart", (e) => e.preventDefault());
+
+  // Commit only when clicking outside the tile, not on mouseleave
+  const outsideHandler = {
+    handler(e) {
+      if (!tile.contains(e.target)) {
+        this.cleanup();
+        commitDuration();
+      }
+    },
+    cleanup() {
+      document.removeEventListener("mousedown", this._bound, true);
+    },
+  };
+  outsideHandler._bound = outsideHandler.handler.bind(outsideHandler);
+  // Use rAF so this doesn't fire on the same click that opened the input
+  requestAnimationFrame(() => {
+    document.addEventListener("mousedown", outsideHandler._bound, true);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -742,7 +759,11 @@ function openFeatureForm(index) {
   const type = props.point_type || props.type;
   const iconHTML = buildTypeIconHTML(type);
 
-  let formHTML = `<h4>${iconHTML} Edit ${POINT_TYPE_LABELS[type] || type}</h4>`;
+  const typeLabel = POINT_TYPE_LABELS[type] || type;
+  const formTitle = props.name
+    ? `Edit ${escapeHTML(props.name)}`
+    : `Edit ${typeLabel}`;
+  let formHTML = `<h4>${iconHTML} ${formTitle}</h4>`;
 
   // Name field (all types)
   formHTML += `<label>Name<input type="text" id="featName" value="${escapeAttr(props.name || "")}" /></label>`;
@@ -902,6 +923,16 @@ function handleFileUpload(file) {
 // ---------------------------------------------------------------------------
 // Sidebar open/close helpers
 // ---------------------------------------------------------------------------
+
+function switchToTab(tabName) {
+  document.querySelectorAll(".sidebar-tab").forEach(t => {
+    const active = t.dataset.tab === tabName;
+    t.classList.toggle("active", active);
+    t.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.getElementById("timelinePanel").classList.toggle("sidebar-tab-panel--hidden", tabName !== "timeline");
+  document.getElementById("readmePanel").classList.toggle("sidebar-tab-panel--hidden", tabName !== "readme");
+}
 
 function openSidebar() {
   const tripPanel = document.getElementById("tripPanel");

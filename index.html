@@ -66,24 +66,14 @@
     <!-- Collapse toggle on the map-side edge -->
     <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Collapse sidebar">&#8249;</button>
 
-    <!-- Trip metadata (compact, always visible) -->
-    <div class="trip-meta-section">
-      <label>Name<input type="text" id="tripName" placeholder="e.g. Maze District Loop" /></label>
-      <div class="trip-dates-row">
-        <label>Start<input type="date" id="tripStart" /></label>
-        <label>End<input type="date" id="tripEnd" /></label>
-      </div>
-      <label>Notes<textarea id="tripNotes" rows="2" placeholder="Permit info, logistics..."></textarea></label>
-    </div>
-
     <!-- Tab bar -->
     <div class="sidebar-tabs" role="tablist">
-      <button class="sidebar-tab active" id="tabTimeline" role="tab" aria-selected="true" data-tab="timeline">Timeline</button>
-      <button class="sidebar-tab" id="tabReadme" role="tab" aria-selected="false" data-tab="readme">Readme</button>
+      <button class="sidebar-tab active" id="tabReadme" role="tab" aria-selected="true" data-tab="readme">Readme</button>
+      <button class="sidebar-tab" id="tabTimeline" role="tab" aria-selected="false" data-tab="timeline">Timeline</button>
     </div>
 
     <!-- Timeline tab panel -->
-    <div class="sidebar-tab-panel" id="timelinePanel" role="tabpanel">
+    <div class="sidebar-tab-panel sidebar-tab-panel--hidden" id="timelinePanel" role="tabpanel">
       <!-- Unassigned pool (pinned at top) -->
       <div class="unassigned-pool" id="unassignedPool">
         <div class="pool-label">Unassigned</div>
@@ -104,7 +94,7 @@
     </div>
 
     <!-- Readme tab panel -->
-    <div class="sidebar-tab-panel sidebar-tab-panel--hidden" id="readmePanel" role="tabpanel">
+    <div class="sidebar-tab-panel" id="readmePanel" role="tabpanel">
       <div class="readme-placeholder">Readme editor coming soon.</div>
     </div>
 

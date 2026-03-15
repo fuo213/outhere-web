@@ -1315,7 +1315,8 @@ body.sidebar-open #map {
   visibility: hidden;
 }
 
-.feature-tile:hover .tile-actions {
+.feature-tile:hover .tile-actions,
+.tile-actions:has(.tile-duration-input) {
   visibility: visible;
 }
 
