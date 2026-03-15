@@ -26,14 +26,16 @@
 
   <!-- Header bar -->
   <header class="header">
-    <div>
+    <div class="header-left">
+      <button class="layers-btn" id="planBtn" aria-label="Toggle trip planning">
+        Plan
+      </button>
+    </div>
+    <div class="header-center">
       <span class="header-title">OutHere</span>
       <span class="header-subtitle">Utah Hiking Map</span>
     </div>
     <div class="header-right">
-      <button class="layers-btn" id="planBtn" aria-label="Toggle trip planning">
-        Plan
-      </button>
       <button class="layers-btn" id="layersBtn" aria-label="Toggle layer controls">
         Layers
       </button>
@@ -59,24 +61,62 @@
   <!-- Map container -->
   <div id="map"></div>
 
-  <!-- Trip planning panel (left sidebar, hidden by default) -->
+  <!-- Trip planning panel (left sidebar, persistent) -->
   <aside class="trip-panel" id="tripPanel">
-    <div class="trip-panel-section">
-      <h3>Trip Plan</h3>
-      <label>Name<input type="text" id="tripName" placeholder="e.g. Maze District Loop" /></label>
-      <div class="trip-dates-row">
-        <label>Start<input type="date" id="tripStart" /></label>
-        <label>End<input type="date" id="tripEnd" /></label>
-      </div>
-      <label>Notes<textarea id="tripNotes" rows="2" placeholder="Permit info, logistics..."></textarea></label>
+    <!-- Collapse toggle on the map-side edge -->
+    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Collapse sidebar">&#8249;</button>
+
+    <!-- Tab bar -->
+    <div class="sidebar-tabs" role="tablist">
+      <button class="sidebar-tab active" id="tabReadme" role="tab" aria-selected="true" data-tab="readme">Readme</button>
+      <button class="sidebar-tab" id="tabTimeline" role="tab" aria-selected="false" data-tab="timeline">Timeline</button>
     </div>
 
-    <div class="trip-panel-divider"></div>
+    <!-- Timeline tab panel -->
+    <div class="sidebar-tab-panel sidebar-tab-panel--hidden" id="timelinePanel" role="tabpanel">
+      <!-- Unassigned pool (pinned at top) -->
+      <div class="unassigned-pool" id="unassignedPool">
+        <div class="pool-label">Unassigned</div>
+        <div class="pool-chips" id="unassignedChips">
+          <!-- Populated by trip-panel.js -->
+        </div>
+      </div>
 
-    <div class="trip-panel-section">
-      <h3>Features</h3>
-      <div id="tripFeatureList">
+      <!-- Day sections -->
+      <div id="daySections">
         <!-- Populated by trip-panel.js -->
+      </div>
+
+      <!-- Add Day button -->
+      <div class="add-day-row">
+        <button class="add-day-btn" id="addDayBtn">+ Add day</button>
+      </div>
+    </div>
+
+    <!-- Readme tab panel -->
+    <div class="sidebar-tab-panel" id="readmePanel" role="tabpanel">
+      <div class="readme-toolbar">
+        <div class="readme-mode-toggle" role="group" aria-label="View mode">
+          <button class="readme-mode-btn readme-mode-active" data-mode="edit">Edit</button>
+          <button class="readme-mode-btn" data-mode="read">Read</button>
+        </div>
+        <button class="readme-print-btn" id="readmePrintBtn" title="Print readme">Print</button>
+      </div>
+      <nav class="readme-toc" id="readmeToc" aria-label="Table of contents"></nav>
+      <div id="readmeEditArea">
+        <div class="readme-template-picker" id="readmeTemplatePicker">
+          <p class="template-prompt">Start from a template?</p>
+          <div class="template-options">
+            <button class="template-opt-btn" data-template="solo">Solo overnight</button>
+            <button class="template-opt-btn" data-template="group">Group multi-day</button>
+            <label class="template-opt-btn">Import .md file<input type="file" id="readmeMdInput" accept=".md,.txt" hidden /></label>
+            <button class="template-opt-btn template-opt-blank" data-template="blank">Blank</button>
+          </div>
+        </div>
+        <textarea id="readmeEditor" class="readme-editor" placeholder="Write your trip notes in Markdown&#10;&#10;## Example heading&#10;- [ ] Checklist item&#10;**bold** *italic*"></textarea>
+      </div>
+      <div id="readmeReadArea">
+        <div class="readme-rendered" id="readmeRendered"></div>
       </div>
     </div>
 
@@ -85,7 +125,8 @@
 
     <div class="trip-panel-divider"></div>
 
-    <div class="trip-panel-section trip-actions">
+    <!-- Action buttons -->
+    <div class="trip-actions-section">
       <button class="trip-action-btn" id="downloadTripBtn">Download GeoJSON</button>
       <label class="trip-action-btn upload-label">
         Load Trip

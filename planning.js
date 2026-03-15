@@ -51,6 +51,7 @@ function startRouteDrawing() {
   showPointTypeSelector();
   setActivePointType("route");
   showRouteModal();
+  if (typeof switchToTab === "function") switchToTab("timeline");
   map.doubleClickZoom.disable();
   map.getCanvas().style.cursor = "crosshair";
   updateRouteDrawing();

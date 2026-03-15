@@ -25,6 +25,7 @@ body {
 #map {
   position: absolute;
   inset: 0;
+  transition: left 0.25s ease;
 }
 
 /* ---------------------------------------------------------------------------
@@ -60,10 +61,22 @@ body {
   margin-left: 8px;
 }
 
+.header-left,
 .header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+}
+
+.header-right {
+  justify-content: flex-end;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 0;
 }
 
 /* Layers toggle button in the header */
@@ -598,67 +611,96 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Trip planning panel (left sidebar)
+   Trip planning panel (left sidebar — persistent, pushes map)
    --------------------------------------------------------------------------- */
 
 .trip-panel {
-  position: absolute;
-  top: 56px;
-  left: 8px;
-  width: 280px;
-  max-height: calc(100vh - 72px);
-  overflow-y: auto;
+  position: fixed;
+  top: 48px;
+  left: 0;
+  width: 300px;
+  height: calc(100vh - 48px);
   background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  border-right: 1px solid #e5e7eb;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
   z-index: 2;
-  display: none;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-300px);
+  transition: transform 0.25s ease;
+  overflow: hidden;
 }
 
 .trip-panel.open {
-  display: block;
+  transform: translateX(0);
 }
 
-.trip-panel-section {
-  padding: 12px 16px;
+/* When sidebar is open, shift map right */
+body.sidebar-open #map {
+  left: 300px;
 }
 
-.trip-panel-section h3 {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+/* Collapse toggle — floats off the right edge of the panel */
+.sidebar-collapse-btn {
+  position: absolute;
+  top: 50%;
+  right: -20px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 48px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
   color: #9ca3af;
-  margin-bottom: 8px;
+  z-index: 3;
+  transition: color 0.15s;
+  line-height: 1;
 }
 
-.trip-panel-section label {
+.sidebar-collapse-btn:hover {
+  color: #374151;
+}
+
+/* Trip metadata section (compact, always visible) */
+.trip-meta-section {
+  flex-shrink: 0;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.trip-meta-section label {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 500;
   color: #6b7280;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
 
-.trip-panel-section input[type="text"],
-.trip-panel-section input[type="date"],
-.trip-panel-section input[type="number"],
-.trip-panel-section textarea,
-.trip-panel-section select {
+.trip-meta-section input[type="text"],
+.trip-meta-section input[type="date"],
+.trip-meta-section textarea,
+.trip-meta-section select {
   display: block;
   width: 100%;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-family: inherit;
   color: #1f2937;
   margin-top: 2px;
+  background: #fff;
 }
 
-.trip-panel-section input:focus,
-.trip-panel-section textarea:focus,
-.trip-panel-section select:focus {
+.trip-meta-section input:focus,
+.trip-meta-section textarea:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
@@ -675,55 +717,729 @@ body {
   min-width: 0;
 }
 
-.trip-panel-divider {
-  height: 1px;
-  background: #e5e7eb;
-  margin: 0 16px;
+/* Tab bar */
+.sidebar-tabs {
+  flex-shrink: 0;
+  display: flex;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.sidebar-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 9px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #9ca3af;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sidebar-tab:hover {
+  color: #374151;
+}
+
+.sidebar-tab.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+}
+
+/* Tab panels — only one visible at a time */
+.sidebar-tab-panel {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sidebar-tab-panel--hidden {
+  display: none;
 }
 
 /* ---------------------------------------------------------------------------
-   Trip feature list
+   Readme tab panel — layout
    --------------------------------------------------------------------------- */
 
-.trip-empty {
-  font-size: 0.8rem;
-  color: #9ca3af;
-  text-align: center;
-  padding: 12px 0;
+/* Override .sidebar-tab-panel scroll so inner areas own their overflow */
+#readmePanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.trip-date-header {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #9ca3af;
-  padding: 10px 0 4px;
-  border-bottom: 1px solid #e5e7eb;
-  margin-top: 4px;
+/* Re-apply hidden when the tab is not active (ID specificity beat the class) */
+#readmePanel.sidebar-tab-panel--hidden {
+  display: none;
 }
 
-.trip-feature-row {
+/* Toolbar: mode toggle + print button */
+.readme-toolbar {
   display: flex;
   align-items: center;
-  padding: 8px 0;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
   gap: 8px;
-  border-bottom: 1px solid #f3f4f6;
 }
 
-.trip-feature-row:last-child {
+.readme-mode-toggle {
+  display: flex;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.readme-mode-btn {
+  background: none;
+  border: none;
+  padding: 4px 14px;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.readme-mode-btn:hover {
+  color: #374151;
+}
+
+.readme-mode-active {
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.readme-print-btn {
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-size: 0.78rem;
+  color: #9ca3af;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.readme-print-btn:hover {
+  color: #374151;
+  border-color: #9ca3af;
+}
+
+/* Auto-generated table of contents */
+.readme-toc {
+  flex-shrink: 0;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+  padding: 5px 0;
+}
+
+.toc-link {
+  display: block;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  color: #667eea;
+  text-decoration: none;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+
+.toc-link:hover {
+  background: #f0f4ff;
+  color: #4f62c0;
+}
+
+/* Edit area: template picker stacked above textarea */
+#readmeEditArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Template picker */
+.readme-template-picker {
+  flex-shrink: 0;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+
+.template-prompt {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 8px;
+}
+
+.template-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.template-opt-btn {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 7px 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  display: block;
+  line-height: 1.3;
+}
+
+.template-opt-btn:hover {
+  background: #eff3ff;
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.template-opt-blank {
+  color: #9ca3af;
+}
+
+/* Markdown textarea */
+.readme-editor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: none;
+  border-top: 1px solid #f3f4f6;
+  padding: 12px 14px;
+  font-size: 0.82rem;
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+  line-height: 1.65;
+  color: #1f2937;
+  background: #fff;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.readme-editor:focus {
+  outline: none;
+}
+
+/* Read area */
+#readmeReadArea {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 14px 16px;
+}
+
+/* ---------------------------------------------------------------------------
+   Rendered markdown
+   --------------------------------------------------------------------------- */
+
+.readme-rendered {
+  font-size: 0.85rem;
+  line-height: 1.75;
+  color: #1f2937;
+}
+
+.readme-rendered h1,
+.readme-rendered h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 18px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.readme-rendered h1:first-child,
+.readme-rendered h2:first-child {
+  margin-top: 0;
+}
+
+.readme-rendered h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 14px 0 6px;
+}
+
+.readme-rendered h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 10px 0 4px;
+}
+
+.readme-rendered p {
+  margin: 0 0 9px;
+}
+
+.readme-rendered ul {
+  margin: 0 0 9px;
+  padding-left: 20px;
+}
+
+.readme-rendered li {
+  margin: 3px 0;
+}
+
+.readme-rendered .readme-checklist {
+  list-style: none;
+  padding-left: 2px;
+}
+
+.readme-check-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  cursor: default;
+  line-height: 1.5;
+}
+
+.readme-check-label input[type="checkbox"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: #667eea;
+  width: 14px;
+  height: 14px;
+}
+
+.readme-rendered strong {
+  font-weight: 700;
+}
+
+.readme-rendered em {
+  font-style: italic;
+}
+
+.readme-rendered a {
+  color: #667eea;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.readme-rendered a:hover {
+  color: #4f62c0;
+}
+
+.readme-empty-msg {
+  color: #9ca3af;
+  font-style: italic;
+  text-align: center;
+  padding: 28px 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Day section: active highlight + empty drop zone
+   --------------------------------------------------------------------------- */
+
+.day-header {
+  cursor: pointer;
+}
+
+.day-header:hover {
+  background: #f0f2f8;
+}
+
+.day-header:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+}
+
+.day-section.day-active .day-header {
+  background: #eff3ff;
+  border-bottom-color: #c7d2fe;
+}
+
+.day-section.day-active .day-label {
+  color: #667eea;
+}
+
+/* Dashed drop zone shown when a day has no features yet */
+.day-drop-zone {
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #c4c9d4;
+  border: 1.5px dashed #e5e7eb;
+  border-radius: 6px;
+  margin: 8px;
+  pointer-events: none;
+}
+
+.day-feature-list.drag-over .day-drop-zone {
+  border-color: #667eea;
+  color: #667eea;
+  background: #f0f4ff;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Print styles — hides sidebar chrome, shows only the rendered readme
+   --------------------------------------------------------------------------- */
+
+@media print {
+  .header,
+  .planning-toolbar,
+  .drawing-hint,
+  #map,
+  .sidebar-tabs,
+  .readme-toolbar,
+  .readme-toc,
+  #readmeEditArea,
+  .trip-panel-divider,
+  .trip-actions-section,
+  .route-instructions,
+  .sidebar-collapse-btn,
+  .layer-panel,
+  .loading-overlay,
+  .error-banner {
+    display: none !important;
+  }
+
+  body,
+  html {
+    overflow: visible !important;
+  }
+
+  .trip-panel {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  /* Show readme read area even if currently hidden */
+  #readmePanel,
+  #readmeReadArea {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .sidebar-tab-panel--hidden {
+    display: block !important;
+  }
+
+  .readme-rendered {
+    font-size: 11pt;
+    line-height: 1.65;
+    max-width: 700px;
+    color: #000;
+  }
+
+  .readme-rendered h1,
+  .readme-rendered h2 {
+    page-break-after: avoid;
+  }
+}
+
+/* Divider */
+.trip-panel-divider {
+  flex-shrink: 0;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Unassigned pool
+   --------------------------------------------------------------------------- */
+
+.unassigned-pool {
+  padding: 10px 12px 8px;
+  border: 1.5px dashed #d1d5db;
+  border-radius: 8px;
+  margin: 10px 10px 0;
+  background: #fafafa;
+}
+
+.pool-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #9ca3af;
+  margin-bottom: 6px;
+}
+
+.pool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 28px;
+}
+
+.pool-empty {
+  font-size: 0.78rem;
+  color: #d1d5db;
+  padding: 2px 0;
+}
+
+/* Feature chip (compact, used in unassigned pool) */
+.feature-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: border-color 0.1s, box-shadow 0.1s;
+  max-width: 140px;
+}
+
+.feature-chip:hover {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+.chip-icon {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Day sections
+   --------------------------------------------------------------------------- */
+
+.day-section {
+  margin: 10px 10px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.day-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #374151;
+  letter-spacing: 0.01em;
+}
+
+.day-date {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+/* Day summary stats bar */
+.day-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 12px 5px;
+  background: #f9fafb;
+  border-bottom: 1px solid #f3f4f6;
+  min-height: 28px;
+}
+
+.day-stat {
+  font-size: 0.72rem;
+  color: #6b7280;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.day-stat-water {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.day-feature-list {
+  background: #fff;
+}
+
+.day-empty {
+  font-size: 0.78rem;
+  color: #d1d5db;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+/* Add Day row */
+.add-day-row {
+  padding: 10px 10px 12px;
+}
+
+.add-day-btn {
+  width: 100%;
+  padding: 7px 0;
+  background: none;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.add-day-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+/* ---------------------------------------------------------------------------
+   Feature tiles (inside day sections)
+   --------------------------------------------------------------------------- */
+
+.feature-tile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.feature-tile:last-child {
   border-bottom: none;
 }
 
-.drawing-preview {
+.feature-tile:hover {
+  background: #f9fafb;
+}
+
+.tile-type-icon {
+  flex-shrink: 0;
+  width: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+
+/* Route type: CSS purple dot instead of emoji */
+.tile-icon-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tile-icon-dot--route {
+  background: #667eea;
+}
+
+.tile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tile-name {
+  display: block;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile-stats {
+  display: block;
+  font-size: 0.72rem;
+  color: #9ca3af;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile-drag-handle {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: #d1d5db;
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.tile-drag-handle:hover {
+  color: #9ca3af;
+  background: #f3f4f6;
+}
+
+/* ---------------------------------------------------------------------------
+   Trip actions section (bottom of sidebar)
+   --------------------------------------------------------------------------- */
+
+.trip-actions-section {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+}
+
+/* ---------------------------------------------------------------------------
+   Drawing preview (in unassigned pool during route drawing)
+   --------------------------------------------------------------------------- */
+
+.drawing-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
   background: #fffbeb;
+  border: 1px solid #fde68a;
   border-left: 3px solid #e85d04;
-  padding-left: 5px;
+  border-radius: 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: default;
 }
 
 .drawing-preview-pulse {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #e85d04;
   flex-shrink: 0;
@@ -735,66 +1451,13 @@ body {
   50% { opacity: 1; }
 }
 
-.trip-feature-icon {
-  font-size: 1.1rem;
-  flex-shrink: 0;
-  width: 24px;
-  text-align: center;
-}
-
-.trip-feature-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.trip-feature-name {
-  display: block;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #1f2937;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.trip-feature-sub {
-  display: block;
-  font-size: 0.75rem;
-  color: #9ca3af;
-}
-
-.trip-feature-actions {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.trip-feat-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 2px 4px;
-  border-radius: 4px;
-  color: #9ca3af;
-  transition: color 0.1s, background 0.1s;
-}
-
-.trip-feat-btn:hover {
-  color: #374151;
-  background: #f3f4f6;
-}
-
-.trip-feat-delete:hover {
-  color: #dc2626;
-}
-
 /* ---------------------------------------------------------------------------
    Trip feature edit form
    --------------------------------------------------------------------------- */
 
 .trip-feature-form {
   display: none;
+  flex-shrink: 0;
   padding: 12px 16px;
   background: #f9fafb;
   border-top: 1px solid #e5e7eb;
@@ -883,15 +1546,24 @@ body {
   background: #e5e7eb;
 }
 
+.form-delete {
+  background: none;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.form-delete:hover {
+  background: #fee2e2;
+}
+
 /* ---------------------------------------------------------------------------
    Trip action buttons
    --------------------------------------------------------------------------- */
-
-.trip-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 
 .trip-action-btn {
   display: block;
@@ -941,9 +1613,11 @@ body {
   }
 
   .trip-panel {
-    width: calc(100vw - 16px);
-    left: 8px;
-    right: 8px;
+    width: 100vw;
+  }
+
+  body.sidebar-open #map {
+    left: 100vw;
   }
 
   .planning-toolbar {
@@ -952,4 +1626,118 @@ body {
     transform: none;
     justify-content: center;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Drag-and-drop
+   --------------------------------------------------------------------------- */
+
+/* Source item dimmed while being dragged */
+.feature-chip.dragging,
+.feature-tile.dragging {
+  opacity: 0.4;
+}
+
+/* Drop zone highlight: unassigned pool */
+.unassigned-pool.drag-over {
+  border-color: #667eea;
+  background: #f0f4ff;
+}
+
+/* Drop zone highlight: day feature list */
+.day-feature-list.drag-over {
+  background: #f5f7ff;
+}
+
+/* Drop position indicator line */
+.drag-drop-indicator {
+  height: 2px;
+  background: #667eea;
+  border-radius: 2px;
+  margin: 0 12px;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Feature tile: name button, action buttons, duration input
+   --------------------------------------------------------------------------- */
+
+/* Name styled as text, underlines on hover to signal editability */
+.tile-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: #1f2937;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-family: inherit;
+  display: block;
+}
+
+.tile-name-btn:hover {
+  color: #667eea;
+  text-decoration: underline;
+}
+
+/* Action buttons (clock + delete) — hidden by default, shown on tile hover */
+.tile-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.feature-tile:hover .tile-actions,
+.tile-actions:has(.tile-duration-input) {
+  visibility: visible;
+}
+
+.tile-duration-btn,
+.tile-delete-btn {
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.tile-duration-btn:hover {
+  color: #667eea;
+  background: #eff3ff;
+}
+
+.tile-delete-btn:hover {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+/* Inline duration number input (replaces duration button on click) */
+.tile-duration-input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid #667eea;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  color: #1f2937;
+  background: #fff;
+  text-align: center;
+}
+
+.tile-duration-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
