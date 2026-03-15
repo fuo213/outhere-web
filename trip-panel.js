@@ -22,6 +22,48 @@
 
 const STORAGE_KEY = "outhere_trip";
 
+let readmeMode = "edit"; // "edit" | "read"
+let activeDayId = null;  // day ID currently highlighted on map, or null
+
+const TEMPLATES = {
+  solo: `## Gear checklist
+- [ ] Tent/shelter
+- [ ] Sleeping bag
+- [ ] Sleeping pad
+- [ ] Stove + fuel
+- [ ] Water filter
+- [ ] First aid kit
+- [ ] Headlamp
+- [ ] Map/compass
+
+## Water plan
+Describe water sources and filtration strategy.
+
+## Permit info
+Permit number, ranger district, entry/exit points.
+
+## Emergency contacts
+Name, phone, relationship. Include local ranger station number.`,
+
+  group: `## Group members
+Name, role, emergency contact.
+
+## Shared gear
+- [ ] Tent (who carries?)
+- [ ] Stove + fuel
+- [ ] First aid kit
+- [ ] Navigation gear
+
+## Meal plan
+Breakfast, lunch, dinner per day.
+
+## Communication plan
+Satellite communicator owner, check-in schedule, emergency protocols.
+
+## Resupply points
+Location, method (cache/mail/store), day number.`,
+};
+
 const TripManager = {
   currentTrip: null,
 
@@ -300,7 +342,7 @@ function onTripMetaChange() {
 
 function renderSidebar() {
   renderTimeline();
-  // Readme tab has no dynamic content in this phase
+  renderReadme();
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +367,8 @@ function renderUnassignedPool() {
     .filter(Boolean);
 
   if (unassignedFeatures.length === 0) {
-    chipsEl.innerHTML = '<span class="pool-empty">No unassigned features</span>';
+    const msg = trip.features.length > 0 ? "All features assigned" : "No unassigned features";
+    chipsEl.innerHTML = `<span class="pool-empty">${msg}</span>`;
     return;
   }
 
@@ -345,6 +388,184 @@ function renderDaySections() {
   trip.days.forEach((day, idx) => {
     container.appendChild(buildDaySection(day, idx));
   });
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar: Readme tab
+// ---------------------------------------------------------------------------
+
+function renderReadme() {
+  const trip = TripManager.currentTrip;
+  const content = trip?.properties?.readme || "";
+
+  // Update editor value (don't clobber if the user is actively typing)
+  const editor = document.getElementById("readmeEditor");
+  if (editor && document.activeElement !== editor) {
+    editor.value = content;
+  }
+
+  // Template picker: visible only when content is empty
+  const picker = document.getElementById("readmeTemplatePicker");
+  if (picker) picker.style.display = content.trim() === "" ? "" : "none";
+
+  // Re-render TOC from current content
+  renderReadmeTOC(content);
+
+  // In read mode, refresh the rendered output
+  if (readmeMode === "read") {
+    const rendered = document.getElementById("readmeRendered");
+    if (rendered) {
+      rendered.innerHTML = parseMarkdown(content);
+      attachTOCScrollHandlers();
+    }
+  }
+}
+
+function renderReadmeTOC(content) {
+  const toc = document.getElementById("readmeToc");
+  if (!toc) return;
+  const headings = parseMarkdownHeadings(content);
+  if (headings.length === 0) {
+    toc.innerHTML = "";
+    toc.style.display = "none";
+    return;
+  }
+  toc.style.display = "";
+  toc.innerHTML = headings.map(h => {
+    const indent = Math.max(0, h.level - 2) * 12;
+    return `<a class="toc-link" href="#${escapeAttr(h.slug)}" style="padding-left:${8 + indent}px">${escapeHTML(h.text)}</a>`;
+  }).join("");
+  attachTOCScrollHandlers();
+}
+
+function attachTOCScrollHandlers() {
+  const toc = document.getElementById("readmeToc");
+  if (!toc) return;
+  toc.querySelectorAll(".toc-link").forEach(link => {
+    link.onclick = (e) => {
+      e.preventDefault();
+      const slug = link.getAttribute("href").slice(1);
+      const target = document.getElementById(slug);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  });
+}
+
+function parseMarkdownHeadings(content) {
+  const headings = [];
+  for (const line of content.split("\n")) {
+    const m = line.match(/^(#{2,4})\s+(.+)/);
+    if (m) headings.push({ level: m[1].length, text: m[2].trim(), slug: slugify(m[2].trim()) });
+  }
+  return headings;
+}
+
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function parseMarkdown(md) {
+  if (!md || !md.trim()) {
+    return '<p class="readme-empty-msg">No content yet. Switch to Edit mode to write your trip notes.</p>';
+  }
+  const lines = md.split("\n");
+  let html = "";
+  let inList = false;
+  let listTag = "";
+
+  const closeList = () => {
+    if (inList) { html += `</${listTag}>`; inList = false; listTag = ""; }
+  };
+
+  for (const line of lines) {
+    // Headings
+    const hm = line.match(/^(#{1,4})\s+(.+)/);
+    if (hm) {
+      closeList();
+      const lvl = hm[1].length;
+      const id = slugify(hm[2]);
+      html += `<h${lvl} id="${escapeAttr(id)}">${inlineMarkdown(hm[2])}</h${lvl}>`;
+      continue;
+    }
+    // Checkbox list item
+    const cbm = line.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);
+    if (cbm) {
+      if (!inList || listTag !== "ul") { closeList(); html += '<ul class="readme-checklist">'; inList = true; listTag = "ul"; }
+      const checked = cbm[1].trim() !== "";
+      html += `<li><label class="readme-check-label"><input type="checkbox" ${checked ? "checked" : ""} onclick="return false">${inlineMarkdown(cbm[2])}</label></li>`;
+      continue;
+    }
+    // Regular list item
+    const lm = line.match(/^[-*]\s+(.*)/);
+    if (lm) {
+      if (!inList || listTag !== "ul") { closeList(); html += "<ul>"; inList = true; listTag = "ul"; }
+      html += `<li>${inlineMarkdown(lm[1])}</li>`;
+      continue;
+    }
+    closeList();
+    if (line.trim() === "") continue;
+    html += `<p>${inlineMarkdown(line)}</p>`;
+  }
+  closeList();
+  return html;
+}
+
+function inlineMarkdown(text) {
+  text = escapeHTML(text);
+  text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return text;
+}
+
+// ---------------------------------------------------------------------------
+// Map: day highlight
+// ---------------------------------------------------------------------------
+
+function setActiveDayHighlight(dayId) {
+  activeDayId = dayId;
+
+  // Update sidebar visual state
+  document.querySelectorAll(".day-section").forEach(section => {
+    section.classList.toggle("day-active", section.dataset.dayId === dayId);
+  });
+
+  if (!map || !map.isStyleLoaded()) return;
+
+  const tripLayerIds = [
+    "trip-routes", "trip-dayhike-spurs",
+    "trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints",
+    "trip-labels",
+  ];
+
+  for (const layerId of tripLayerIds) {
+    const layer = map.getLayer(layerId);
+    if (!layer) continue;
+    const type = layer.type;
+
+    if (dayId) {
+      const activeIds = TripManager.currentTrip?.days?.find(d => d.id === dayId)?.features || [];
+      const dimExpr = ["case", ["in", ["get", "_id"], ["literal", activeIds]], 1, 0.2];
+      if (type === "line") {
+        map.setPaintProperty(layerId, "line-opacity", dimExpr);
+      } else if (type === "circle") {
+        map.setPaintProperty(layerId, "circle-opacity", dimExpr);
+        map.setPaintProperty(layerId, "circle-stroke-opacity", dimExpr);
+      } else if (type === "symbol") {
+        map.setPaintProperty(layerId, "text-opacity", dimExpr);
+      }
+    } else {
+      // Reset to full opacity
+      if (type === "line") {
+        map.setPaintProperty(layerId, "line-opacity", 1);
+      } else if (type === "circle") {
+        map.setPaintProperty(layerId, "circle-opacity", 1);
+        map.setPaintProperty(layerId, "circle-stroke-opacity", 1);
+      } else if (type === "symbol") {
+        map.setPaintProperty(layerId, "text-opacity", 1);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +676,7 @@ function buildDaySection(day, dayIndex) {
   if (stats.hasWater) statParts.push(`<span class="day-stat day-stat-water">&#128167; Water</span>`);
 
   section.innerHTML = `
-    <div class="day-header">
+    <div class="day-header" tabindex="0" role="button" aria-label="Day ${dayIndex + 1}${dateLabel ? `, ${dateLabel}` : ""}">
       <span class="day-label">Day ${dayIndex + 1}</span>
       ${dateLabel ? `<span class="day-date">${escapeHTML(dateLabel)}</span>` : ""}
     </div>
@@ -463,14 +684,22 @@ function buildDaySection(day, dayIndex) {
     <div class="day-feature-list"></div>
   `;
 
+  // Click day header to toggle map highlight for that day
+  section.querySelector(".day-header").addEventListener("click", () => {
+    setActiveDayHighlight(activeDayId === day.id ? null : day.id);
+  });
+
   const featureList = section.querySelector(".day-feature-list");
   if (dayFeatures.length === 0) {
-    featureList.innerHTML = '<div class="day-empty">No features yet</div>';
+    featureList.innerHTML = '<div class="day-drop-zone">Drag features here</div>';
   } else {
     for (const f of dayFeatures) {
       featureList.appendChild(buildFeatureTile(f, day.id));
     }
   }
+
+  // Mark as active if this day is the current highlight
+  if (activeDayId === day.id) section.classList.add("day-active");
 
   return section;
 }
@@ -487,6 +716,7 @@ function buildFeatureTile(feature, dayId) {
   tile.className = "feature-tile";
   tile.dataset.id = props._id || "";
   tile.draggable = true;
+  tile.setAttribute("tabindex", "0");
 
   const stats = getFeatureStats(props, type);
   const durText = props.estimatedDuration ? formatDuration(props.estimatedDuration) : "";
@@ -1040,6 +1270,84 @@ function initTripPanel() {
   TripManager.loadFromStorage();
 
   // ---------------------------------------------------------------------------
+  // Readme tab wiring
+  // ---------------------------------------------------------------------------
+
+  // Mode toggle (Edit / Read)
+  document.querySelectorAll(".readme-mode-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      readmeMode = btn.dataset.mode;
+      document.querySelectorAll(".readme-mode-btn").forEach(b => {
+        b.classList.toggle("readme-mode-active", b === btn);
+      });
+      const editArea = document.getElementById("readmeEditArea");
+      const readArea = document.getElementById("readmeReadArea");
+      if (readmeMode === "edit") {
+        editArea.style.display = "";
+        readArea.style.display = "none";
+      } else {
+        editArea.style.display = "none";
+        readArea.style.display = "";
+        renderReadme(); // refresh rendered output
+      }
+    });
+  });
+
+  // Readme editor — save on input
+  const readmeEditor = document.getElementById("readmeEditor");
+  if (readmeEditor) {
+    readmeEditor.addEventListener("input", () => {
+      if (!TripManager.currentTrip) return;
+      const content = readmeEditor.value;
+      TripManager.currentTrip.properties.readme = content;
+      TripManager.save();
+      renderReadmeTOC(content);
+      const picker = document.getElementById("readmeTemplatePicker");
+      if (picker) picker.style.display = content.trim() === "" ? "" : "none";
+    });
+  }
+
+  // Template buttons
+  document.querySelectorAll(".template-opt-btn[data-template]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (!TripManager.currentTrip) return;
+      const content = TEMPLATES[btn.dataset.template] || "";
+      TripManager.currentTrip.properties.readme = content;
+      TripManager.save();
+      if (readmeEditor) readmeEditor.value = content;
+      renderReadme();
+    });
+  });
+
+  // Import .md file
+  const mdInput = document.getElementById("readmeMdInput");
+  if (mdInput) {
+    mdInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (!TripManager.currentTrip) return;
+        const content = ev.target.result;
+        TripManager.currentTrip.properties.readme = content;
+        TripManager.save();
+        if (readmeEditor) readmeEditor.value = content;
+        renderReadme();
+      };
+      reader.readAsText(file);
+      e.target.value = "";
+    });
+  }
+
+  // Print button — switch to read mode then print
+  document.getElementById("readmePrintBtn")?.addEventListener("click", () => {
+    if (readmeMode !== "read") {
+      document.querySelector(".readme-mode-btn[data-mode='read']")?.click();
+    }
+    setTimeout(() => window.print(), 100);
+  });
+
+  // ---------------------------------------------------------------------------
   // Drag-and-drop event delegation (single listener on timeline panel)
   // ---------------------------------------------------------------------------
 
@@ -1089,6 +1397,34 @@ function initTripPanel() {
     } else if (pool) {
       TripManager.moveFeature(data.featureId, "unassigned", null, null);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Keyboard shortcuts
+  // ---------------------------------------------------------------------------
+
+  // Delete/Backspace on a focused feature tile removes it
+  timelinePanel.addEventListener("keydown", (e) => {
+    if (e.key !== "Delete" && e.key !== "Backspace") return;
+    const tile = e.target.closest(".feature-tile");
+    if (!tile) return;
+    if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
+    e.preventDefault();
+    const featureId = tile.dataset.id;
+    if (!featureId) return;
+    const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === featureId);
+    if (idx !== -1 && confirm("Remove this feature from the trip?")) {
+      TripManager.removeFeature(idx);
+    }
+  });
+
+  // Enter on a day header toggles map highlight for that day
+  timelinePanel.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const header = e.target.closest(".day-header[tabindex]");
+    if (!header) return;
+    const dayId = header.closest(".day-section")?.dataset.dayId;
+    if (dayId) setActiveDayHighlight(activeDayId === dayId ? null : dayId);
   });
 }
 

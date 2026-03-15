@@ -759,16 +759,396 @@ body.sidebar-open #map {
   display: none;
 }
 
-/* Readme placeholder */
-.readme-placeholder {
+/* ---------------------------------------------------------------------------
+   Readme tab panel — layout
+   --------------------------------------------------------------------------- */
+
+/* Override .sidebar-tab-panel scroll so inner areas own their overflow */
+#readmePanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Re-apply hidden when the tab is not active (ID specificity beat the class) */
+#readmePanel.sidebar-tab-panel--hidden {
+  display: none;
+}
+
+/* Toolbar: mode toggle + print button */
+.readme-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 100%;
-  font-size: 0.85rem;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.readme-mode-toggle {
+  display: flex;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.readme-mode-btn {
+  background: none;
+  border: none;
+  padding: 4px 14px;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.readme-mode-btn:hover {
+  color: #374151;
+}
+
+.readme-mode-active {
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.readme-print-btn {
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-size: 0.78rem;
   color: #9ca3af;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.readme-print-btn:hover {
+  color: #374151;
+  border-color: #9ca3af;
+}
+
+/* Auto-generated table of contents */
+.readme-toc {
+  flex-shrink: 0;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+  padding: 5px 0;
+}
+
+.toc-link {
+  display: block;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  color: #667eea;
+  text-decoration: none;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+
+.toc-link:hover {
+  background: #f0f4ff;
+  color: #4f62c0;
+}
+
+/* Edit area: template picker stacked above textarea */
+#readmeEditArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Template picker */
+.readme-template-picker {
+  flex-shrink: 0;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+
+.template-prompt {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 8px;
+}
+
+.template-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.template-opt-btn {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 7px 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
   text-align: center;
-  padding: 24px;
+  font-family: inherit;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  display: block;
+  line-height: 1.3;
+}
+
+.template-opt-btn:hover {
+  background: #eff3ff;
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.template-opt-blank {
+  color: #9ca3af;
+}
+
+/* Markdown textarea */
+.readme-editor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: none;
+  border-top: 1px solid #f3f4f6;
+  padding: 12px 14px;
+  font-size: 0.82rem;
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+  line-height: 1.65;
+  color: #1f2937;
+  background: #fff;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.readme-editor:focus {
+  outline: none;
+}
+
+/* Read area */
+#readmeReadArea {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 14px 16px;
+}
+
+/* ---------------------------------------------------------------------------
+   Rendered markdown
+   --------------------------------------------------------------------------- */
+
+.readme-rendered {
+  font-size: 0.85rem;
+  line-height: 1.75;
+  color: #1f2937;
+}
+
+.readme-rendered h1,
+.readme-rendered h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 18px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.readme-rendered h1:first-child,
+.readme-rendered h2:first-child {
+  margin-top: 0;
+}
+
+.readme-rendered h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 14px 0 6px;
+}
+
+.readme-rendered h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 10px 0 4px;
+}
+
+.readme-rendered p {
+  margin: 0 0 9px;
+}
+
+.readme-rendered ul {
+  margin: 0 0 9px;
+  padding-left: 20px;
+}
+
+.readme-rendered li {
+  margin: 3px 0;
+}
+
+.readme-rendered .readme-checklist {
+  list-style: none;
+  padding-left: 2px;
+}
+
+.readme-check-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  cursor: default;
+  line-height: 1.5;
+}
+
+.readme-check-label input[type="checkbox"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: #667eea;
+  width: 14px;
+  height: 14px;
+}
+
+.readme-rendered strong {
+  font-weight: 700;
+}
+
+.readme-rendered em {
+  font-style: italic;
+}
+
+.readme-rendered a {
+  color: #667eea;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.readme-rendered a:hover {
+  color: #4f62c0;
+}
+
+.readme-empty-msg {
+  color: #9ca3af;
+  font-style: italic;
+  text-align: center;
+  padding: 28px 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Day section: active highlight + empty drop zone
+   --------------------------------------------------------------------------- */
+
+.day-header {
+  cursor: pointer;
+}
+
+.day-header:hover {
+  background: #f0f2f8;
+}
+
+.day-header:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+}
+
+.day-section.day-active .day-header {
+  background: #eff3ff;
+  border-bottom-color: #c7d2fe;
+}
+
+.day-section.day-active .day-label {
+  color: #667eea;
+}
+
+/* Dashed drop zone shown when a day has no features yet */
+.day-drop-zone {
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #c4c9d4;
+  border: 1.5px dashed #e5e7eb;
+  border-radius: 6px;
+  margin: 8px;
+  pointer-events: none;
+}
+
+.day-feature-list.drag-over .day-drop-zone {
+  border-color: #667eea;
+  color: #667eea;
+  background: #f0f4ff;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Print styles — hides sidebar chrome, shows only the rendered readme
+   --------------------------------------------------------------------------- */
+
+@media print {
+  .header,
+  .planning-toolbar,
+  .drawing-hint,
+  #map,
+  .sidebar-tabs,
+  .readme-toolbar,
+  .readme-toc,
+  #readmeEditArea,
+  .trip-panel-divider,
+  .trip-actions-section,
+  .route-instructions,
+  .sidebar-collapse-btn,
+  .layer-panel,
+  .loading-overlay,
+  .error-banner {
+    display: none !important;
+  }
+
+  body,
+  html {
+    overflow: visible !important;
+  }
+
+  .trip-panel {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  /* Show readme read area even if currently hidden */
+  #readmePanel,
+  #readmeReadArea {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .sidebar-tab-panel--hidden {
+    display: block !important;
+  }
+
+  .readme-rendered {
+    font-size: 11pt;
+    line-height: 1.65;
+    max-width: 700px;
+    color: #000;
+  }
+
+  .readme-rendered h1,
+  .readme-rendered h2 {
+    page-break-after: avoid;
+  }
 }
 
 /* Divider */

@@ -95,7 +95,29 @@
 
     <!-- Readme tab panel -->
     <div class="sidebar-tab-panel" id="readmePanel" role="tabpanel">
-      <div class="readme-placeholder">Readme editor coming soon.</div>
+      <div class="readme-toolbar">
+        <div class="readme-mode-toggle" role="group" aria-label="View mode">
+          <button class="readme-mode-btn readme-mode-active" data-mode="edit">Edit</button>
+          <button class="readme-mode-btn" data-mode="read">Read</button>
+        </div>
+        <button class="readme-print-btn" id="readmePrintBtn" title="Print readme">Print</button>
+      </div>
+      <nav class="readme-toc" id="readmeToc" aria-label="Table of contents"></nav>
+      <div id="readmeEditArea">
+        <div class="readme-template-picker" id="readmeTemplatePicker">
+          <p class="template-prompt">Start from a template?</p>
+          <div class="template-options">
+            <button class="template-opt-btn" data-template="solo">Solo overnight</button>
+            <button class="template-opt-btn" data-template="group">Group multi-day</button>
+            <label class="template-opt-btn">Import .md file<input type="file" id="readmeMdInput" accept=".md,.txt" hidden /></label>
+            <button class="template-opt-btn template-opt-blank" data-template="blank">Blank</button>
+          </div>
+        </div>
+        <textarea id="readmeEditor" class="readme-editor" placeholder="Write your trip notes in Markdown&#10;&#10;## Example heading&#10;- [ ] Checklist item&#10;**bold** *italic*"></textarea>
+      </div>
+      <div id="readmeReadArea">
+        <div class="readme-rendered" id="readmeRendered"></div>
+      </div>
     </div>
 
     <!-- Feature edit form (shown inline when editing) -->
