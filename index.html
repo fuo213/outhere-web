@@ -59,10 +59,13 @@
   <!-- Map container -->
   <div id="map"></div>
 
-  <!-- Trip planning panel (left sidebar, hidden by default) -->
+  <!-- Trip planning panel (left sidebar, persistent) -->
   <aside class="trip-panel" id="tripPanel">
-    <div class="trip-panel-section">
-      <h3>Trip Plan</h3>
+    <!-- Collapse toggle on the map-side edge -->
+    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Collapse sidebar">&#8249;</button>
+
+    <!-- Trip metadata (compact, always visible) -->
+    <div class="trip-meta-section">
       <label>Name<input type="text" id="tripName" placeholder="e.g. Maze District Loop" /></label>
       <div class="trip-dates-row">
         <label>Start<input type="date" id="tripStart" /></label>
@@ -71,13 +74,36 @@
       <label>Notes<textarea id="tripNotes" rows="2" placeholder="Permit info, logistics..."></textarea></label>
     </div>
 
-    <div class="trip-panel-divider"></div>
+    <!-- Tab bar -->
+    <div class="sidebar-tabs" role="tablist">
+      <button class="sidebar-tab active" id="tabTimeline" role="tab" aria-selected="true" data-tab="timeline">Timeline</button>
+      <button class="sidebar-tab" id="tabReadme" role="tab" aria-selected="false" data-tab="readme">Readme</button>
+    </div>
 
-    <div class="trip-panel-section">
-      <h3>Features</h3>
-      <div id="tripFeatureList">
+    <!-- Timeline tab panel -->
+    <div class="sidebar-tab-panel" id="timelinePanel" role="tabpanel">
+      <!-- Unassigned pool (pinned at top) -->
+      <div class="unassigned-pool" id="unassignedPool">
+        <div class="pool-label">Unassigned</div>
+        <div class="pool-chips" id="unassignedChips">
+          <!-- Populated by trip-panel.js -->
+        </div>
+      </div>
+
+      <!-- Day sections -->
+      <div id="daySections">
         <!-- Populated by trip-panel.js -->
       </div>
+
+      <!-- Add Day button -->
+      <div class="add-day-row">
+        <button class="add-day-btn" id="addDayBtn">+ Add day</button>
+      </div>
+    </div>
+
+    <!-- Readme tab panel -->
+    <div class="sidebar-tab-panel sidebar-tab-panel--hidden" id="readmePanel" role="tabpanel">
+      <div class="readme-placeholder">Readme editor coming soon.</div>
     </div>
 
     <!-- Feature edit form (shown inline when editing) -->
@@ -85,7 +111,8 @@
 
     <div class="trip-panel-divider"></div>
 
-    <div class="trip-panel-section trip-actions">
+    <!-- Action buttons -->
+    <div class="trip-actions-section">
       <button class="trip-action-btn" id="downloadTripBtn">Download GeoJSON</button>
       <label class="trip-action-btn upload-label">
         Load Trip
