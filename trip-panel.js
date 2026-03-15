@@ -94,6 +94,35 @@ const TripManager = {
     this.save();
   },
 
+  /** Move a feature to a new location: "day" (with optional insertBeforeId) or "unassigned". */
+  moveFeature(featureId, targetType, targetDayId, insertBeforeId) {
+    const trip = this.currentTrip;
+    if (!trip) return;
+
+    // Remove from unassigned and all days
+    trip.unassigned = (trip.unassigned || []).filter(id => id !== featureId);
+    for (const day of (trip.days || [])) {
+      day.features = (day.features || []).filter(id => id !== featureId);
+    }
+
+    if (targetType === "unassigned") {
+      trip.unassigned.push(featureId);
+    } else if (targetType === "day") {
+      const day = trip.days.find(d => d.id === targetDayId);
+      if (!day) return;
+      if (!day.features) day.features = [];
+      if (insertBeforeId) {
+        const idx = day.features.indexOf(insertBeforeId);
+        day.features.splice(idx !== -1 ? idx : day.features.length, 0, featureId);
+      } else {
+        day.features.push(featureId);
+      }
+    }
+
+    this.render();
+    this.save();
+  },
+
   /** Update MapLibre source and sidebar. */
   render() {
     if (map.getSource("trip")) {
@@ -319,6 +348,46 @@ function renderDaySections() {
 }
 
 // ---------------------------------------------------------------------------
+// Drag-and-drop state & utilities
+// ---------------------------------------------------------------------------
+
+let activeDragFeatureId = null;
+let currentDragIndicator = null;
+
+function getDragInsertBeforeId(e, container) {
+  const items = [...container.querySelectorAll(".feature-tile:not(.dragging)")];
+  for (const item of items) {
+    const rect = item.getBoundingClientRect();
+    if (e.clientY < rect.top + rect.height / 2) return item.dataset.id || null;
+  }
+  return null; // Append at end
+}
+
+function showDragIndicator(container, insertBeforeId) {
+  if (currentDragIndicator) currentDragIndicator.remove();
+  const indicator = document.createElement("div");
+  indicator.className = "drag-drop-indicator";
+  currentDragIndicator = indicator;
+  const target = insertBeforeId ? container.querySelector(`[data-id="${insertBeforeId}"]`) : null;
+  container.insertBefore(indicator, target || null);
+}
+
+function clearDragIndicator() {
+  if (currentDragIndicator) {
+    currentDragIndicator.remove();
+    currentDragIndicator = null;
+  }
+}
+
+function parseDragData(e) {
+  try {
+    return JSON.parse(e.dataTransfer.getData("application/x-feature"));
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Sidebar: build unassigned chip
 // ---------------------------------------------------------------------------
 
@@ -328,6 +397,7 @@ function buildFeatureChip(feature) {
   const chip = document.createElement("div");
   chip.className = "feature-chip";
   chip.dataset.id = props._id || "";
+  chip.draggable = true;
 
   chip.innerHTML = `
     <span class="chip-icon">${buildTypeIconHTML(type)}</span>
@@ -337,6 +407,23 @@ function buildFeatureChip(feature) {
   chip.addEventListener("click", () => {
     const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
     if (idx !== -1) openFeatureForm(idx);
+  });
+
+  chip.addEventListener("dragstart", (e) => {
+    activeDragFeatureId = props._id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("application/x-feature", JSON.stringify({
+      featureId: props._id,
+      sourceType: "unassigned",
+      sourceDayId: null,
+    }));
+    requestAnimationFrame(() => chip.classList.add("dragging"));
+  });
+
+  chip.addEventListener("dragend", () => {
+    activeDragFeatureId = null;
+    chip.classList.remove("dragging");
+    clearDragIndicator();
   });
 
   return chip;
@@ -381,7 +468,7 @@ function buildDaySection(day, dayIndex) {
     featureList.innerHTML = '<div class="day-empty">No features yet</div>';
   } else {
     for (const f of dayFeatures) {
-      featureList.appendChild(buildFeatureTile(f));
+      featureList.appendChild(buildFeatureTile(f, day.id));
     }
   }
 
@@ -392,31 +479,121 @@ function buildDaySection(day, dayIndex) {
 // Sidebar: build feature tile (inside a day section)
 // ---------------------------------------------------------------------------
 
-function buildFeatureTile(feature) {
+function buildFeatureTile(feature, dayId) {
   const props = feature.properties;
   const type = props.point_type || props.type;
 
   const tile = document.createElement("div");
   tile.className = "feature-tile";
   tile.dataset.id = props._id || "";
+  tile.draggable = true;
 
   const stats = getFeatureStats(props, type);
+  const durText = props.estimatedDuration ? formatDuration(props.estimatedDuration) : "";
 
   tile.innerHTML = `
     <div class="tile-type-icon">${buildTypeIconHTML(type)}</div>
     <div class="tile-info">
-      <span class="tile-name">${escapeHTML(getFeatureLabel(props, type))}</span>
+      <button class="tile-name-btn">${escapeHTML(getFeatureLabel(props, type))}</button>
       ${stats ? `<span class="tile-stats">${escapeHTML(stats)}</span>` : ""}
     </div>
-    <div class="tile-drag-handle">&#9776;</div>
+    <div class="tile-actions">
+      <button class="tile-duration-btn" title="Set estimated duration">${durText || "&#9200;"}</button>
+      <button class="tile-delete-btn" title="Remove feature">&#10005;</button>
+    </div>
+    <div class="tile-drag-handle" title="Drag to reorder">&#9776;</div>
   `;
 
-  tile.addEventListener("click", () => {
+  // Tile body click → zoom/pan map to feature
+  tile.addEventListener("click", (e) => {
+    if (e.target.closest(".tile-name-btn, .tile-actions, .tile-drag-handle")) return;
+    const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
+    if (idx !== -1) zoomToFeature(idx);
+  });
+
+  // Name click → open feature edit form
+  tile.querySelector(".tile-name-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
     const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
     if (idx !== -1) openFeatureForm(idx);
   });
 
+  // Duration button → show inline input
+  tile.querySelector(".tile-duration-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    showDurationInput(tile, props._id, props.estimatedDuration);
+  });
+
+  // Delete button → confirm and remove
+  tile.querySelector(".tile-delete-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (confirm("Remove this feature from the trip?")) {
+      const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
+      if (idx !== -1) TripManager.removeFeature(idx);
+    }
+  });
+
+  // Drag events
+  tile.addEventListener("dragstart", (e) => {
+    e.stopPropagation();
+    activeDragFeatureId = props._id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("application/x-feature", JSON.stringify({
+      featureId: props._id,
+      sourceType: "day",
+      sourceDayId: dayId,
+    }));
+    requestAnimationFrame(() => tile.classList.add("dragging"));
+  });
+
+  tile.addEventListener("dragend", () => {
+    activeDragFeatureId = null;
+    tile.classList.remove("dragging");
+    clearDragIndicator();
+  });
+
   return tile;
+}
+
+// ---------------------------------------------------------------------------
+// Estimated duration inline input
+// ---------------------------------------------------------------------------
+
+function showDurationInput(tile, featureId, currentDuration) {
+  if (tile.querySelector(".tile-duration-input")) return; // already open
+
+  const durationBtn = tile.querySelector(".tile-duration-btn");
+  durationBtn.style.display = "none";
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "5";
+  input.className = "tile-duration-input";
+  input.value = currentDuration || "";
+  input.placeholder = "min";
+  input.title = "Duration in minutes";
+
+  tile.querySelector(".tile-actions").insertBefore(input, durationBtn);
+  input.focus();
+  input.select();
+
+  function commitDuration() {
+    const val = parseInt(input.value, 10);
+    const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === featureId);
+    if (idx !== -1) {
+      TripManager.updateFeature(idx, { estimatedDuration: val > 0 ? val : undefined });
+    }
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commitDuration(); }
+    if (e.key === "Escape") { TripManager.render(); }
+    e.stopPropagation();
+  });
+  input.addEventListener("blur", commitDuration);
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("dragstart", (e) => e.preventDefault());
 }
 
 // ---------------------------------------------------------------------------
@@ -490,11 +667,12 @@ function getFeatureStats(props, type) {
     const numPts = props.vertex_coords?.length || 0;
     return numPts > 0 ? `${numPts} points` : "";
   }
-  if (type === "camp" && props.water_nearby) return "Water nearby";
-  if (props.estimatedDuration) return formatDuration(props.estimatedDuration);
-  if (type === "dayhike_spur") return "Day hike spur";
-  if (type === "waypoint" && props.subtype) return WAYPOINT_LABELS[props.subtype] || props.subtype;
-  return "";
+  const parts = [];
+  if (type === "camp" && props.water_nearby) parts.push("Water nearby");
+  if (type === "dayhike_spur") parts.push("Day hike spur");
+  if (type === "waypoint" && props.subtype) parts.push(WAYPOINT_LABELS[props.subtype] || props.subtype);
+  if (props.estimatedDuration) parts.push(`~${formatDuration(props.estimatedDuration)}`);
+  return parts.join(" · ");
 }
 
 // ---------------------------------------------------------------------------
@@ -829,6 +1007,58 @@ function initTripPanel() {
 
   // Load saved trip from localStorage
   TripManager.loadFromStorage();
+
+  // ---------------------------------------------------------------------------
+  // Drag-and-drop event delegation (single listener on timeline panel)
+  // ---------------------------------------------------------------------------
+
+  const timelinePanel = document.getElementById("timelinePanel");
+
+  timelinePanel.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    const featureList = e.target.closest(".day-feature-list");
+    const pool = e.target.closest(".unassigned-pool");
+    if (featureList) {
+      e.dataTransfer.dropEffect = "move";
+      const insertBeforeId = getDragInsertBeforeId(e, featureList);
+      showDragIndicator(featureList, insertBeforeId);
+      featureList._dropInsertBefore = insertBeforeId;
+      featureList.classList.add("drag-over");
+    } else if (pool) {
+      e.dataTransfer.dropEffect = "move";
+      pool.classList.add("drag-over");
+    }
+  });
+
+  timelinePanel.addEventListener("dragleave", (e) => {
+    const featureList = e.target.closest(".day-feature-list");
+    const pool = e.target.closest(".unassigned-pool");
+    if (featureList && !featureList.contains(e.relatedTarget)) {
+      featureList.classList.remove("drag-over");
+    }
+    if (pool && !pool.contains(e.relatedTarget)) {
+      pool.classList.remove("drag-over");
+    }
+  });
+
+  timelinePanel.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const data = parseDragData(e);
+    if (!data) return;
+    clearDragIndicator();
+    document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
+
+    const featureList = e.target.closest(".day-feature-list");
+    const pool = e.target.closest(".unassigned-pool");
+    if (featureList) {
+      const dayId = featureList.closest(".day-section")?.dataset.dayId;
+      if (dayId) {
+        TripManager.moveFeature(data.featureId, "day", dayId, featureList._dropInsertBefore || null);
+      }
+    } else if (pool) {
+      TripManager.moveFeature(data.featureId, "unassigned", null, null);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

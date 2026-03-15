@@ -1247,3 +1247,116 @@ body.sidebar-open #map {
     justify-content: center;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Drag-and-drop
+   --------------------------------------------------------------------------- */
+
+/* Source item dimmed while being dragged */
+.feature-chip.dragging,
+.feature-tile.dragging {
+  opacity: 0.4;
+}
+
+/* Drop zone highlight: unassigned pool */
+.unassigned-pool.drag-over {
+  border-color: #667eea;
+  background: #f0f4ff;
+}
+
+/* Drop zone highlight: day feature list */
+.day-feature-list.drag-over {
+  background: #f5f7ff;
+}
+
+/* Drop position indicator line */
+.drag-drop-indicator {
+  height: 2px;
+  background: #667eea;
+  border-radius: 2px;
+  margin: 0 12px;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Feature tile: name button, action buttons, duration input
+   --------------------------------------------------------------------------- */
+
+/* Name styled as text, underlines on hover to signal editability */
+.tile-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: #1f2937;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-family: inherit;
+  display: block;
+}
+
+.tile-name-btn:hover {
+  color: #667eea;
+  text-decoration: underline;
+}
+
+/* Action buttons (clock + delete) — hidden by default, shown on tile hover */
+.tile-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.feature-tile:hover .tile-actions {
+  visibility: visible;
+}
+
+.tile-duration-btn,
+.tile-delete-btn {
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.tile-duration-btn:hover {
+  color: #667eea;
+  background: #eff3ff;
+}
+
+.tile-delete-btn:hover {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+/* Inline duration number input (replaces duration button on click) */
+.tile-duration-input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid #667eea;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  color: #1f2937;
+  background: #fff;
+  text-align: center;
+}
+
+.tile-duration-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
