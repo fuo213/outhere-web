@@ -19,6 +19,8 @@ Web-based hiking map viewer displaying OutHere vector tiles (PMTiles) via MapLib
 - **booot-signup-worker** — Email API ([../booot-signup-worker](../booot-signup-worker))
   - Cloudflare Worker handling signup submissions
 
+- **outhere-mobile**: React Native app (read-only trip viewer with offline maps)
+
 ## When You're Working Here
 
 Use this repo when:
