@@ -386,8 +386,24 @@ function renderDaySections() {
   if (!trip || !trip.days) return;
 
   trip.days.forEach((day, idx) => {
+    if (idx > 0) container.appendChild(buildDaySectionDivider());
     container.appendChild(buildDaySection(day, idx));
   });
+
+  // Legend
+  if (trip.days.length > 0) {
+    const legend = document.createElement("div");
+    legend.className = "timeline-legend";
+    legend.innerHTML = [
+      { label: "Hike", color: "#b8c9a3" },
+      { label: "Camp", color: "#d4a574" },
+      { label: "Rest", color: "#e8d5b5" },
+      { label: "Waypoint", color: "#c4a882" },
+    ].map(({ label, color }) =>
+      `<div class="legend-item"><div class="legend-swatch" style="background:${color}"></div><span class="legend-label">${label}</span></div>`
+    ).join("");
+    container.appendChild(legend);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -654,6 +670,18 @@ function buildFeatureChip(feature) {
 // Sidebar: build day section
 // ---------------------------------------------------------------------------
 
+function buildDaySectionDivider() {
+  const divider = document.createElement("div");
+  divider.className = "day-divider";
+  divider.innerHTML = `<svg width="100%" height="20" viewBox="0 0 276 20" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <line x1="0" y1="10" x2="276" y2="10" stroke="#c9c3b5" stroke-width="1" stroke-dasharray="3 4"/>
+    <circle cx="20" cy="10" r="2" fill="#c9c3b5"/>
+    <circle cx="138" cy="10" r="2" fill="#c9c3b5"/>
+    <circle cx="256" cy="10" r="2" fill="#c9c3b5"/>
+  </svg>`;
+  return divider;
+}
+
 function buildDaySection(day, dayIndex) {
   const trip = TripManager.currentTrip;
   const dayFeatures = (day.features || [])
@@ -665,22 +693,23 @@ function buildDaySection(day, dayIndex) {
   section.className = "day-section";
   section.dataset.dayId = day.id;
 
-  // Date label: use day.date if set, otherwise auto-compute from trip start
-  const dateLabel = day.date ? formatDateLabel(day.date) : "";
-
-  // Stats bar HTML
+  // Build inline stats string
   const statParts = [];
-  if (stats.totalMiles > 0) statParts.push(`<span class="day-stat">${stats.totalMiles.toFixed(1)} mi</span>`);
-  if (stats.totalElevGain > 0) statParts.push(`<span class="day-stat">+${Math.round(stats.totalElevGain).toLocaleString()} ft</span>`);
-  if (stats.totalMinutes > 0) statParts.push(`<span class="day-stat">${formatDuration(stats.totalMinutes)}</span>`);
-  if (stats.hasWater) statParts.push(`<span class="day-stat day-stat-water">&#128167; Water</span>`);
+  if (stats.totalMiles > 0) statParts.push(`${stats.totalMiles.toFixed(1)} mi`);
+  if (stats.totalElevGain > 0) statParts.push(`+${Math.round(stats.totalElevGain).toLocaleString()} ft`);
+  if (stats.totalMinutes > 0) statParts.push(formatDuration(stats.totalMinutes));
+  if (stats.hasWater) statParts.push("water nearby");
+  const statsText = statParts.join(" · ");
+
+  // Date label: use day.date if set
+  const dateLabel = day.date ? formatDateLabel(day.date) : "";
+  const dateText = dateLabel ? ` — ${dateLabel}` : "";
 
   section.innerHTML = `
     <div class="day-header" tabindex="0" role="button" aria-label="Day ${dayIndex + 1}${dateLabel ? `, ${dateLabel}` : ""}">
-      <span class="day-label">Day ${dayIndex + 1}</span>
-      ${dateLabel ? `<span class="day-date">${escapeHTML(dateLabel)}</span>` : ""}
+      <span class="day-label">Day ${dayIndex + 1}${escapeHTML(dateText)}</span>
+      ${statsText ? `<span class="day-stats-inline">${escapeHTML(statsText)}</span>` : ""}
     </div>
-    ${statParts.length > 0 ? `<div class="day-stats">${statParts.join("")}</div>` : ""}
     <div class="day-feature-list"></div>
   `;
 
@@ -715,8 +744,14 @@ function buildFeatureTile(feature, dayId) {
   const tile = document.createElement("div");
   tile.className = "feature-tile";
   tile.dataset.id = props._id || "";
+  tile.dataset.type = type || "waypoint";
   tile.draggable = true;
   tile.setAttribute("tabindex", "0");
+
+  // Scale height with estimated duration (min 32px + 9px per hour)
+  const durationMinutes = props.estimatedDuration || 0;
+  const hours = durationMinutes / 60;
+  tile.style.minHeight = `${32 + Math.round(hours * 9)}px`;
 
   const stats = getFeatureStats(props, type);
   const durText = props.estimatedDuration ? formatDuration(props.estimatedDuration) : "";
@@ -848,23 +883,20 @@ function showDurationInput(tile, featureId, currentDuration) {
 // ---------------------------------------------------------------------------
 
 function buildTypeIconHTML(type) {
+  const stroke = "currentColor";
   switch (type) {
     case "route":
-      return '<span class="tile-icon-dot tile-icon-dot--route"></span>';
-    case "camp":
-      return "&#9978;"; // ⛺
-    case "meal":
-      return "&#127859;"; // 🍳
-    case "waypoint":
-      return "&#128205;"; // 📍
     case "dayhike":
-      return "&#129406;"; // 🥾
-    case "rest":
-      return "&#128164;"; // 💤
     case "dayhike_spur":
-      return "&#129406;"; // 🥾
+      return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="${stroke}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,12 5,4 7,8 9,2 12,12"/></svg>`;
+    case "camp":
+      return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="${stroke}" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,12 7,4 11,12" stroke-width="1.2"/><polyline points="5,12 7,8 9,12" stroke-width="0.8"/></svg>`;
+    case "rest":
+    case "meal":
+      return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="${stroke}" stroke-width="1" stroke-linecap="round"><circle cx="7" cy="7" r="2"/><line x1="7" y1="1" x2="7" y2="3"/><line x1="7" y1="11" x2="7" y2="13"/><line x1="1" y1="7" x2="3" y2="7"/><line x1="11" y1="7" x2="13" y2="7"/></svg>`;
+    case "waypoint":
     default:
-      return "&#128205;"; // 📍
+      return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="${stroke}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7,1 1,13 13,13"/></svg>`;
   }
 }
 
