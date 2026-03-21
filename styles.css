@@ -25,88 +25,50 @@ body {
 #map {
   position: absolute;
   inset: 0;
-  transition: left 0.25s ease;
 }
 
 /* ---------------------------------------------------------------------------
-   Header bar
+   Map control buttons — unified parchment system
+   Applies to: MapLibre native controls + custom planBtn/layersBtn
    --------------------------------------------------------------------------- */
 
-.header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 48px;
-  background: #3d3529;
+/* Control group card: parchment border + shadow to match planning toolbar buttons */
+.maplibregl-ctrl-group {
+  border-radius: 8px !important;
+  border: 1px solid #D5CBBA !important;
+  box-shadow: 0 2px 8px rgba(30,26,20,0.18) !important;
+  overflow: hidden !important;
+}
+
+/* All control buttons: 40×40, parchment fill */
+.maplibregl-ctrl-group button {
+  width: 40px !important;
+  height: 40px !important;
+  background-color: #F2EDE3 !important;
+  color: #1E1A14 !important;
+  transition: background-color 0.15s !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background-color: #EDE7DA !important;
+}
+
+/* Separator between stacked buttons (zoom +/-) */
+.maplibregl-ctrl-group button:not(:last-child) {
+  border-bottom: 1px solid #D5CBBA !important;
+}
+
+/* planBtn / layersBtn icon alignment */
+#planBtn,
+#layersBtn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  z-index: 2;
-  border-bottom: 1px solid #2a2419;
+  justify-content: center;
 }
 
-.header-title {
-  color: #f4f0e8;
-  font-size: 11px;
-  font-weight: normal;
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.header-subtitle {
-  color: #8a7e6b;
-  font-size: 0.8rem;
-  font-weight: normal;
-  font-style: italic;
-  margin-left: 10px;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.header-left,
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.header-right {
-  justify-content: flex-end;
-}
-
-.header-center {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-/* Layers toggle button in the header */
-.layers-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(201, 195, 181, 0.3);
-  color: #c9c3b5;
-  padding: 6px 14px;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  font-weight: normal;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.layers-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #f4f0e8;
-}
-
-.layers-btn.active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #f4f0e8;
-  border-color: rgba(201, 195, 181, 0.6);
-}
+/* Active = panel open: subtle tinted background, icon takes accent color */
+#planBtn.active  { background-color: #EDE7DA !important; color: #B8431A !important; }
+#layersBtn.active { background-color: #EDE7DA !important; color: #4A7C8A !important; }
 
 /* ---------------------------------------------------------------------------
    Layer control panel
@@ -114,10 +76,10 @@ body {
 
 .layer-panel {
   position: absolute;
-  top: 56px;                /* below header */
-  right: 8px;
+  top: 12px;
+  left: 54px;
   width: 260px;
-  max-height: calc(100vh - 72px);
+  max-height: calc(100vh - 24px);
   overflow-y: auto;
   background: #f4f0e8;
   border: 1px solid #c9c3b5;
@@ -343,28 +305,12 @@ body {
    MapLibre control overrides
    --------------------------------------------------------------------------- */
 
-/* Push native controls below the header */
 .maplibregl-ctrl-top-left,
 .maplibregl-ctrl-top-right {
-  top: 56px;
+  top: 12px;
 }
 
-/* Push the right-side controls left of the layer panel when open */
-.maplibregl-ctrl-top-right {
-  right: 4px;
-}
-
-/* Style native controls to match the app */
-.maplibregl-ctrl-group {
-  border-radius: 8px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-  border: none !important;
-}
-
-.maplibregl-ctrl-group button {
-  width: 36px !important;
-  height: 36px !important;
-}
+/* maplibregl-ctrl-group base styles are defined in the unified section above */
 
 /* Scale bar */
 .maplibregl-ctrl-scale {
@@ -448,105 +394,129 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Responsive
-   --------------------------------------------------------------------------- */
-
-/* ---------------------------------------------------------------------------
-   Planning toolbar (below header, left side)
+   Planning toolbar — floating left-side map tools
    --------------------------------------------------------------------------- */
 
 .planning-toolbar {
-  position: absolute;
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: none;            /* shown when plan panel is open */
+  position: fixed;
+  top: 12px; /* fallback; overridden by JS to align with planBtn */
+  left: 62px; /* 10px gap from right edge of 40px MapLibre control group */
+  display: none;
+  flex-direction: column;
   gap: 6px;
   z-index: 3;
-  background: #f4f0e8;
-  border: 1px solid #c9c3b5;
-  border-radius: 3px;
-  padding: 6px 8px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-8px);
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Panel open: toolbar immediately visible (no hover required) */
 .planning-toolbar.visible {
   display: flex;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 
 .tool-btn {
-  background: #ede8de;
-  border: 1px solid #c9c3b5;
-  color: #3d3529;
-  padding: 6px 14px;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  font-weight: normal;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  background: #F2EDE3;
+  border: 1px solid #D5CBBA;
+  border-radius: 8px;
+  color: #1E1A14;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  font-family: Georgia, 'Times New Roman', serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(30,26,20,0.18);
+  transition: background 0.15s, box-shadow 0.15s;
+  padding: 0;
 }
 
 .tool-btn:hover {
-  background: #e0dace;
+  background: #EDE7DA;
 }
 
 .tool-btn.active {
-  background: #3d3529;
-  color: #f4f0e8;
-  border-color: #3d3529;
+  background: #B8431A;
+  border-color: transparent;
+  color: #F2EDE3;
+  box-shadow: 0 2px 8px rgba(184,67,26,0.35);
 }
 
-/* Point type selector — segmented control, visible only during route drawing */
+#deleteWaypointBtn.active {
+  background: #8B1A1A;
+  color: #F2EDE3;
+  box-shadow: 0 2px 8px rgba(139,26,26,0.35);
+  border-color: transparent;
+}
+
+/* Point type selector — vertical stack, visible only during route drawing */
 .point-type-selector {
-  display: none;
-  gap: 2px;
-  background: #e8e2d6;
-  border-radius: 3px;
-  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  background: transparent;
+  transition: opacity 0.18s ease, max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .point-type-selector.visible {
-  display: flex;
+  max-height: 240px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .point-type-btn {
-  background: transparent;
-  border: none;
-  color: #8a7e6b;
-  padding: 4px 10px;
-  border-radius: 2px;
-  font-size: 0.8rem;
-  font-weight: normal;
+  background: #F2EDE3;
+  border: 1px solid #D5CBBA;
+  border-radius: 8px;
+  color: #6B5E4C;
+  padding: 0 10px;
+  height: 40px;
+  width: 40px;
+  box-sizing: border-box;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
-  font-family: Georgia, 'Times New Roman', serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.2;
 }
 
 .point-type-btn:hover {
-  background: rgba(255, 255, 255, 0.4);
-  color: #3d3529;
+  background: #EDE7DA;
+  color: #1E1A14;
 }
 
-.point-type-btn.active {
-  background: #f4f0e8;
-  color: #3d3529;
-}
-
-.point-type-btn.active[data-point-type="camp"]    { color: #5c3a18; }
-.point-type-btn.active[data-point-type="dayhike"] { color: #2a3d1e; }
-.point-type-btn.active[data-point-type="rest"]    { color: #5c4a2e; }
+.point-type-btn.active                             { background: #B8431A; border-color: transparent; color: #F2EDE3; box-shadow: 0 2px 8px rgba(184,67,26,0.35); }
+.point-type-btn.active[data-point-type="route"]   { background: #7D9168; box-shadow: 0 2px 8px rgba(125,145,104,0.35); }
+.point-type-btn.active[data-point-type="camp"]    { background: #D4A853; box-shadow: 0 2px 8px rgba(212,168,83,0.35); }
+.point-type-btn.active[data-point-type="dayhike"] { background: #4A7C8A; box-shadow: 0 2px 8px rgba(74,124,138,0.35); }
+.point-type-btn.active[data-point-type="rest"]    { background: #C09A6B; box-shadow: 0 2px 8px rgba(192,154,107,0.35); }
 
 .point-type-btn kbd {
-  font-family: inherit;
-  font-size: 0.7rem;
-  color: #c9c3b5;
-  margin-right: 2px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: #A89880;
+  margin-right: 4px;
 }
 
 .point-type-btn.active kbd {
   color: inherit;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 /* ---------------------------------------------------------------------------
@@ -558,11 +528,12 @@ body {
   bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(31, 41, 55, 0.85);
-  color: #fff;
+  background: rgba(30,26,20,0.85);
+  color: #F2EDE3;
   padding: 8px 20px;
   border-radius: 20px;
-  font-size: 0.85rem;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
   z-index: 5;
   pointer-events: none;
   opacity: 0;
@@ -574,47 +545,65 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Route drawing instructions (collapsible section inside trip panel)
+   Route drawing instructions (parchment floating overlay at bottom)
    --------------------------------------------------------------------------- */
 
 .route-instructions {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.35s ease;
+  position: fixed;
+  bottom: 50px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  justify-content: center;
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
 }
 
 .route-instructions.visible {
-  max-height: 200px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body.panel-open .route-instructions {
+  right: calc(520px + 20px);
 }
 
 .route-instructions-inner {
-  background: rgba(31, 41, 55, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: #fff;
-  margin: 8px 10px 10px;
-  padding: 14px 16px;
-  border-radius: 10px;
+  background: #F2EDE3;
+  border: 1px solid #D5CBBA;
+  border-radius: 8px;
+  padding: 14px 18px;
+  box-shadow: 0 2px 8px rgba(30,26,20,0.18);
+  max-width: 100%;
 }
 
 .route-instructions-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-bottom: 6px;
-  letter-spacing: 0.02em;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6B5E4C;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 8px;
 }
 
 .route-instructions-steps {
   list-style: none;
   padding: 0;
   margin: 0;
-  font-size: 0.75rem;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.9);
+  color: #6B5E4C;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .route-instructions-steps li {
-  padding-left: 14px;
+  padding-left: 10px;
   position: relative;
 }
 
@@ -622,153 +611,171 @@ body {
   content: "\2022";
   position: absolute;
   left: 0;
-  color: rgba(255, 255, 255, 0.4);
+  color: #A89880;
 }
 
 .route-instructions-steps strong {
-  color: #93c5fd;
+  color: #B8431A;
   font-weight: 600;
 }
 
 /* ---------------------------------------------------------------------------
-   Trip planning panel (left sidebar — persistent, pushes map)
+   Trip planning panel — right-side modal
    --------------------------------------------------------------------------- */
 
 .trip-panel {
   position: fixed;
-  top: 48px;
-  left: 0;
-  width: 300px;
-  height: calc(100vh - 48px);
-  background: #f4f0e8;
-  border-right: 1px solid #c9c3b5;
-  z-index: 2;
+  top: 0;
+  right: 0;
+  width: 520px;
+  height: 100vh;
+  background: #F2EDE3;
+  background-image: repeating-linear-gradient(0deg, transparent 28px, rgba(180,168,148,0.06) 29px);
+  box-shadow: -8px 0 40px rgba(30,26,20,0.22);
+  z-index: 4;
   display: flex;
   flex-direction: column;
-  transform: translateX(-300px);
+  transform: translateX(520px);
   transition: transform 0.25s ease;
   overflow: hidden;
-  font-family: Georgia, 'Times New Roman', serif;
-  color: #3d3529;
+  font-family: 'DM Sans', sans-serif;
+  color: #1E1A14;
 }
 
 .trip-panel.open {
   transform: translateX(0);
 }
 
-/* When sidebar is open, shift map right */
-body.sidebar-open #map {
-  left: 300px;
+/* ---------------------------------------------------------------------------
+   Modal header
+   --------------------------------------------------------------------------- */
+
+.modal-header {
+  flex-shrink: 0;
+  padding: 24px 28px 0;
 }
 
-/* Collapse toggle — floats off the right edge of the panel */
-.sidebar-collapse-btn {
-  position: absolute;
-  top: 50%;
-  right: -20px;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 48px;
-  background: #f4f0e8;
-  border: 1px solid #c9c3b5;
-  border-left: none;
-  border-radius: 0 6px 6px 0;
-  cursor: pointer;
+.modal-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.nps-badge {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4A7C8A;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.modal-close-btn {
+  background: #E8E1D4;
+  border: none;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
-  color: #8a7e6b;
-  z-index: 3;
-  transition: color 0.15s;
+  font-size: 14px;
+  color: #6B5E4C;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
   line-height: 1;
 }
 
-.sidebar-collapse-btn:hover {
-  color: #3d3529;
+.modal-close-btn:hover {
+  background: #D5CBBA;
+  color: #1E1A14;
 }
 
-/* Trip metadata section (compact, always visible) */
-.trip-meta-section {
-  flex-shrink: 0;
-  padding: 10px 14px 8px;
-  border-bottom: 1px solid #c9c3b5;
-}
-
-.trip-meta-section label {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: normal;
-  color: #8a7e6b;
-  margin-bottom: 5px;
-}
-
-.trip-meta-section input[type="text"],
-.trip-meta-section input[type="date"],
-.trip-meta-section textarea,
-.trip-meta-section select {
+.trip-title-input {
   display: block;
   width: 100%;
-  padding: 5px 8px;
-  border: 1px solid #c9c3b5;
-  border-radius: 3px;
-  font-size: 0.82rem;
-  font-family: inherit;
-  color: #3d3529;
-  margin-top: 2px;
-  background: #faf7f0;
-}
-
-.trip-meta-section input:focus,
-.trip-meta-section textarea:focus {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: #1E1A14;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  background: transparent;
+  border: none;
   outline: none;
-  border-color: #8a7e6b;
+  padding: 0;
+  margin-bottom: 12px;
 }
 
-.trip-dates-row {
+.trip-title-input:focus {
+  border-bottom: 1.5px solid #C09A6B;
+}
+
+.trip-title-input::placeholder {
+  color: #A89880;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.trip-meta-chips {
   display: flex;
-  gap: 8px;
-  overflow: hidden;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
 }
 
-.trip-dates-row label {
-  flex: 1;
-  min-width: 0;
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: #EDE6D9;
+  border-radius: 20px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: #4A3E30;
 }
 
-/* Tab bar */
+/* ---------------------------------------------------------------------------
+   Tab bar
+   --------------------------------------------------------------------------- */
+
 .sidebar-tabs {
   flex-shrink: 0;
   display: flex;
-  border-bottom: 2px solid #c9c3b5;
+  padding: 0 28px;
+  border-bottom: 2px solid #D5CBBA;
+  gap: 4px;
 }
 
 .sidebar-tab {
-  flex: 1;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
   margin-bottom: -2px;
-  padding: 9px 0;
-  font-size: 0.82rem;
-  font-weight: normal;
-  color: #8a7e6b;
+  padding: 10px 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #8A7B68;
   cursor: pointer;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.01em;
   transition: color 0.15s, border-color 0.15s;
-  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .sidebar-tab:hover {
-  color: #3d3529;
+  color: #1E1A14;
 }
 
 .sidebar-tab.active {
-  color: #3d3529;
-  border-bottom-color: #3d3529;
+  font-weight: 600;
+  color: #B8431A;
+  border-bottom-color: #B8431A;
 }
 
-/* Tab panels — only one visible at a time */
+/* Tab panels */
 .sidebar-tab-panel {
   flex: 1;
   overflow-y: auto;
@@ -780,92 +787,145 @@ body.sidebar-open #map {
 }
 
 /* ---------------------------------------------------------------------------
-   Readme tab panel — layout
+   Readme tab panel
    --------------------------------------------------------------------------- */
 
-/* Override .sidebar-tab-panel scroll so inner areas own their overflow */
 #readmePanel {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* Re-apply hidden when the tab is not active (ID specificity beat the class) */
 #readmePanel.sidebar-tab-panel--hidden {
   display: none;
 }
 
-/* Toolbar: mode toggle + print button */
+/* Toolbar row: Preview button + print */
 .readme-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 12px;
-  border-bottom: 1px solid #c9c3b5;
+  padding: 12px 28px 10px;
   flex-shrink: 0;
+  border-bottom: 1px solid #D5CBBA;
   gap: 8px;
 }
 
-.readme-mode-toggle {
-  display: flex;
-  background: #e8e2d6;
-  border-radius: 3px;
-  padding: 2px;
-  gap: 2px;
-}
-
-.readme-mode-btn {
-  background: none;
+/* Preview toggle button — 3D rotateX flip */
+.readme-preview-btn {
+  position: relative;
+  overflow: hidden;
+  width: 80px;
+  height: 28px;
   border: none;
-  padding: 4px 14px;
-  border-radius: 2px;
-  font-size: 0.8rem;
-  font-weight: normal;
-  color: #8a7e6b;
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-family: inherit;
+  transition: background 0.25s ease;
 }
 
-.readme-mode-btn:hover {
-  color: #3d3529;
+.readme-preview-btn[data-mode="edit"]    { background: #B8431A; }
+.readme-preview-btn[data-mode="preview"] { background: #4A7C8A; }
+.readme-preview-btn[data-mode="edit"]:hover    { background: #4A7C8A; }
+.readme-preview-btn[data-mode="preview"]:hover { background: #B8431A; }
+
+.btn-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #F2EDE3;
+  white-space: nowrap;
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.readme-mode-active {
-  background: #f4f0e8;
-  color: #3d3529;
+.btn-face--front {
+  transform: translateY(0);
 }
+
+.btn-face--back {
+  transform: translateY(100%); /* edit mode default: parks below */
+}
+
+/* Preview mode: back parks above so it slides DOWN into view on hover */
+.readme-preview-btn[data-mode="preview"] .btn-face--back {
+  transform: translateY(-100%);
+}
+
+/* Edit → Preview: slides UP */
+.readme-preview-btn[data-mode="edit"]:hover .btn-face--front { transform: translateY(-100%); }
+.readme-preview-btn[data-mode="edit"]:hover .btn-face--back  { transform: translateY(0); }
+
+/* Preview → Edit: slides DOWN */
+.readme-preview-btn[data-mode="preview"]:hover .btn-face--front { transform: translateY(100%); }
+.readme-preview-btn[data-mode="preview"]:hover .btn-face--back  { transform: translateY(0); }
+
+/* After click: shiver to confirm, suppress hover flip until mouseout */
+@keyframes btn-shiver {
+  0%   { transform: rotate(0deg); }
+  15%  { transform: rotate(-1.5deg); }
+  32%  { transform: rotate(1.5deg); }
+  50%  { transform: rotate(-1deg); }
+  66%  { transform: rotate(1deg); }
+  82%  { transform: rotate(-0.4deg); }
+  92%  { transform: rotate(0.4deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.readme-preview-btn.clicked {
+  animation: btn-shiver 0.4s ease;
+}
+
+/* While .clicked: freeze all face transitions and background so nothing moves until mouseout */
+.readme-preview-btn.clicked .btn-face {
+  transition: none;
+}
+
+.readme-preview-btn[data-mode="edit"].clicked:hover    { background: #B8431A; }
+.readme-preview-btn[data-mode="preview"].clicked:hover { background: #4A7C8A; }
+
+/* Suppress hover flip — higher specificity wins over hover rules */
+.readme-preview-btn[data-mode="edit"].clicked:hover .btn-face--front    { transform: translateY(0); }
+.readme-preview-btn[data-mode="edit"].clicked:hover .btn-face--back     { transform: translateY(100%); }
+.readme-preview-btn[data-mode="preview"].clicked:hover .btn-face--front { transform: translateY(0); }
+.readme-preview-btn[data-mode="preview"].clicked:hover .btn-face--back  { transform: translateY(-100%); }
 
 .readme-print-btn {
   background: none;
-  border: 1px solid #c9c3b5;
-  border-radius: 3px;
-  padding: 4px 9px;
-  font-size: 0.78rem;
-  color: #8a7e6b;
+  border: 1px solid #D5CBBA;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #8A7B68;
   cursor: pointer;
-  font-family: inherit;
   transition: color 0.15s, border-color 0.15s;
 }
 
 .readme-print-btn:hover {
-  color: #3d3529;
-  border-color: #8a7e6b;
+  color: #1E1A14;
+  border-color: #8A7B68;
 }
 
-/* Auto-generated table of contents */
+/* TOC */
 .readme-toc {
   flex-shrink: 0;
-  border-bottom: 1px solid #c9c3b5;
-  background: #ede8de;
+  border-bottom: 1px solid #D5CBBA;
+  background: #EDE7DA;
   padding: 5px 0;
 }
 
 .toc-link {
   display: block;
-  padding: 3px 8px;
-  font-size: 0.78rem;
-  color: #8a7e6b;
+  padding: 3px 28px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8A7B68;
   text-decoration: none;
   line-height: 1.5;
   overflow: hidden;
@@ -875,11 +935,11 @@ body.sidebar-open #map {
 }
 
 .toc-link:hover {
-  background: #e0dace;
-  color: #3d3529;
+  background: #E2D9CA;
+  color: #1E1A14;
 }
 
-/* Edit area: template picker stacked above textarea */
+/* Edit area */
 #readmeEditArea {
   flex: 1;
   display: flex;
@@ -891,48 +951,48 @@ body.sidebar-open #map {
 /* Template picker */
 .readme-template-picker {
   flex-shrink: 0;
-  padding: 12px 14px 10px;
-  border-bottom: 1px solid #c9c3b5;
-  background: #ede8de;
+  padding: 14px 28px 12px;
+  border-bottom: 1px solid #D5CBBA;
+  background: #EDE7DA;
 }
 
 .template-prompt {
-  font-size: 0.8rem;
-  font-weight: normal;
-  color: #8a7e6b;
-  margin: 0 0 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6B5E4C;
+  margin: 0 0 10px;
 }
 
 .template-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 5px;
+  gap: 6px;
 }
 
 .template-opt-btn {
-  background: #f4f0e8;
-  border: 1px solid #c9c3b5;
-  border-radius: 3px;
-  padding: 7px 6px;
-  font-size: 0.78rem;
-  font-weight: normal;
-  color: #3d3529;
+  background: #F2EDE3;
+  border: 1px solid #D5CBBA;
+  border-radius: 4px;
+  padding: 8px 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1E1A14;
   cursor: pointer;
   text-align: center;
-  font-family: inherit;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition: background 0.1s, border-color 0.1s;
   display: block;
   line-height: 1.3;
 }
 
 .template-opt-btn:hover {
-  background: #e8e2d6;
-  border-color: #8a7e6b;
-  color: #3d3529;
+  background: #EDE7DA;
+  border-color: #C9BFB0;
 }
 
 .template-opt-blank {
-  color: #8a7e6b;
+  color: #8A7B68;
 }
 
 /* Markdown textarea */
@@ -942,13 +1002,13 @@ body.sidebar-open #map {
   width: 100%;
   resize: none;
   border: none;
-  border-top: 1px solid #c9c3b5;
-  padding: 12px 14px;
-  font-size: 0.82rem;
-  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
-  line-height: 1.65;
-  color: #3d3529;
-  background: #faf7f0;
+  border-top: 1px solid #D5CBBA;
+  padding: 20px 28px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #2E2820;
+  background: #F2EDE3;
   box-sizing: border-box;
   overflow-y: auto;
 }
@@ -957,12 +1017,12 @@ body.sidebar-open #map {
   outline: none;
 }
 
-/* Read area */
+/* Read/preview area */
 #readmeReadArea {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding: 14px 16px;
+  padding: 20px 28px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -970,20 +1030,30 @@ body.sidebar-open #map {
    --------------------------------------------------------------------------- */
 
 .readme-rendered {
-  font-size: 0.85rem;
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 14px;
   line-height: 1.75;
-  color: #3d3529;
-  font-family: Georgia, 'Times New Roman', serif;
+  color: #2E2820;
 }
 
-.readme-rendered h1,
+.readme-rendered h1 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1E1A14;
+  margin: 20px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #D5CBBA;
+}
+
 .readme-rendered h2 {
-  font-size: 1rem;
-  font-weight: normal;
-  color: #3d3529;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1E1A14;
   margin: 18px 0 8px;
   padding-bottom: 5px;
-  border-bottom: 1px solid #c9c3b5;
+  border-bottom: 1px solid #D5CBBA;
 }
 
 .readme-rendered h1:first-child,
@@ -992,30 +1062,34 @@ body.sidebar-open #map {
 }
 
 .readme-rendered h3 {
-  font-size: 0.9rem;
-  font-weight: normal;
-  color: #3d3529;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1E1A14;
   margin: 14px 0 6px;
 }
 
 .readme-rendered h4 {
-  font-size: 0.85rem;
-  font-weight: normal;
-  color: #8a7e6b;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6B5E4C;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin: 10px 0 4px;
 }
 
 .readme-rendered p {
-  margin: 0 0 9px;
+  margin: 0 0 10px;
 }
 
 .readme-rendered ul {
-  margin: 0 0 9px;
+  margin: 0 0 10px;
   padding-left: 20px;
 }
 
 .readme-rendered li {
-  margin: 3px 0;
+  margin: 4px 0;
 }
 
 .readme-rendered .readme-checklist {
@@ -1034,7 +1108,7 @@ body.sidebar-open #map {
 .readme-check-label input[type="checkbox"] {
   margin-top: 3px;
   flex-shrink: 0;
-  accent-color: #8a7e6b;
+  accent-color: #B8431A;
   width: 14px;
   height: 14px;
 }
@@ -1048,73 +1122,636 @@ body.sidebar-open #map {
 }
 
 .readme-rendered a {
-  color: #8a7e6b;
+  color: #4A7C8A;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .readme-rendered a:hover {
-  color: #3d3529;
+  color: #1E1A14;
 }
 
 .readme-empty-msg {
-  color: #8a7e6b;
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 14px;
   font-style: italic;
+  color: #8A7B68;
   text-align: center;
-  padding: 28px 0;
+  padding: 32px 0;
 }
 
 /* ---------------------------------------------------------------------------
-   Day section: active highlight + empty drop zone
+   Timeline tab — unassigned pool (tray)
    --------------------------------------------------------------------------- */
 
+.unassigned-pool {
+  padding: 12px 18px 14px;
+  border-bottom: 1px solid #C9BFB0;
+  background: #E2D9CA;
+}
+
+.pool-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #6B5E4C;
+  margin-bottom: 8px;
+}
+
+.pool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.pool-empty {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: #A89880;
+  padding: 2px 0;
+  font-style: italic;
+}
+
+/* Waypoint pills */
+.feature-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px 5px 7px;
+  border-radius: 20px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: grab;
+  transition: opacity 0.1s;
+}
+
+/* Type tints for pills */
+.feature-chip[data-type="camp"] {
+  background: #FDF7E8;
+  border: 1px solid #E0C870;
+  color: #D4A853;
+}
+.feature-chip[data-type="route"],
+.feature-chip[data-type="dayhike_spur"] {
+  background: #EFF4EB;
+  border: 1px solid #A8C098;
+  color: #7D9168;
+}
+.feature-chip[data-type="dayhike"] {
+  background: #EAF3F5;
+  border: 1px solid #90B8C4;
+  color: #4A7C8A;
+}
+.feature-chip[data-type="rest"],
+.feature-chip[data-type="meal"] {
+  background: #F8F2EA;
+  border: 1px solid #C8A870;
+  color: #C09A6B;
+}
+.feature-chip[data-type="waypoint"] {
+  background: #EBF2F6;
+  border: 1px solid #88B0C8;
+  color: #5A8FA8;
+}
+
+.feature-chip:hover {
+  opacity: 0.85;
+}
+
+.chip-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+/* ---------------------------------------------------------------------------
+   Day sections
+   --------------------------------------------------------------------------- */
+
+.day-section {
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.day-divider {
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: #C9BFB0;
+  margin: 0 0 14px;
+}
+
 .day-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 18px 6px;
   cursor: pointer;
+  background: none;
+  border: none;
 }
 
 .day-header:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0,0,0,0.02);
 }
 
 .day-header:focus-visible {
-  outline: 1px solid #c9c3b5;
+  outline: 1px solid #C9BFB0;
   outline-offset: -2px;
 }
 
-.day-section.day-active .day-header {
-  background: rgba(0, 0, 0, 0.04);
+.day-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #6B5E4C;
+  white-space: nowrap;
+}
+
+.day-date {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: #A89880;
+  white-space: nowrap;
+}
+
+.day-rule {
+  flex: 1;
+  height: 1px;
+  background: #C9BFB0;
+  min-width: 0;
+}
+
+.day-stats-inline {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: #A89880;
+  white-space: nowrap;
 }
 
 .day-section.day-active .day-label {
-  color: #3d3529;
+  color: #1E1A14;
 }
 
-/* Dashed drop zone shown when a day has no features yet */
+.day-feature-list {
+  background: transparent;
+  padding: 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Drop zone */
 .day-drop-zone {
-  padding: 14px 12px;
+  padding: 18px 16px;
   text-align: center;
-  font-size: 0.78rem;
-  color: #c9c3b5;
-  border: 1.5px dashed #c9c3b5;
-  border-radius: 3px;
-  margin: 6px 12px;
-  pointer-events: none;
-  font-style: italic;
+  border: 1.5px dashed #C0B098;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.day-drop-zone-icon {
+  opacity: 0.35;
+}
+
+.day-drop-zone-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: #A89880;
 }
 
 .day-feature-list.drag-over .day-drop-zone {
-  border-color: #8a7e6b;
-  color: #8a7e6b;
-  background: rgba(0, 0, 0, 0.03);
-  pointer-events: none;
+  border-color: #8A7B68;
+  background: rgba(0,0,0,0.03);
+}
+
+/* Add Day row */
+.add-day-row {
+  padding: 4px 18px 24px;
+}
+
+.add-day-btn {
+  width: 100%;
+  padding: 8px 0;
+  background: none;
+  border: 1px dashed #C9BFB0;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8A7B68;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.add-day-btn:hover {
+  border-color: #8A7B68;
+  color: #1E1A14;
 }
 
 /* ---------------------------------------------------------------------------
-   Print styles — hides sidebar chrome, shows only the rendered readme
+   Timeline cards (assigned features)
+   --------------------------------------------------------------------------- */
+
+.feature-tile {
+  border-radius: 7px;
+  padding: 9px 11px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(30,26,20,0.07);
+  transition: box-shadow 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Type tints for cards */
+.feature-tile[data-type="camp"] {
+  background: #FDF7E8;
+  color: #D4A853;
+}
+.feature-tile[data-type="route"],
+.feature-tile[data-type="dayhike_spur"] {
+  background: #EFF4EB;
+  color: #7D9168;
+}
+.feature-tile[data-type="dayhike"] {
+  background: #EAF3F5;
+  color: #4A7C8A;
+}
+.feature-tile[data-type="rest"],
+.feature-tile[data-type="meal"] {
+  background: #F8F2EA;
+  color: #C09A6B;
+}
+.feature-tile[data-type="waypoint"] {
+  background: #EBF2F6;
+  color: #5A8FA8;
+}
+
+/* Tile header row */
+.tile-header-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 2px;
+}
+
+.tile-type-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.tile-title {
+  flex: 1;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tile-edit-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 4px 5px;
+  font-size: 14px;
+  color: inherit;
+  opacity: 0.35;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: opacity 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.feature-tile:hover .tile-edit-btn,
+.feature-tile.editing .tile-edit-btn {
+  opacity: 1;
+}
+
+.tile-stat {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: inherit;
+  opacity: 0.7;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tile-description {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 11px;
+  font-style: italic;
+  line-height: 14px;
+  color: #3A3020;
+  margin: 3px 0 0;
+  opacity: 0.8;
+}
+
+.tile-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: inherit;
+  opacity: 0.7;
+  margin: 3px 0 0;
+}
+
+.tile-drag-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 4px 2px 4px 4px;
+  color: inherit;
+  opacity: 0.25;
+  cursor: grab;
+  line-height: 1;
+}
+
+.tile-drag-handle:hover {
+  opacity: 0.5;
+}
+
+/* Card editing state */
+.feature-tile.editing {
+  box-shadow: 0 0 0 2px #C09A6B, 0 3px 12px rgba(192,154,107,0.18);
+}
+
+.tile-title-input {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 1.5px solid currentColor;
+  padding: 0 0 1px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.tile-field {
+  margin-top: 7px;
+}
+
+.tile-field-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.7;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.tile-field select,
+.tile-date-sel {
+  width: 100%;
+  padding: 3px 6px;
+  background: rgba(255,255,255,0.5);
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tile-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tile-checkbox-row input[type="checkbox"] {
+  accent-color: currentColor;
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+}
+
+.tile-notes-field {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px 9px;
+  background: #FFF8EE;
+  border: 1px solid #E0C080;
+  border-radius: 5px;
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 11px;
+  font-style: italic;
+  color: #5A4020;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 56px;
+  box-sizing: border-box;
+}
+
+.tile-notes-field:focus {
+  outline: none;
+  border-color: #C09A6B;
+}
+
+.tile-edit-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.tile-cancel-btn {
+  padding: 4px 10px;
+  background: #EDE6D9;
+  border: none;
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6B5E4C;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.tile-cancel-btn:hover {
+  background: #D5CBBA;
+}
+
+.tile-save-btn {
+  padding: 4px 10px;
+  background: currentColor;
+  border: none;
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #F2EDE3;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+.tile-save-btn:hover {
+  opacity: 0.85;
+}
+
+.tile-delete-btn {
+  margin-left: auto;
+  padding: 4px 8px;
+  background: none;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #B8431A;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.tile-delete-btn:hover {
+  background: rgba(184,67,26,0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   Trip actions section
+   --------------------------------------------------------------------------- */
+
+.trip-panel-divider {
+  flex-shrink: 0;
+  height: 1px;
+  background: #D5CBBA;
+  margin: 0;
+}
+
+.trip-actions-section {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 28px 24px;
+}
+
+.trip-action-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #D5CBBA;
+  border-radius: 4px;
+  background: #EDE6D9;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1E1A14;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.1s;
+}
+
+.trip-action-btn:hover {
+  background: #D5CBBA;
+}
+
+.upload-label {
+  cursor: pointer;
+}
+
+.trip-action-danger {
+  color: #B8431A;
+  border-color: #D09070;
+}
+
+.trip-action-danger:hover {
+  background: rgba(184,67,26,0.06);
+}
+
+/* ---------------------------------------------------------------------------
+   Drawing preview chip (live feedback during route drawing)
+   --------------------------------------------------------------------------- */
+
+.drawing-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px 5px 9px;
+  background: #FDF7E8;
+  border: 1px solid #E0C870;
+  border-radius: 20px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #D4A853;
+  cursor: default;
+}
+
+.drawing-preview-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #B8431A;
+  flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------------------
+   Drag-and-drop
+   --------------------------------------------------------------------------- */
+
+.feature-chip.dragging,
+.feature-tile.dragging {
+  opacity: 0.4;
+}
+
+.unassigned-pool.drag-over {
+  background: #D5CBBA;
+}
+
+.day-feature-list.drag-over {
+  background: rgba(0,0,0,0.02);
+}
+
+.drag-drop-indicator {
+  height: 2px;
+  background: #C09A6B;
+  border-radius: 1px;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Print styles
    --------------------------------------------------------------------------- */
 
 @media print {
-  .header,
   .planning-toolbar,
   .drawing-hint,
   #map,
@@ -1125,15 +1762,14 @@ body.sidebar-open #map {
   .trip-panel-divider,
   .trip-actions-section,
   .route-instructions,
-  .sidebar-collapse-btn,
+  .modal-header,
   .layer-panel,
   .loading-overlay,
   .error-banner {
     display: none !important;
   }
 
-  body,
-  html {
+  body, html {
     overflow: visible !important;
   }
 
@@ -1147,7 +1783,6 @@ body.sidebar-open #map {
     overflow: visible !important;
   }
 
-  /* Show readme read area even if currently hidden */
   #readmePanel,
   #readmeReadArea {
     display: block !important;
@@ -1171,596 +1806,31 @@ body.sidebar-open #map {
   }
 }
 
-/* Divider */
-.trip-panel-divider {
-  flex-shrink: 0;
-  height: 1px;
-  background: #c9c3b5;
-  margin: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   Unassigned pool
-   --------------------------------------------------------------------------- */
-
-.unassigned-pool {
-  padding: 10px 12px 8px;
-  border: 1.5px dashed #c9c3b5;
-  border-radius: 3px;
-  margin: 10px 12px 0;
-  background: #ede8de;
-}
-
-.pool-label {
-  font-size: 0.65rem;
-  font-weight: normal;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: #8a7e6b;
-  margin-bottom: 6px;
-}
-
-.pool-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  min-height: 28px;
-}
-
-.pool-empty {
-  font-size: 0.78rem;
-  color: #c9c3b5;
-  padding: 2px 0;
-  font-style: italic;
-}
-
-/* Feature chip (compact, used in unassigned pool) */
-.feature-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 9px;
-  background: #f4f0e8;
-  border: 1px solid #c9c3b5;
-  border-radius: 3px;
-  font-size: 0.78rem;
-  font-weight: normal;
-  color: #3d3529;
-  cursor: pointer;
-  transition: border-color 0.1s;
-  max-width: 140px;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.feature-chip:hover {
-  border-color: #8a7e6b;
-}
-
-.chip-icon {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.chip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------------------------------------------------------------------------
-   Day sections
-   --------------------------------------------------------------------------- */
-
-.day-section {
-  margin: 0;
-  overflow: hidden;
-}
-
-/* Day divider — dotted line between days */
-.day-divider {
-  display: block;
-  width: 100%;
-  height: 20px;
-  padding: 0 12px;
-  box-sizing: border-box;
-  margin: 4px 0;
-}
-
-.day-header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 8px 12px 4px;
-  background: none;
-  border: none;
-}
-
-.day-label {
-  font-size: 13px;
-  font-weight: normal;
-  color: #3d3529;
-  letter-spacing: 0.5px;
-}
-
-.day-stats-inline {
-  font-size: 11px;
-  color: #8a7e6b;
-  font-style: italic;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.day-feature-list {
-  background: transparent;
-}
-
-.day-empty {
-  font-size: 0.78rem;
-  color: #c9c3b5;
-  padding: 10px 12px;
-  text-align: center;
-  font-style: italic;
-}
-
-/* Add Day row */
-.add-day-row {
-  padding: 8px 12px 12px;
-}
-
-.add-day-btn {
-  width: 100%;
-  padding: 7px 0;
-  background: none;
-  border: 1px dashed #c9c3b5;
-  border-radius: 3px;
-  font-size: 0.82rem;
-  font-weight: normal;
-  color: #8a7e6b;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.add-day-btn:hover {
-  border-color: #8a7e6b;
-  color: #3d3529;
-}
-
-/* Timeline legend */
-.timeline-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 8px 12px;
-  border-top: 1px solid #c9c3b5;
-  margin-top: 4px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.legend-swatch {
-  width: 16px;
-  height: 10px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.legend-label {
-  font-size: 10px;
-  font-family: Georgia, 'Times New Roman', serif;
-  color: #8a7e6b;
-}
-
-/* ---------------------------------------------------------------------------
-   Feature tiles (inside day sections)
-   --------------------------------------------------------------------------- */
-
-.feature-tile {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 12px;
-  margin: 0 12px 2px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: opacity 0.1s;
-  box-sizing: border-box;
-  min-height: 32px;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-/* Activity type color coding */
-.feature-tile[data-type="route"],
-.feature-tile[data-type="dayhike"],
-.feature-tile[data-type="dayhike_spur"] {
-  background: #b8c9a3;
-  color: #2a3d1e;
-}
-
-.feature-tile[data-type="camp"] {
-  background: #d4a574;
-  color: #3d2208;
-}
-
-.feature-tile[data-type="rest"],
-.feature-tile[data-type="meal"] {
-  background: #e8d5b5;
-  color: #5c4a2e;
-}
-
-.feature-tile[data-type="waypoint"] {
-  background: #c4a882;
-  color: #3d2a10;
-}
-
-.feature-tile:hover {
-  opacity: 0.9;
-}
-
-.tile-type-icon {
-  flex-shrink: 0;
-  width: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 1px;
-}
-
-.tile-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.tile-name {
-  display: block;
-  font-size: 12px;
-  font-weight: normal;
-  color: inherit;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tile-stats {
-  display: block;
-  font-size: 11px;
-  color: inherit;
-  opacity: 0.75;
-  margin-top: 2px;
-  font-style: italic;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tile-drag-handle {
-  flex-shrink: 0;
-  font-size: 0.8rem;
-  color: inherit;
-  opacity: 0.4;
-  cursor: grab;
-  padding: 2px 4px;
-  border-radius: 2px;
-  line-height: 1;
-}
-
-.tile-drag-handle:hover {
-  opacity: 0.7;
-  background: rgba(0, 0, 0, 0.1);
-}
-
-/* ---------------------------------------------------------------------------
-   Trip actions section (bottom of sidebar)
-   --------------------------------------------------------------------------- */
-
-.trip-actions-section {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 10px 12px;
-  border-top: 1px solid #c9c3b5;
-}
-
-/* ---------------------------------------------------------------------------
-   Drawing preview (in unassigned pool during route drawing)
-   --------------------------------------------------------------------------- */
-
-.drawing-preview-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-left: 3px solid #e85d04;
-  border-radius: 3px;
-  font-size: 0.78rem;
-  font-weight: normal;
-  color: #3d3529;
-  cursor: default;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.drawing-preview-pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e85d04;
-  flex-shrink: 0;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
-
-/* ---------------------------------------------------------------------------
-   Trip feature edit form
-   --------------------------------------------------------------------------- */
-
-.trip-feature-form {
-  display: none;
-  flex-shrink: 0;
-  padding: 12px 16px;
-  background: #ede8de;
-  border-top: 1px solid #c9c3b5;
-}
-
-.trip-feature-form.visible {
-  display: block;
-}
-
-.trip-feature-form h4 {
-  font-size: 0.9rem;
-  font-weight: normal;
-  margin-bottom: 10px;
-  color: #3d3529;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.trip-feature-form label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: normal;
-  color: #8a7e6b;
-  margin-bottom: 6px;
-}
-
-.trip-feature-form input[type="text"],
-.trip-feature-form input[type="number"],
-.trip-feature-form textarea,
-.trip-feature-form select {
-  display: block;
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid #c9c3b5;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  font-family: inherit;
-  color: #3d3529;
-  margin-top: 2px;
-  background: #f4f0e8;
-}
-
-.checkbox-label {
-  display: flex !important;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85rem !important;
-  cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-  accent-color: #8a7e6b;
-  width: 16px;
-  height: 16px;
-}
-
-.form-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.form-save {
-  background: #8a7e6b;
-  color: #f4f0e8;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  font-weight: normal;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.form-save:hover {
-  background: #7a6e5b;
-}
-
-.form-cancel {
-  background: #f4f0e8;
-  color: #3d3529;
-  border: 1px solid #c9c3b5;
-  padding: 6px 16px;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.form-cancel:hover {
-  background: #e8e2d6;
-}
-
-.form-delete {
-  background: none;
-  color: #8b3a2a;
-  border: 1px solid #d4a574;
-  padding: 6px 12px;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  margin-left: auto;
-  font-family: inherit;
-}
-
-.form-delete:hover {
-  background: #f5e6d8;
-}
-
-/* ---------------------------------------------------------------------------
-   Trip action buttons
-   --------------------------------------------------------------------------- */
-
-.trip-action-btn {
-  display: block;
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #c9c3b5;
-  border-radius: 3px;
-  background: #f4f0e8;
-  font-size: 0.85rem;
-  font-weight: normal;
-  color: #3d3529;
-  cursor: pointer;
-  text-align: center;
-  transition: background 0.1s;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.trip-action-btn:hover {
-  background: #e8e2d6;
-}
-
-.upload-label {
-  cursor: pointer;
-}
-
-.trip-action-danger {
-  color: #8b3a2a;
-  border-color: #d4a574;
-}
-
-.trip-action-danger:hover {
-  background: #f5e6d8;
-}
-
 /* ---------------------------------------------------------------------------
    Responsive
    --------------------------------------------------------------------------- */
 
-@media (max-width: 480px) {
-  .header-subtitle {
-    display: none;
-  }
-
+@media (max-width: 640px) {
   .layer-panel {
-    width: calc(100vw - 16px);
-    right: 8px;
-    left: 8px;
+    width: calc(100vw - 70px);
+    left: 54px;
+    right: auto;
   }
 
   .trip-panel {
     width: 100vw;
+    transform: translateX(100vw);
   }
 
-  body.sidebar-open #map {
-    left: 100vw;
+  .trip-panel.open {
+    transform: translateX(0);
   }
 
-  .planning-toolbar {
-    left: 8px;
-    right: 8px;
-    transform: none;
-    justify-content: center;
+  /* On mobile the panel overlays; don't push map */
+  body.panel-open #map {
+    right: 0;
   }
 }
-
-/* ---------------------------------------------------------------------------
-   Drag-and-drop
-   --------------------------------------------------------------------------- */
-
-/* Source item dimmed while being dragged */
-.feature-chip.dragging,
-.feature-tile.dragging {
-  opacity: 0.4;
-}
-
-/* Drop zone highlight: unassigned pool */
-.unassigned-pool.drag-over {
-  border-color: #8a7e6b;
-  background: #e8e2d6;
-}
-
-/* Drop zone highlight: day feature list */
-.day-feature-list.drag-over {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-/* Drop position indicator line */
-.drag-drop-indicator {
-  height: 2px;
-  background: #8a7e6b;
-  border-radius: 1px;
-  margin: 0 12px;
-  pointer-events: none;
-  flex-shrink: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   Feature tile: name button, action buttons, duration input
-   --------------------------------------------------------------------------- */
-
-/* Name styled as text, underlines on hover to signal editability */
-.tile-name-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: 12px;
-  font-weight: normal;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  font-family: inherit;
-  display: block;
-}
-
-.tile-name-btn:hover {
-  text-decoration: underline;
-  color: inherit;
-}
-
-/* Action buttons (clock + delete) — hidden by default, shown on tile hover */
-.tile-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  visibility: hidden;
-}
-
-.feature-tile:hover .tile-actions,
-.tile-actions:has(.tile-duration-input) {
-  visibility: visible;
-}
-
-.tile-duration-btn,
-.tile-delete-btn {
-  background: none;
-  border: none;
   font-size: 0.75rem;
   color: inherit;
   opacity: 0.6;

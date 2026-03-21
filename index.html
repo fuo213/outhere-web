@@ -19,33 +19,23 @@
   <!-- Turf.js — geospatial utilities for trail snapping -->
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
+  <!-- Google Fonts: Playfair Display, DM Sans, Source Serif 4, IBM Plex Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,400&family=DM+Sans:wght@500;600;700&family=Source+Serif+4:ital,wght@0,400;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
   <!-- App styles -->
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-  <!-- Header bar -->
-  <header class="header">
-    <div class="header-left">
-      <button class="layers-btn" id="planBtn" aria-label="Toggle trip planning">
-        Plan
-      </button>
-    </div>
-    <div class="header-center">
-      <span class="header-title">OutHere</span>
-      <span class="header-subtitle">Utah Hiking Map</span>
-    </div>
-    <div class="header-right">
-      <button class="layers-btn" id="layersBtn" aria-label="Toggle layer controls">
-        Layers
-      </button>
-    </div>
-  </header>
-
-  <!-- Planning toolbar (hidden until Plan panel is open) -->
+  <!-- Planning toolbar (hidden until Plan panel is open, shown on planBtn hover) -->
   <div class="planning-toolbar" id="planningToolbar">
-    <button class="tool-btn" id="drawRouteBtn" title="Draw a route on the map">
-      Draw Route
+    <button class="tool-btn" id="addRouteBtn" title="Draw route" aria-label="Draw route">
+      <svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none">
+        <line x1="8" y1="2" x2="8" y2="14"/>
+        <line x1="2" y1="8" x2="14" y2="8"/>
+      </svg>
     </button>
     <div class="point-type-selector" id="pointTypeSelector">
       <button class="point-type-btn active" data-point-type="route"><kbd>1</kbd> Route</button>
@@ -53,6 +43,16 @@
       <button class="point-type-btn" data-point-type="dayhike"><kbd>3</kbd> Dayhike</button>
       <button class="point-type-btn" data-point-type="rest"><kbd>4</kbd> Rest</button>
     </div>
+    <button class="tool-btn" id="deleteWaypointBtn" title="Delete waypoint" aria-label="Delete waypoint">
+      <svg width="14" height="15" viewBox="0 0 14 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <polyline points="1,3.5 13,3.5"/>
+        <path d="M4,3.5V2a1,1,0,0,1,1-1H9a1,1,0,0,1,1,1v1.5"/>
+        <rect x="2" y="3.5" width="10" height="10" rx="1"/>
+        <line x1="5" y1="6.5" x2="5" y2="10.5"/>
+        <line x1="7" y1="6.5" x2="7" y2="10.5"/>
+        <line x1="9" y1="6.5" x2="9" y2="10.5"/>
+      </svg>
+    </button>
   </div>
 
   <!-- Drawing hint overlay -->
@@ -61,15 +61,50 @@
   <!-- Map container -->
   <div id="map"></div>
 
-  <!-- Trip planning panel (left sidebar, persistent) -->
+  <!-- Trip planning panel (right-side modal) -->
   <aside class="trip-panel" id="tripPanel">
-    <!-- Collapse toggle on the map-side edge -->
-    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Collapse sidebar">&#8249;</button>
+
+    <!-- Modal header: NPS badge, close button, trip title, metadata chips -->
+    <div class="modal-header">
+      <div class="modal-header-top">
+        <span class="nps-badge">TRIP PLANNER</span>
+        <button class="modal-close-btn" id="sidebarCollapseBtn" aria-label="Close planning panel">&#10005;</button>
+      </div>
+      <input class="trip-title-input" id="tripTitle" type="text" value="Untitled Trip" placeholder="Trip name" />
+      <div class="trip-meta-chips" id="tripMetaChips"></div>
+    </div>
 
     <!-- Tab bar -->
     <div class="sidebar-tabs" role="tablist">
       <button class="sidebar-tab active" id="tabReadme" role="tab" aria-selected="true" data-tab="readme">Readme</button>
       <button class="sidebar-tab" id="tabTimeline" role="tab" aria-selected="false" data-tab="timeline">Timeline</button>
+    </div>
+
+    <!-- Readme tab panel -->
+    <div class="sidebar-tab-panel" id="readmePanel" role="tabpanel">
+      <div class="readme-toolbar">
+        <button class="readme-preview-btn" id="readmePreviewBtn" data-mode="edit" aria-label="Toggle preview mode">
+          <span class="btn-face btn-face--front">Edit</span>
+          <span class="btn-face btn-face--back">Preview</span>
+        </button>
+        <button class="readme-print-btn" id="readmePrintBtn" title="Print readme">Print</button>
+      </div>
+      <nav class="readme-toc" id="readmeToc" aria-label="Table of contents"></nav>
+      <div id="readmeEditArea">
+        <div class="readme-template-picker" id="readmeTemplatePicker">
+          <p class="template-prompt">Start from a template?</p>
+          <div class="template-options">
+            <button class="template-opt-btn" data-template="solo">Solo overnight</button>
+            <button class="template-opt-btn" data-template="group">Group multi-day</button>
+            <label class="template-opt-btn">Import .md file<input type="file" id="readmeMdInput" accept=".md,.txt" hidden /></label>
+            <button class="template-opt-btn template-opt-blank" data-template="blank">Blank</button>
+          </div>
+        </div>
+        <textarea id="readmeEditor" class="readme-editor" placeholder="Write your trip notes in Markdown&#10;&#10;## Example heading&#10;- [ ] Checklist item&#10;**bold** *italic*"></textarea>
+      </div>
+      <div id="readmeReadArea" style="display:none">
+        <div class="readme-rendered" id="readmeRendered"></div>
+      </div>
     </div>
 
     <!-- Timeline tab panel -->
@@ -93,36 +128,6 @@
       </div>
     </div>
 
-    <!-- Readme tab panel -->
-    <div class="sidebar-tab-panel" id="readmePanel" role="tabpanel">
-      <div class="readme-toolbar">
-        <div class="readme-mode-toggle" role="group" aria-label="View mode">
-          <button class="readme-mode-btn readme-mode-active" data-mode="edit">Edit</button>
-          <button class="readme-mode-btn" data-mode="read">Read</button>
-        </div>
-        <button class="readme-print-btn" id="readmePrintBtn" title="Print readme">Print</button>
-      </div>
-      <nav class="readme-toc" id="readmeToc" aria-label="Table of contents"></nav>
-      <div id="readmeEditArea">
-        <div class="readme-template-picker" id="readmeTemplatePicker">
-          <p class="template-prompt">Start from a template?</p>
-          <div class="template-options">
-            <button class="template-opt-btn" data-template="solo">Solo overnight</button>
-            <button class="template-opt-btn" data-template="group">Group multi-day</button>
-            <label class="template-opt-btn">Import .md file<input type="file" id="readmeMdInput" accept=".md,.txt" hidden /></label>
-            <button class="template-opt-btn template-opt-blank" data-template="blank">Blank</button>
-          </div>
-        </div>
-        <textarea id="readmeEditor" class="readme-editor" placeholder="Write your trip notes in Markdown&#10;&#10;## Example heading&#10;- [ ] Checklist item&#10;**bold** *italic*"></textarea>
-      </div>
-      <div id="readmeReadArea">
-        <div class="readme-rendered" id="readmeRendered"></div>
-      </div>
-    </div>
-
-    <!-- Feature edit form (shown inline when editing) -->
-    <div id="tripFeatureForm" class="trip-feature-form"></div>
-
     <div class="trip-panel-divider"></div>
 
     <!-- Action buttons -->
@@ -134,22 +139,22 @@
       </label>
       <button class="trip-action-btn trip-action-danger" id="newTripBtn">New Trip</button>
     </div>
-
-    <!-- Route drawing instructions (expands when drawing a route) -->
-    <div class="route-instructions" id="routeInstructions">
-      <div class="route-instructions-inner">
-        <p class="route-instructions-title">Drawing Route</p>
-        <ul class="route-instructions-steps">
-          <li><strong>Click</strong> to place route points</li>
-          <li>Press <strong>1-4</strong> to switch: Route, Camp, Dayhike, Rest</li>
-          <li>Points <strong>snap to trails</strong> when nearby</li>
-          <li><strong>Double-click</strong> to finish the route</li>
-          <li>Hold <strong>Shift</strong> to disable snapping</li>
-          <li>Press <strong>Esc</strong> to cancel</li>
-        </ul>
-      </div>
-    </div>
   </aside>
+
+  <!-- Route drawing instructions (floating overlay, visible during drawing) -->
+  <div class="route-instructions" id="routeInstructions">
+    <div class="route-instructions-inner">
+      <p class="route-instructions-title">Drawing Route</p>
+      <ul class="route-instructions-steps">
+        <li><strong>Click</strong> to place route points</li>
+        <li>Press <strong>1-4</strong> to switch: Route, Camp, Dayhike, Rest</li>
+        <li>Points <strong>snap to trails</strong> when nearby</li>
+        <li><strong>Double-click</strong> to finish the route</li>
+        <li>Hold <strong>Shift</strong> to disable snapping</li>
+        <li>Press <strong>Esc</strong> to cancel</li>
+      </ul>
+    </div>
+  </div>
 
   <!-- Layer control panel (hidden by default) -->
   <aside class="layer-panel" id="layerPanel" role="region" aria-label="Map layers">

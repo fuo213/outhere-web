@@ -22,7 +22,7 @@
 
 const STORAGE_KEY = "outhere_trip";
 
-let readmeMode = "edit"; // "edit" | "read"
+let readmeMode = "edit"; // "edit" | "preview"
 let activeDayId = null;  // day ID currently highlighted on map, or null
 
 const TEMPLATES = {
@@ -171,7 +171,8 @@ const TripManager = {
       map.getSource("trip").setData(this.currentTrip || { type: "FeatureCollection", features: [] });
     }
     renderSidebar();
-    renderTripMeta();
+    renderTripTitle();
+    renderMetaChips();
   },
 
   save() {
@@ -287,53 +288,40 @@ function computeDayDate(trip, dayIndex) {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: trip metadata
+// Sidebar: trip title + metadata chips
 // ---------------------------------------------------------------------------
 
-function renderTripMeta() {
-  const nameInput = document.getElementById("tripName");
-  const startInput = document.getElementById("tripStart");
-  const endInput = document.getElementById("tripEnd");
-  const notesInput = document.getElementById("tripNotes");
-  if (!nameInput) return;
-
-  if (!TripManager.currentTrip) {
-    nameInput.value = "";
-    startInput.value = "";
-    endInput.value = "";
-    notesInput.value = "";
-    return;
+function renderTripTitle() {
+  const titleEl = document.getElementById("tripTitle");
+  if (!titleEl) return;
+  const name = TripManager.currentTrip?.properties?.name || "Untitled Trip";
+  if (document.activeElement !== titleEl) {
+    titleEl.value = name;
   }
-
-  const meta = TripManager.currentTrip.properties;
-  nameInput.value = meta.name || "";
-  startInput.value = meta.dates?.start || "";
-  endInput.value = meta.dates?.end || "";
-  notesInput.value = meta.notes || "";
 }
 
-function onTripMetaChange() {
-  if (!TripManager.currentTrip) return;
-  const meta = TripManager.currentTrip.properties;
-  meta.name = document.getElementById("tripName").value;
-  const start = document.getElementById("tripStart").value;
-  const end = document.getElementById("tripEnd").value;
-  if (start || end) {
-    meta.dates = { start, end };
-  } else {
-    delete meta.dates;
-  }
-  meta.notes = document.getElementById("tripNotes").value || undefined;
+function renderMetaChips() {
+  const el = document.getElementById("tripMetaChips");
+  if (!el) return;
+  const trip = TripManager.currentTrip;
+  if (!trip || !trip.features.length) { el.innerHTML = ""; return; }
 
-  // Recompute day dates when trip dates change
-  if (TripManager.currentTrip.days) {
-    TripManager.currentTrip.days.forEach((day, idx) => {
-      day.date = computeDayDate(TripManager.currentTrip, idx);
-    });
+  let totalMi = 0;
+  for (const f of trip.features) {
+    if (f.properties.type === "route") {
+      totalMi += (f.properties.main_route_distance_mi || 0) + (f.properties.dayhike_distance_mi || 0);
+    }
   }
+  const dayCount = trip.days?.length || 0;
 
-  TripManager.save();
-  renderSidebar();
+  const chips = [];
+  if (totalMi > 0) chips.push(
+    `<div class="meta-chip"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><polyline points="1,10 4,3 6,7 8,1 11,10"/></svg>${totalMi.toFixed(1)} mi</div>`
+  );
+  if (dayCount > 0) chips.push(
+    `<div class="meta-chip"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="10" height="9" rx="1"/><line x1="1" y1="5" x2="11" y2="5"/><line x1="4" y1="1" x2="4" y2="3"/><line x1="8" y1="1" x2="8" y2="3"/></svg>${dayCount} day${dayCount !== 1 ? "s" : ""}</div>`
+  );
+  el.innerHTML = chips.join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -389,21 +377,6 @@ function renderDaySections() {
     if (idx > 0) container.appendChild(buildDaySectionDivider());
     container.appendChild(buildDaySection(day, idx));
   });
-
-  // Legend
-  if (trip.days.length > 0) {
-    const legend = document.createElement("div");
-    legend.className = "timeline-legend";
-    legend.innerHTML = [
-      { label: "Hike", color: "#b8c9a3" },
-      { label: "Camp", color: "#d4a574" },
-      { label: "Rest", color: "#e8d5b5" },
-      { label: "Waypoint", color: "#c4a882" },
-    ].map(({ label, color }) =>
-      `<div class="legend-item"><div class="legend-swatch" style="background:${color}"></div><span class="legend-label">${label}</span></div>`
-    ).join("");
-    container.appendChild(legend);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -427,8 +400,8 @@ function renderReadme() {
   // Re-render TOC from current content
   renderReadmeTOC(content);
 
-  // In read mode, refresh the rendered output
-  if (readmeMode === "read") {
+  // In preview mode, refresh the rendered output
+  if (readmeMode === "preview") {
     const rendered = document.getElementById("readmeRendered");
     if (rendered) {
       rendered.innerHTML = parseMarkdown(content);
@@ -482,7 +455,7 @@ function slugify(str) {
 
 function parseMarkdown(md) {
   if (!md || !md.trim()) {
-    return '<p class="readme-empty-msg">No content yet. Switch to Edit mode to write your trip notes.</p>';
+    return '<p class="readme-empty-msg">No content yet. Switch to Edit mode to add trip notes.</p>';
   }
   const lines = md.split("\n");
   let html = "";
@@ -634,6 +607,7 @@ function buildFeatureChip(feature) {
   const chip = document.createElement("div");
   chip.className = "feature-chip";
   chip.dataset.id = props._id || "";
+  chip.dataset.type = type || "waypoint";
   chip.draggable = true;
 
   chip.innerHTML = `
@@ -643,7 +617,7 @@ function buildFeatureChip(feature) {
 
   chip.addEventListener("click", () => {
     const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
-    if (idx !== -1) openFeatureForm(idx);
+    if (idx !== -1) zoomToFeature(idx);
   });
 
   chip.addEventListener("dragstart", (e) => {
@@ -707,7 +681,9 @@ function buildDaySection(day, dayIndex) {
 
   section.innerHTML = `
     <div class="day-header" tabindex="0" role="button" aria-label="Day ${dayIndex + 1}${dateLabel ? `, ${dateLabel}` : ""}">
-      <span class="day-label">Day ${dayIndex + 1}${escapeHTML(dateText)}</span>
+      <span class="day-label">Day ${dayIndex + 1}</span>
+      ${dateLabel ? `<span class="day-date">${escapeHTML(dateLabel)}</span>` : ""}
+      <span class="day-rule"></span>
       ${statsText ? `<span class="day-stats-inline">${escapeHTML(statsText)}</span>` : ""}
     </div>
     <div class="day-feature-list"></div>
@@ -720,7 +696,7 @@ function buildDaySection(day, dayIndex) {
 
   const featureList = section.querySelector(".day-feature-list");
   if (dayFeatures.length === 0) {
-    featureList.innerHTML = '<div class="day-drop-zone">Drag features here</div>';
+    featureList.innerHTML = `<div class="day-drop-zone"><svg class="day-drop-zone-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#A89880" stroke-width="1.2" stroke-linecap="round"><polyline points="2,17 6,5 10,12 13,3 18,17"/></svg><span class="day-drop-zone-label">Drag waypoints here</span></div>`;
   } else {
     for (const f of dayFeatures) {
       featureList.appendChild(buildFeatureTile(f, day.id));
@@ -734,77 +710,73 @@ function buildDaySection(day, dayIndex) {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: build feature tile (inside a day section)
+// Sidebar: build feature tile (inside a day section) — inline editing
 // ---------------------------------------------------------------------------
 
 function buildFeatureTile(feature, dayId) {
   const props = feature.properties;
-  const type = props.point_type || props.type;
+  const featureId = props._id;
 
   const tile = document.createElement("div");
   tile.className = "feature-tile";
-  tile.dataset.id = props._id || "";
-  tile.dataset.type = type || "waypoint";
-  tile.draggable = true;
+  tile.dataset.id = featureId || "";
+  tile.dataset.type = props.point_type || props.type || "waypoint";
   tile.setAttribute("tabindex", "0");
 
-  // Scale height with estimated duration (min 32px + 9px per hour)
-  const durationMinutes = props.estimatedDuration || 0;
-  const hours = durationMinutes / 60;
-  tile.style.minHeight = `${32 + Math.round(hours * 9)}px`;
-
-  const stats = getFeatureStats(props, type);
-  const durText = props.estimatedDuration ? formatDuration(props.estimatedDuration) : "";
-
-  tile.innerHTML = `
-    <div class="tile-type-icon">${buildTypeIconHTML(type)}</div>
-    <div class="tile-info">
-      <button class="tile-name-btn">${escapeHTML(getFeatureLabel(props, type))}</button>
-      ${stats ? `<span class="tile-stats">${escapeHTML(stats)}</span>` : ""}
-    </div>
-    <div class="tile-actions">
-      <button class="tile-duration-btn" title="Set estimated duration">${durText || "ETA"}</button>
-      <button class="tile-delete-btn" title="Remove feature">&#10005;</button>
-    </div>
-    <div class="tile-drag-handle" title="Drag to reorder">&#9776;</div>
-  `;
-
-  // Tile body click → zoom/pan map to feature
+  // Single delegated click handler covers all interactive children
   tile.addEventListener("click", (e) => {
-    if (e.target.closest(".tile-name-btn, .tile-actions, .tile-drag-handle")) return;
-    const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
-    if (idx !== -1) zoomToFeature(idx);
-  });
-
-  // Name click → open feature edit form
-  tile.querySelector(".tile-name-btn").addEventListener("click", (e) => {
-    e.stopPropagation();
-    const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
-    if (idx !== -1) openFeatureForm(idx);
-  });
-
-  // Duration button → show inline input
-  tile.querySelector(".tile-duration-btn").addEventListener("click", (e) => {
-    e.stopPropagation();
-    showDurationInput(tile, props._id, props.estimatedDuration);
-  });
-
-  // Delete button → confirm and remove
-  tile.querySelector(".tile-delete-btn").addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (confirm("Remove this feature from the trip?")) {
-      const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === props._id);
-      if (idx !== -1) TripManager.removeFeature(idx);
+    // Edit button — toggle editing on
+    if (e.target.closest(".tile-edit-btn") && !tile.classList.contains("editing")) {
+      tile.classList.add("editing");
+      tile.draggable = false;
+      setTileEditContent(tile, featureId, dayId);
+      return;
     }
+    // Cancel button or edit button when already editing — revert
+    if (e.target.closest(".tile-cancel-btn") || (e.target.closest(".tile-edit-btn") && tile.classList.contains("editing"))) {
+      tile.classList.remove("editing");
+      tile.draggable = true;
+      setTileViewContent(tile, featureId);
+      return;
+    }
+    // Save button
+    if (e.target.closest(".tile-save-btn")) {
+      const type = tile.dataset.type;
+      const updates = collectTileFormValues(tile, type);
+      const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === featureId);
+      if (idx !== -1) TripManager.updateFeature(idx, updates);
+      return;
+    }
+    // Delete button
+    if (e.target.closest(".tile-delete-btn")) {
+      if (confirm("Delete this feature?")) {
+        const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === featureId);
+        if (idx !== -1) TripManager.removeFeature(idx);
+      }
+      return;
+    }
+    // Drag handle — no zoom
+    if (e.target.closest(".tile-drag-handle")) return;
+    // Body click when not editing → zoom to feature
+    if (!tile.classList.contains("editing")) {
+      const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === featureId);
+      if (idx !== -1) zoomToFeature(idx);
+    }
+  });
+
+  // Prevent text selection/drag in editing inputs from propagating to tile drag
+  tile.addEventListener("mousedown", (e) => {
+    if (tile.classList.contains("editing")) e.stopPropagation();
   });
 
   // Drag events
   tile.addEventListener("dragstart", (e) => {
+    if (tile.classList.contains("editing")) { e.preventDefault(); return; }
     e.stopPropagation();
-    activeDragFeatureId = props._id;
+    activeDragFeatureId = featureId;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("application/x-feature", JSON.stringify({
-      featureId: props._id,
+      featureId,
       sourceType: "day",
       sourceDayId: dayId,
     }));
@@ -817,65 +789,86 @@ function buildFeatureTile(feature, dayId) {
     clearDragIndicator();
   });
 
+  tile.addEventListener("keydown", (e) => {
+    if ((e.key === "Delete" || e.key === "Backspace") && !tile.classList.contains("editing")) {
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
+      e.preventDefault();
+      const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === featureId);
+      if (idx !== -1 && confirm("Remove this feature?")) TripManager.removeFeature(idx);
+    }
+  });
+
+  setTileViewContent(tile, featureId);
   return tile;
 }
 
-// ---------------------------------------------------------------------------
-// Estimated duration inline input
-// ---------------------------------------------------------------------------
+function setTileViewContent(tile, featureId) {
+  const feature = TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
+  if (!feature) return;
+  const props = feature.properties;
+  const type = props.point_type || props.type;
+  const stats = getFeatureStats(props, type);
+  const notes = props.notes || "";
 
-function showDurationInput(tile, featureId, currentDuration) {
-  if (tile.querySelector(".tile-duration-input")) return; // already open
+  tile.innerHTML = `
+    <div class="tile-header-row">
+      <span class="tile-type-icon">${buildTypeIconHTML(type)}</span>
+      <span class="tile-title">${escapeHTML(getFeatureLabel(props, type))}</span>
+      ${stats ? `<span class="tile-stat">${escapeHTML(stats)}</span>` : ""}
+      <button class="tile-edit-btn" title="Edit">&#9998;</button>
+      <div class="tile-drag-handle" aria-hidden="true"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="2.5" r="1.2"/><circle cx="7" cy="2.5" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="3" cy="11.5" r="1.2"/><circle cx="7" cy="11.5" r="1.2"/></svg></div>
+    </div>
+    ${notes ? `<p class="tile-description">${escapeHTML(notes)}</p>` : ""}
+  `;
+}
 
-  const durationBtn = tile.querySelector(".tile-duration-btn");
-  durationBtn.style.display = "none";
+function setTileEditContent(tile, featureId, dayId) {
+  const feature = TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
+  if (!feature) return;
+  const props = feature.properties;
+  const type = props.point_type || props.type;
 
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = "0";
-  input.step = "5";
-  input.className = "tile-duration-input";
-  input.value = currentDuration || "";
-  input.placeholder = "min";
-  input.title = "Duration in minutes";
-
-  tile.querySelector(".tile-actions").insertBefore(input, durationBtn);
-  input.focus();
-  input.select();
-
-  function commitDuration() {
-    const val = parseInt(input.value, 10);
-    const idx = TripManager.currentTrip.features.findIndex(f => f.properties._id === featureId);
-    if (idx !== -1) {
-      TripManager.updateFeature(idx, { estimatedDuration: val > 0 ? val : undefined });
-    }
+  let fieldsHTML = "";
+  if (type === "camp") {
+    fieldsHTML += `<div class="tile-field"><label class="tile-field-label">Date</label><select class="tile-date-sel">${buildDateOptions(props.date)}</select></div>`;
+    fieldsHTML += `<label class="tile-checkbox-row"><input type="checkbox" class="tile-water-check" ${props.water_nearby ? "checked" : ""}> Water nearby</label>`;
+  } else if (type === "dayhike" || type === "rest") {
+    fieldsHTML += `<div class="tile-field"><label class="tile-field-label">Date</label><select class="tile-date-sel">${buildDateOptions(props.date)}</select></div>`;
+  } else if (type === "route") {
+    fieldsHTML += `<label class="tile-checkbox-row"><input type="checkbox" class="tile-planned-check" ${props.planned ? "checked" : ""}> Planned route</label>`;
   }
 
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); outsideHandler.cleanup(); commitDuration(); }
-    if (e.key === "Escape") { outsideHandler.cleanup(); TripManager.render(); }
-    e.stopPropagation();
-  });
-  input.addEventListener("click", (e) => e.stopPropagation());
-  input.addEventListener("dragstart", (e) => e.preventDefault());
+  tile.innerHTML = `
+    <div class="tile-header-row">
+      <span class="tile-type-icon">${buildTypeIconHTML(type)}</span>
+      <input class="tile-title-input" type="text" value="${escapeAttr(getFeatureLabel(props, type))}" />
+      <button class="tile-edit-btn active" title="Cancel editing">&#9998;</button>
+    </div>
+    ${fieldsHTML}
+    <textarea class="tile-notes-field" placeholder="Notes…">${escapeHTML(props.notes || "")}</textarea>
+    <div class="tile-edit-actions">
+      <button class="tile-cancel-btn">Cancel</button>
+      <button class="tile-save-btn">Save</button>
+      <button class="tile-delete-btn">Delete</button>
+    </div>
+  `;
 
-  // Commit only when clicking outside the tile, not on mouseleave
-  const outsideHandler = {
-    handler(e) {
-      if (!tile.contains(e.target)) {
-        this.cleanup();
-        commitDuration();
-      }
-    },
-    cleanup() {
-      document.removeEventListener("mousedown", this._bound, true);
-    },
-  };
-  outsideHandler._bound = outsideHandler.handler.bind(outsideHandler);
-  // Use rAF so this doesn't fire on the same click that opened the input
-  requestAnimationFrame(() => {
-    document.addEventListener("mousedown", outsideHandler._bound, true);
-  });
+  // Focus title input
+  tile.querySelector(".tile-title-input")?.focus();
+}
+
+function collectTileFormValues(tile, type) {
+  const updates = { name: tile.querySelector(".tile-title-input")?.value || "" };
+  if (type === "camp") {
+    updates.date = tile.querySelector(".tile-date-sel")?.value;
+    updates.water_nearby = tile.querySelector(".tile-water-check")?.checked || false;
+  } else if (type === "dayhike" || type === "rest") {
+    updates.date = tile.querySelector(".tile-date-sel")?.value;
+  } else if (type === "route") {
+    updates.planned = tile.querySelector(".tile-planned-check")?.checked || false;
+  }
+  updates.notes = tile.querySelector(".tile-notes-field")?.value || "";
+  return updates;
 }
 
 // ---------------------------------------------------------------------------
@@ -1003,118 +996,7 @@ function buildDateOptions(selectedDate) {
   return html;
 }
 
-function openFeatureForm(index) {
-  const feature = TripManager.currentTrip?.features[index];
-  if (!feature) return;
-
-  // Make sure trip panel is open
-  const tripPanel = document.getElementById("tripPanel");
-  tripPanel.classList.add("open");
-  document.getElementById("planBtn").classList.add("active");
-  document.body.classList.add("sidebar-open");
-
-  const container = document.getElementById("tripFeatureForm");
-  container.innerHTML = "";
-  container.classList.add("visible");
-
-  const props = feature.properties;
-  const type = props.point_type || props.type;
-  const iconHTML = buildTypeIconHTML(type);
-
-  const typeLabel = POINT_TYPE_LABELS[type] || type;
-  const formTitle = props.name
-    ? `Edit ${escapeHTML(props.name)}`
-    : `Edit ${typeLabel}`;
-  let formHTML = `<h4>${iconHTML} ${formTitle}</h4>`;
-
-  // Name field (all types)
-  formHTML += `<label>Name<input type="text" id="featName" value="${escapeAttr(props.name || "")}" /></label>`;
-
-  if (type === "route") {
-    formHTML += `
-      <label class="checkbox-label">
-        <input type="checkbox" id="featPlanned" ${props.planned ? "checked" : ""} /> Planned route
-      </label>
-      <label>Notes<textarea id="featNotes" rows="2">${escapeHTML(props.notes || "")}</textarea></label>
-    `;
-  } else if (type === "camp") {
-    formHTML += `
-      <label>Date<select id="featDate">${buildDateOptions(props.date)}</select></label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="featWaterNearby" ${props.water_nearby ? "checked" : ""} /> Water nearby
-      </label>
-      <label>Water notes<input type="text" id="featWaterNotes" value="${escapeAttr(props.water_notes || "")}" /></label>
-      <label>Notes<textarea id="featNotes" rows="2">${escapeHTML(props.notes || "")}</textarea></label>
-    `;
-  } else if (type === "dayhike" || type === "rest") {
-    formHTML += `
-      <label>Date<select id="featDate">${buildDateOptions(props.date)}</select></label>
-      <label>Notes<textarea id="featNotes" rows="2">${escapeHTML(props.notes || "")}</textarea></label>
-    `;
-  } else if (type === "waypoint") {
-    formHTML += `
-      <label>Type
-        <select id="featSubtype">
-          <option value="scenic" ${props.subtype === "scenic" ? "selected" : ""}>Scenic</option>
-          <option value="water" ${props.subtype === "water" ? "selected" : ""}>Water</option>
-          <option value="hazard" ${props.subtype === "hazard" ? "selected" : ""}>Hazard</option>
-          <option value="resupply" ${props.subtype === "resupply" ? "selected" : ""}>Resupply</option>
-        </select>
-      </label>
-      <label>Notes<textarea id="featNotes" rows="2">${escapeHTML(props.notes || "")}</textarea></label>
-    `;
-  }
-
-  formHTML += `
-    <div class="form-actions">
-      <button class="form-save" id="featSave">Save</button>
-      <button class="form-cancel" id="featCancel">Cancel</button>
-      <button class="form-delete" id="featDelete">Delete</button>
-    </div>
-  `;
-
-  container.innerHTML = formHTML;
-
-  document.getElementById("featSave").addEventListener("click", () => {
-    const updates = { name: document.getElementById("featName").value };
-
-    if (type === "route") {
-      updates.planned = document.getElementById("featPlanned").checked;
-      updates.notes = document.getElementById("featNotes").value;
-    } else if (type === "camp") {
-      updates.date = document.getElementById("featDate").value;
-      updates.water_nearby = document.getElementById("featWaterNearby").checked;
-      updates.water_notes = document.getElementById("featWaterNotes").value;
-      updates.notes = document.getElementById("featNotes").value;
-    } else if (type === "dayhike" || type === "rest") {
-      updates.date = document.getElementById("featDate").value;
-      updates.notes = document.getElementById("featNotes").value;
-    } else if (type === "waypoint") {
-      updates.subtype = document.getElementById("featSubtype").value;
-      updates.notes = document.getElementById("featNotes").value;
-    }
-
-    TripManager.updateFeature(index, updates);
-    closeFeatureForm();
-  });
-
-  document.getElementById("featCancel").addEventListener("click", closeFeatureForm);
-
-  document.getElementById("featDelete").addEventListener("click", () => {
-    if (confirm("Delete this feature?")) {
-      TripManager.removeFeature(index);
-      closeFeatureForm();
-    }
-  });
-}
-
-function closeFeatureForm() {
-  const container = document.getElementById("tripFeatureForm");
-  if (container) {
-    container.classList.remove("visible");
-    container.innerHTML = "";
-  }
-}
+// openFeatureForm / closeFeatureForm replaced by inline tile editing (setTileEditContent / setTileViewContent)
 
 function zoomToFeature(index) {
   const feature = TripManager.currentTrip?.features[index];
@@ -1199,14 +1081,19 @@ function switchToTab(tabName) {
 function openSidebar() {
   const tripPanel = document.getElementById("tripPanel");
   const toolbar = document.getElementById("planningToolbar");
+  const planBtnEl = document.getElementById("planBtn");
+  // Align toolbar top with planBtn before making it visible
+  if (planBtnEl && toolbar) {
+    toolbar.style.top = planBtnEl.getBoundingClientRect().top + "px";
+  }
   tripPanel.classList.add("open");
   document.getElementById("planBtn").classList.add("active");
-  document.body.classList.add("sidebar-open");
   toolbar.classList.add("visible");
+  document.body.classList.add("panel-open");
+  map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 520 }, duration: 250 });
   if (!TripManager.currentTrip) {
     TripManager.create("Untitled Trip");
   }
-  setTimeout(() => map.resize(), 260);
 }
 
 function closeSidebar() {
@@ -1214,10 +1101,10 @@ function closeSidebar() {
   const toolbar = document.getElementById("planningToolbar");
   tripPanel.classList.remove("open");
   document.getElementById("planBtn").classList.remove("active");
-  document.body.classList.remove("sidebar-open");
   toolbar.classList.remove("visible");
+  document.body.classList.remove("panel-open");
+  map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 250 });
   cancelDrawing();
-  setTimeout(() => map.resize(), 260);
 }
 
 // ---------------------------------------------------------------------------
@@ -1260,8 +1147,24 @@ function initTripPanel() {
     TripManager.addDay();
   });
 
-  // Drawing tool button
-  document.getElementById("drawRouteBtn").addEventListener("click", startRouteDrawing);
+  // Drawing tool buttons
+  document.getElementById("addRouteBtn").addEventListener("click", startRouteDrawing);
+  const deleteWaypointBtn = document.getElementById("deleteWaypointBtn");
+  if (deleteWaypointBtn) {
+    deleteWaypointBtn.addEventListener("click", () => {
+      if (isDeleteMode) exitDeleteMode();
+      else startDeleteMode();
+    });
+  }
+
+  // Expose alignment helper for planning.js (re-aligns toolbar with planBtn when needed)
+  window.alignPlanningToolbar = function () {
+    const planBtnEl = document.getElementById("planBtn");
+    const planningToolbarEl = document.getElementById("planningToolbar");
+    if (planBtnEl && planningToolbarEl) {
+      planningToolbarEl.style.top = planBtnEl.getBoundingClientRect().top + "px";
+    }
+  };
 
   // Point-type selector buttons
   initPointTypeSelector();
@@ -1271,11 +1174,15 @@ function initTripPanel() {
     if (e.key === "Escape") cancelDrawing();
   });
 
-  // Trip metadata change handlers
-  ["tripName", "tripStart", "tripEnd", "tripNotes"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("input", onTripMetaChange);
-  });
+  // Trip title input
+  const tripTitleInput = document.getElementById("tripTitle");
+  if (tripTitleInput) {
+    tripTitleInput.addEventListener("input", () => {
+      if (!TripManager.currentTrip) return;
+      TripManager.currentTrip.properties.name = tripTitleInput.value;
+      TripManager.save();
+    });
+  }
 
   // Download button
   document.getElementById("downloadTripBtn").addEventListener("click", () => {
@@ -1305,25 +1212,39 @@ function initTripPanel() {
   // Readme tab wiring
   // ---------------------------------------------------------------------------
 
-  // Mode toggle (Edit / Read)
-  document.querySelectorAll(".readme-mode-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      readmeMode = btn.dataset.mode;
-      document.querySelectorAll(".readme-mode-btn").forEach(b => {
-        b.classList.toggle("readme-mode-active", b === btn);
-      });
+  // Preview toggle button — 3D flip
+  const previewBtn = document.getElementById("readmePreviewBtn");
+  if (previewBtn) {
+    const front = previewBtn.querySelector(".btn-face--front");
+    const back  = previewBtn.querySelector(".btn-face--back");
+    previewBtn.addEventListener("click", () => {
       const editArea = document.getElementById("readmeEditArea");
       const readArea = document.getElementById("readmeReadArea");
       if (readmeMode === "edit") {
-        editArea.style.display = "";
-        readArea.style.display = "none";
-      } else {
+        readmeMode = "preview";
+        previewBtn.dataset.mode = "preview";
+        front.textContent = "Preview";
+        back.textContent  = "Edit";
         editArea.style.display = "none";
-        readArea.style.display = "";
-        renderReadme(); // refresh rendered output
+        readArea.style.display  = "";
+        renderReadme();
+      } else {
+        readmeMode = "edit";
+        previewBtn.dataset.mode = "edit";
+        front.textContent = "Edit";
+        back.textContent  = "Preview";
+        editArea.style.display  = "";
+        readArea.style.display  = "none";
       }
+      // Shimmy to confirm state change; suppress hover flip until mouseout
+      previewBtn.classList.remove("clicked");
+      void previewBtn.offsetWidth; // force reflow so animation restarts cleanly
+      previewBtn.classList.add("clicked");
     });
-  });
+    previewBtn.addEventListener("mouseleave", () => {
+      previewBtn.classList.remove("clicked");
+    });
+  }
 
   // Readme editor — save on input
   const readmeEditor = document.getElementById("readmeEditor");
@@ -1371,10 +1292,10 @@ function initTripPanel() {
     });
   }
 
-  // Print button — switch to read mode then print
+  // Print button — switch to preview mode then print
   document.getElementById("readmePrintBtn")?.addEventListener("click", () => {
-    if (readmeMode !== "read") {
-      document.querySelector(".readme-mode-btn[data-mode='read']")?.click();
+    if (readmeMode !== "preview") {
+      document.getElementById("readmePreviewBtn")?.click();
     }
     setTimeout(() => window.print(), 100);
   });
@@ -1434,21 +1355,6 @@ function initTripPanel() {
   // ---------------------------------------------------------------------------
   // Keyboard shortcuts
   // ---------------------------------------------------------------------------
-
-  // Delete/Backspace on a focused feature tile removes it
-  timelinePanel.addEventListener("keydown", (e) => {
-    if (e.key !== "Delete" && e.key !== "Backspace") return;
-    const tile = e.target.closest(".feature-tile");
-    if (!tile) return;
-    if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
-    e.preventDefault();
-    const featureId = tile.dataset.id;
-    if (!featureId) return;
-    const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === featureId);
-    if (idx !== -1 && confirm("Remove this feature from the trip?")) {
-      TripManager.removeFeature(idx);
-    }
-  });
 
   // Enter on a day header toggles map highlight for that day
   timelinePanel.addEventListener("keydown", (e) => {

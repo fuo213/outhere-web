@@ -17,6 +17,7 @@ let pendingFeatureType = null; // "route" when drawing
 
 // Route drawing state
 let isDrawingRoute = false;
+let isDeleteMode = false;
 let routeCoords = [];
 let routeSnapped = [];      // parallel array: true if vertex was snapped
 let routeVertexTypes = [];   // parallel array: "route" | "camp" | "dayhike" | "rest"
@@ -47,7 +48,9 @@ function startRouteDrawing() {
   routeDayhikeSegments = [];
   currentPointType = "route";
   pendingFeatureType = "route";
-  setActiveToolBtn("drawRouteBtn");
+  setActiveToolBtn("addRouteBtn");
+  document.getElementById("planningToolbar")?.classList.add("active");
+  if (typeof window.alignPlanningToolbar === "function") window.alignPlanningToolbar();
   showPointTypeSelector();
   setActivePointType("route");
   showRouteModal();
@@ -263,7 +266,8 @@ function finishRouteDrawing() {
 
   resetRouteDrawing();
   cancelDrawing();
-  openFeatureForm(routeIdx);
+  // Switch to timeline tab so user can see and edit the new features
+  switchToTab("timeline");
 }
 
 function resetRouteDrawing() {
@@ -953,11 +957,41 @@ function cancelDrawing() {
   if (isDrawingRoute) {
     resetRouteDrawing();
   }
+  if (isDeleteMode) exitDeleteMode();
   pendingFeatureType = null;
   setActiveToolBtn(null);
   hideDrawingHint();
   hideRouteModal();
   hidePointTypeSelector();
+  document.getElementById("planningToolbar")?.classList.remove("active");
+}
+
+function startDeleteMode() {
+  if (isDrawingRoute) cancelDrawing();
+  isDeleteMode = true;
+  map.getCanvas().style.cursor = "crosshair";
+  document.getElementById("planningToolbar")?.classList.add("active");
+  if (typeof window.alignPlanningToolbar === "function") window.alignPlanningToolbar();
+  setActiveToolBtn("deleteWaypointBtn");
+}
+
+function exitDeleteMode() {
+  isDeleteMode = false;
+  map.getCanvas().style.cursor = "";
+  document.getElementById("planningToolbar")?.classList.remove("active");
+  setActiveToolBtn(null);
+}
+
+function handleDeleteClick(e) {
+  if (!TripManager.currentTrip) return;
+  const tripLayers = ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"];
+  const features = map.queryRenderedFeatures(e.point, { layers: tripLayers });
+  if (!features.length) return;
+  const clickedId = features[0].properties._id;
+  const idx = TripManager.currentTrip.features.findIndex(
+    f => f.properties._id === clickedId
+  );
+  if (idx !== -1) TripManager.removeFeature(idx);
 }
 
 function setActiveToolBtn(id) {

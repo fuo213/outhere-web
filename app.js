@@ -246,6 +246,33 @@ map.addControl(
   "top-left"
 );
 
+// Helper: create a single-button MapLibre custom control
+function makeMapControl(id, label, svgHtml) {
+  return {
+    onAdd() {
+      this._el = document.createElement("div");
+      this._el.className = "maplibregl-ctrl maplibregl-ctrl-group";
+      this._el.innerHTML = `<button id="${id}" type="button" title="${label}" aria-label="${label}">${svgHtml}</button>`;
+      return this._el;
+    },
+    onRemove() { this._el?.parentNode?.removeChild(this._el); },
+  };
+}
+
+const planIconSvg = `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="5" cy="6" r="2.2" fill="currentColor"/>
+  <circle cx="15" cy="14" r="2.2" fill="currentColor"/>
+  <path d="M5 8.2 C4.5 12.5 15.5 7.5 15 11.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+</svg>`;
+
+const layersIconSvg = `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="10,3 18,7.5 10,12 2,7.5"/>
+  <polyline points="2,11 10,15.5 18,11"/>
+</svg>`;
+
+map.addControl(makeMapControl("planBtn", "Trip Planning", planIconSvg), "top-left");
+map.addControl(makeMapControl("layersBtn", "Map Layers", layersIconSvg), "top-left");
+
 // ---------------------------------------------------------------------------
 // Loading state
 // ---------------------------------------------------------------------------
@@ -495,6 +522,10 @@ map.on("load", () => {
   // Click handlers for route drawing + trip features
   // -------------------------------------------------------------------
   map.on("click", (e) => {
+    if (isDeleteMode) {
+      handleDeleteClick(e);
+      return;
+    }
     if (isDrawingRoute) {
       handleMapClickForRoute(e);
     }
