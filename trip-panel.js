@@ -2,14 +2,14 @@
  * OutHere Trip Planning — Trip State & Sidebar UI
  *
  * Manages the trip data model, renders it on MapLibre,
- * builds the tabbed sidebar (Timeline / Readme), and handles
+ * builds the notebook sidebar (overview + day accordion), and handles
  * localStorage persistence and GeoJSON download/upload.
  *
- * Data model (schema v3):
+ * Data model (schema v4):
  *   trip.features          — flat array of all feature objects (GeoJSON / MapLibre source)
  *   trip.unassigned        — array of feature IDs not yet assigned to a day
- *   trip.days              — array of { id, date, features: [featureId, ...] }
- *   trip.properties.readme — markdown string for Readme tab
+ *   trip.days              — array of { id, date, features: [featureId, ...], notes }
+ *   trip.properties.readme — markdown string for the Overview section
  *
  * Dependencies (loaded before this script):
  *   - map        (global, from app.js)
@@ -22,66 +22,41 @@
 
 const STORAGE_KEY = "outhere_trip";
 
-let readmeMode = "edit"; // "edit" | "preview"
-let activeDayId = null;  // day ID currently highlighted on map, or null
-
-const TEMPLATES = {
-  solo: `## Gear checklist
-- [ ] Tent/shelter
-- [ ] Sleeping bag
-- [ ] Sleeping pad
-- [ ] Stove + fuel
-- [ ] Water filter
-- [ ] First aid kit
-- [ ] Headlamp
-- [ ] Map/compass
-
-## Water plan
-Describe water sources and filtration strategy.
-
-## Permit info
-Permit number, ranger district, entry/exit points.
-
-## Emergency contacts
-Name, phone, relationship. Include local ranger station number.`,
-
-  group: `## Group members
-Name, role, emergency contact.
-
-## Shared gear
-- [ ] Tent (who carries?)
-- [ ] Stove + fuel
-- [ ] First aid kit
-- [ ] Navigation gear
-
-## Meal plan
-Breakfast, lunch, dinner per day.
-
-## Communication plan
-Satellite communicator owner, check-in schedule, emergency protocols.
-
-## Resupply points
-Location, method (cache/mail/store), day number.`,
-};
+let activeDayId = null;       // day ID currently highlighted on map, or null
+const expandedDayIds = new Set(); // which day sections are expanded (UI state only)
 
 const TripManager = {
   currentTrip: null,
 
-  create(name) {
+  create(name, { location = "", startDate = null, nights = 0 } = {}) {
     this.currentTrip = {
       type: "FeatureCollection",
       properties: {
         trip_id: crypto.randomUUID(),
         name: name || "Untitled Trip",
+        location,
         created: new Date().toISOString(),
         sharing: "private",
         readme: "",
-        _schema_version: 3,
+        _schema_version: 4,
+        dates: startDate ? {
+          start: startDate,
+          end: offsetDate(startDate, nights),
+        } : null,
       },
       days: [],
       unassigned: [],
       features: [],
     };
+    // Pre-create days
+    for (let i = 0; i <= nights; i++) {
+      this.currentTrip.days.push({
+        id: crypto.randomUUID(),
+        date: startDate ? offsetDate(startDate, i) : null,
+        features: [],
+        notes: "",
+      });
+    }
     this.render();
     this.save();
   },
@@ -130,6 +105,7 @@ const TripManager = {
       id: crypto.randomUUID(),
       date: computeDayDate(this.currentTrip, idx),
       features: [],
+      notes: "",
     };
     this.currentTrip.days.push(day);
     this.render();
@@ -176,23 +152,33 @@ const TripManager = {
   },
 
   save() {
-    if (this.currentTrip) {
+    if (!this.currentTrip) return;
+    try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentTrip));
+    } catch (err) {
+      // Quota exceeded or storage unavailable — keep the app running
+      console.warn("[trip] could not save trip to localStorage:", err.message);
     }
   },
 
   loadFromStorage() {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        this.currentTrip = migrateTrip(JSON.parse(saved));
-        this.render();
-        return true;
-      } catch (_) {
-        return false;
+    if (!saved) return false;
+    try {
+      const parsed = JSON.parse(saved);
+      if (!parsed || parsed.type !== "FeatureCollection" ||
+          !Array.isArray(parsed.features) || !parsed.properties) {
+        throw new Error("saved trip has invalid shape");
       }
+      this.currentTrip = migrateTrip(parsed);
+      this.render();
+      return true;
+    } catch (err) {
+      // Corrupt saved trip: drop it so we don't fail on every load
+      console.warn("[trip] discarding corrupt saved trip:", err.message);
+      localStorage.removeItem(STORAGE_KEY);
+      return false;
     }
-    return false;
   },
 
   loadFromGeoJSON(geojson) {
@@ -222,6 +208,56 @@ const TripManager = {
     a.href = url;
     const slug = this.currentTrip.properties.name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
     a.download = `${slug}.geojson`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportMarkdown() {
+    if (!this.currentTrip) return;
+    const trip = this.currentTrip;
+    const name = trip.properties.name || "Untitled Trip";
+    const location = trip.properties.location || "";
+
+    let md = `# ${name}${location ? ` — ${location}` : ""}\n\n`;
+
+    if (trip.properties.readme?.trim()) {
+      md += trip.properties.readme.trim() + "\n\n";
+    }
+
+    for (let i = 0; i < (trip.days || []).length; i++) {
+      const day = trip.days[i];
+      const dateLabel = day.date ? formatDateLabel(day.date) : null;
+      const heading = `Day ${i + 1}${dateLabel ? ` — ${dateLabel}` : ""}`;
+      md += `---\n\n## ${heading}\n\n`;
+
+      // Auto-summary from assigned features
+      const dayFeatures = (day.features || [])
+        .map(id => trip.features.find(f => f.properties._id === id))
+        .filter(Boolean);
+
+      for (const f of dayFeatures) {
+        const props = f.properties;
+        const type = props.point_type || props.type;
+        const label = getFeatureLabel(props, type);
+        const stats = getFeatureStats(props, type);
+        md += `- **${label}**${stats ? ` — ${stats}` : ""}\n`;
+      }
+
+      if (dayFeatures.length > 0) md += "\n";
+
+      if (day.notes?.trim()) {
+        md += day.notes.trim() + "\n\n";
+      } else {
+        md += "\n";
+      }
+    }
+
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    a.download = `${slug}.md`;
     a.click();
     URL.revokeObjectURL(url);
   },
@@ -272,6 +308,17 @@ function migrateTrip(trip) {
     trip.properties._schema_version = 3;
   }
 
+  // v3 → v4: add per-day notes and trip location
+  if ((trip.properties._schema_version || 1) < 4) {
+    if (!trip.properties.location) {
+      trip.properties.location = "";
+    }
+    for (const day of (trip.days || [])) {
+      if (!day.notes) day.notes = "";
+    }
+    trip.properties._schema_version = 4;
+  }
+
   return trip;
 }
 
@@ -282,8 +329,12 @@ function migrateTrip(trip) {
 function computeDayDate(trip, dayIndex) {
   const start = trip.properties.dates?.start;
   if (!start) return null;
-  const d = new Date(start + "T00:00:00");
-  d.setDate(d.getDate() + dayIndex);
+  return offsetDate(start, dayIndex);
+}
+
+function offsetDate(isoDate, days) {
+  const d = new Date(isoDate + "T00:00:00");
+  d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -325,21 +376,26 @@ function renderMetaChips() {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: top-level render dispatcher
+// Notebook: top-level render dispatcher
 // ---------------------------------------------------------------------------
 
 function renderSidebar() {
-  renderTimeline();
-  renderReadme();
+  renderNotebook();
 }
 
-// ---------------------------------------------------------------------------
-// Sidebar: Timeline tab
-// ---------------------------------------------------------------------------
-
-function renderTimeline() {
+function renderNotebook() {
+  renderOverview();
   renderUnassignedPool();
   renderDaySections();
+}
+
+function renderOverview() {
+  const editor = document.getElementById("readmeEditor");
+  if (!editor) return;
+  const content = TripManager.currentTrip?.properties?.readme || "";
+  if (document.activeElement !== editor) {
+    editor.value = content;
+  }
 }
 
 function renderUnassignedPool() {
@@ -373,138 +429,80 @@ function renderDaySections() {
   const trip = TripManager.currentTrip;
   if (!trip || !trip.days) return;
 
+  // Drop the map highlight if the highlighted day no longer exists
+  if (activeDayId && !trip.days.some(d => d.id === activeDayId)) {
+    setActiveDayHighlight(null);
+  }
+
   trip.days.forEach((day, idx) => {
-    if (idx > 0) container.appendChild(buildDaySectionDivider());
     container.appendChild(buildDaySection(day, idx));
   });
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: Readme tab
+// Sparkline — SVG elevation profile renderer
 // ---------------------------------------------------------------------------
 
-function renderReadme() {
-  const trip = TripManager.currentTrip;
-  const content = trip?.properties?.readme || "";
+/**
+ * Build an SVG elevation sparkline from a profile array (values in feet).
+ * Returns an HTML string for an <svg> element.
+ *
+ * @param {number[]} profile  - elevation values in feet
+ * @param {number}   width    - SVG pixel width
+ * @param {number}   height   - SVG pixel height
+ * @param {string}   cssClass - class name applied to the <svg>
+ */
+function buildSparklineSVG(profile, width, height, cssClass) {
+  if (!profile || profile.length < 2) return "";
 
-  // Update editor value (don't clobber if the user is actively typing)
-  const editor = document.getElementById("readmeEditor");
-  if (editor && document.activeElement !== editor) {
-    editor.value = content;
-  }
+  const min = Math.min(...profile);
+  const max = Math.max(...profile);
+  const range = max - min || 1;
+  const padV = 3; // vertical padding in px
 
-  // Template picker: visible only when content is empty
-  const picker = document.getElementById("readmeTemplatePicker");
-  if (picker) picker.style.display = content.trim() === "" ? "" : "none";
-
-  // Re-render TOC from current content
-  renderReadmeTOC(content);
-
-  // In preview mode, refresh the rendered output
-  if (readmeMode === "preview") {
-    const rendered = document.getElementById("readmeRendered");
-    if (rendered) {
-      rendered.innerHTML = parseMarkdown(content);
-      attachTOCScrollHandlers();
-    }
-  }
-}
-
-function renderReadmeTOC(content) {
-  const toc = document.getElementById("readmeToc");
-  if (!toc) return;
-  const headings = parseMarkdownHeadings(content);
-  if (headings.length === 0) {
-    toc.innerHTML = "";
-    toc.style.display = "none";
-    return;
-  }
-  toc.style.display = "";
-  toc.innerHTML = headings.map(h => {
-    const indent = Math.max(0, h.level - 2) * 12;
-    return `<a class="toc-link" href="#${escapeAttr(h.slug)}" style="padding-left:${8 + indent}px">${escapeHTML(h.text)}</a>`;
-  }).join("");
-  attachTOCScrollHandlers();
-}
-
-function attachTOCScrollHandlers() {
-  const toc = document.getElementById("readmeToc");
-  if (!toc) return;
-  toc.querySelectorAll(".toc-link").forEach(link => {
-    link.onclick = (e) => {
-      e.preventDefault();
-      const slug = link.getAttribute("href").slice(1);
-      const target = document.getElementById(slug);
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
+  const pts = profile.map((e, i) => {
+    const x = (i / (profile.length - 1)) * width;
+    const y = padV + (height - padV * 2) * (1 - (e - min) / range);
+    return [x.toFixed(2), y.toFixed(2)];
   });
+
+  const linePoints = pts.map(p => p.join(",")).join(" ");
+
+  // Area fill path: line + drop to bottom corners
+  const areaPath = [
+    `M ${pts[0][0]},${pts[0][1]}`,
+    ...pts.slice(1).map(p => `L ${p[0]},${p[1]}`),
+    `L ${width},${height} L 0,${height} Z`,
+  ].join(" ");
+
+  const gradId = `spk-${Math.random().toString(36).slice(2, 7)}`;
+
+  return `<svg class="${escapeAttr(cssClass)}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="currentColor" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"/>
+      </linearGradient>
+    </defs>
+    <path d="${escapeAttr(areaPath)}" fill="url(#${gradId})"/>
+    <polyline points="${escapeAttr(linePoints)}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
 }
 
-function parseMarkdownHeadings(content) {
-  const headings = [];
-  for (const line of content.split("\n")) {
-    const m = line.match(/^(#{2,4})\s+(.+)/);
-    if (m) headings.push({ level: m[1].length, text: m[2].trim(), slug: slugify(m[2].trim()) });
-  }
-  return headings;
-}
-
-function slugify(str) {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-function parseMarkdown(md) {
-  if (!md || !md.trim()) {
-    return '<p class="readme-empty-msg">No content yet. Switch to Edit mode to add trip notes.</p>';
-  }
-  const lines = md.split("\n");
-  let html = "";
-  let inList = false;
-  let listTag = "";
-
-  const closeList = () => {
-    if (inList) { html += `</${listTag}>`; inList = false; listTag = ""; }
-  };
-
-  for (const line of lines) {
-    // Headings
-    const hm = line.match(/^(#{1,4})\s+(.+)/);
-    if (hm) {
-      closeList();
-      const lvl = hm[1].length;
-      const id = slugify(hm[2]);
-      html += `<h${lvl} id="${escapeAttr(id)}">${inlineMarkdown(hm[2])}</h${lvl}>`;
-      continue;
+/**
+ * Get the combined elevation profile for a day's route features.
+ * If a day has multiple routes, concatenates their profiles.
+ */
+function getDayElevationProfile(dayFeatures) {
+  const profile = [];
+  for (const f of dayFeatures) {
+    const p = f.properties;
+    if ((p.point_type || p.type) === "route" && Array.isArray(p.elevation_profile)) {
+      if (profile.length > 0) profile.push(...p.elevation_profile.slice(1));
+      else profile.push(...p.elevation_profile);
     }
-    // Checkbox list item
-    const cbm = line.match(/^[-*]\s+\[([ xX])\]\s+(.*)/);
-    if (cbm) {
-      if (!inList || listTag !== "ul") { closeList(); html += '<ul class="readme-checklist">'; inList = true; listTag = "ul"; }
-      const checked = cbm[1].trim() !== "";
-      html += `<li><label class="readme-check-label"><input type="checkbox" ${checked ? "checked" : ""} onclick="return false">${inlineMarkdown(cbm[2])}</label></li>`;
-      continue;
-    }
-    // Regular list item
-    const lm = line.match(/^[-*]\s+(.*)/);
-    if (lm) {
-      if (!inList || listTag !== "ul") { closeList(); html += "<ul>"; inList = true; listTag = "ul"; }
-      html += `<li>${inlineMarkdown(lm[1])}</li>`;
-      continue;
-    }
-    closeList();
-    if (line.trim() === "") continue;
-    html += `<p>${inlineMarkdown(line)}</p>`;
   }
-  closeList();
-  return html;
-}
-
-function inlineMarkdown(text) {
-  text = escapeHTML(text);
-  text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  return text;
+  return profile;
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +514,9 @@ function setActiveDayHighlight(dayId) {
 
   // Update sidebar visual state
   document.querySelectorAll(".day-section").forEach(section => {
-    section.classList.toggle("day-active", section.dataset.dayId === dayId);
+    const isActive = section.dataset.dayId === dayId;
+    section.classList.toggle("day-active", isActive);
+    section.querySelector(".day-focus-btn")?.setAttribute("aria-pressed", isActive ? "true" : "false");
   });
 
   if (!map || !map.isStyleLoaded()) return;
@@ -644,69 +644,151 @@ function buildFeatureChip(feature) {
 // Sidebar: build day section
 // ---------------------------------------------------------------------------
 
-function buildDaySectionDivider() {
-  const divider = document.createElement("div");
-  divider.className = "day-divider";
-  divider.innerHTML = `<svg width="100%" height="20" viewBox="0 0 276 20" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-    <line x1="0" y1="10" x2="276" y2="10" stroke="#c9c3b5" stroke-width="1" stroke-dasharray="3 4"/>
-    <circle cx="20" cy="10" r="2" fill="#c9c3b5"/>
-    <circle cx="138" cy="10" r="2" fill="#c9c3b5"/>
-    <circle cx="256" cy="10" r="2" fill="#c9c3b5"/>
-  </svg>`;
-  return divider;
-}
-
 function buildDaySection(day, dayIndex) {
   const trip = TripManager.currentTrip;
   const dayFeatures = (day.features || [])
     .map(id => trip.features.find(f => f.properties._id === id))
     .filter(Boolean);
   const stats = computeDayStats(dayFeatures);
+  const profile = getDayElevationProfile(dayFeatures);
+  const isExpanded = expandedDayIds.has(day.id);
 
   const section = document.createElement("div");
-  section.className = "day-section";
+  section.className = "day-section" + (isExpanded ? " expanded" : "") + (activeDayId === day.id ? " day-active" : "");
   section.dataset.dayId = day.id;
 
-  // Build inline stats string
+  // ── Collapsed header row ──────────────────────────────────────────────────
+  const dateLabel = day.date ? formatDateLabel(day.date) : "";
+
   const statParts = [];
   if (stats.totalMiles > 0) statParts.push(`${stats.totalMiles.toFixed(1)} mi`);
-  if (stats.totalElevGain > 0) statParts.push(`+${Math.round(stats.totalElevGain).toLocaleString()} ft`);
-  if (stats.totalMinutes > 0) statParts.push(formatDuration(stats.totalMinutes));
-  if (stats.hasWater) statParts.push("water nearby");
-  const statsText = statParts.join(" · ");
+  if (stats.totalElevGain > 0) statParts.push(`+${stats.totalElevGain.toLocaleString()} ft`);
 
-  // Date label: use day.date if set
-  const dateLabel = day.date ? formatDateLabel(day.date) : "";
-  const dateText = dateLabel ? ` — ${dateLabel}` : "";
+  const header = document.createElement("div");
+  header.className = "day-collapsed-header";
+  header.setAttribute("tabindex", "0");
+  header.setAttribute("role", "button");
+  header.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+  header.setAttribute("aria-label", `Day ${dayIndex + 1}${dateLabel ? `, ${dateLabel}` : ""}`);
 
-  section.innerHTML = `
-    <div class="day-header" tabindex="0" role="button" aria-label="Day ${dayIndex + 1}${dateLabel ? `, ${dateLabel}` : ""}">
+  header.innerHTML = `
+    <svg class="day-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="2,3 5,7 8,3"/>
+    </svg>
+    <div class="day-header-info">
       <span class="day-label">Day ${dayIndex + 1}</span>
       ${dateLabel ? `<span class="day-date">${escapeHTML(dateLabel)}</span>` : ""}
-      <span class="day-rule"></span>
-      ${statsText ? `<span class="day-stats-inline">${escapeHTML(statsText)}</span>` : ""}
     </div>
-    <div class="day-feature-list"></div>
+    <div class="day-sparkline-mini-wrap">
+      ${profile.length >= 2 ? buildSparklineSVG(profile, 72, 20, "day-sparkline-mini") : ""}
+    </div>
+    <div class="day-stats-col">
+      ${statParts.map(s => `<span class="day-stat-item">${escapeHTML(s)}</span>`).join("")}
+    </div>
+    <button class="day-focus-btn" title="Highlight this day on the map" aria-label="Highlight day ${dayIndex + 1} on the map" aria-pressed="${activeDayId === day.id ? "true" : "false"}">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 1 C3.8 1 2 2.8 2 5 C2 8 6 11 6 11 C6 11 10 8 10 5 C10 2.8 8.2 1 6 1 Z"/>
+        <circle cx="6" cy="5" r="1.4"/>
+      </svg>
+    </button>
   `;
 
-  // Click day header to toggle map highlight for that day
-  section.querySelector(".day-header").addEventListener("click", () => {
+  // Map-highlight toggle (doesn't expand/collapse the section)
+  header.querySelector(".day-focus-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
     setActiveDayHighlight(activeDayId === day.id ? null : day.id);
   });
 
-  const featureList = section.querySelector(".day-feature-list");
+  // Toggle expand/collapse on header click
+  header.addEventListener("click", () => {
+    if (expandedDayIds.has(day.id)) {
+      expandedDayIds.delete(day.id);
+      section.classList.remove("expanded");
+      header.setAttribute("aria-expanded", "false");
+    } else {
+      expandedDayIds.add(day.id);
+      section.classList.add("expanded");
+      header.setAttribute("aria-expanded", "true");
+    }
+  });
+  header.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); header.click(); }
+  });
+
+  section.appendChild(header);
+
+  // ── Expanded body ─────────────────────────────────────────────────────────
+  const body = document.createElement("div");
+  body.className = "day-body";
+
+  // Full-width sparkline
+  if (profile.length >= 2) {
+    const sparklineWrap = document.createElement("div");
+    sparklineWrap.className = "day-sparkline-full-wrap";
+    const gainLabel = stats.totalElevGain > 0 ? `+${stats.totalElevGain.toLocaleString()} ft` : "";
+    const lossLabel = stats.totalElevLoss > 0 ? `−${stats.totalElevLoss.toLocaleString()} ft` : "";
+    sparklineWrap.innerHTML = `
+      <div class="day-sparkline-labels">
+        ${gainLabel ? `<span class="sparkline-gain">${escapeHTML(gainLabel)}</span>` : ""}
+        ${lossLabel ? `<span class="sparkline-loss">${escapeHTML(lossLabel)}</span>` : ""}
+      </div>
+      ${buildSparklineSVG(profile, 460, 52, "day-sparkline-full")}
+    `;
+    body.appendChild(sparklineWrap);
+  }
+
+  // Auto-summary (elevated feature list)
+  const summary = buildDayAutoSummary(dayFeatures, day.id);
+  body.appendChild(summary);
+
+  // Per-day notes editor
+  const notesWrap = document.createElement("div");
+  notesWrap.className = "day-notes-wrap";
+  const notesEl = document.createElement("textarea");
+  notesEl.className = "notes-editor";
+  notesEl.placeholder = "Day notes — water sources, hazards, beta, key distances…\n\nMarkdown supported.";
+  notesEl.value = day.notes || "";
+  notesEl.addEventListener("input", () => {
+    const d = TripManager.currentTrip?.days.find(dd => dd.id === day.id);
+    if (d) { d.notes = notesEl.value; TripManager.save(); }
+  });
+  // Prevent drag from textarea propagating to outer drag handlers
+  notesEl.addEventListener("mousedown", e => e.stopPropagation());
+  notesWrap.appendChild(notesEl);
+  body.appendChild(notesWrap);
+
+  section.appendChild(body);
+  return section;
+}
+
+// ---------------------------------------------------------------------------
+// Day auto-summary — elevated read-only feature list inside expanded day
+// ---------------------------------------------------------------------------
+
+function buildDayAutoSummary(dayFeatures, dayId) {
+  const wrap = document.createElement("div");
+  wrap.className = "day-auto-summary";
+
+  // Feature list area (also serves as the drag-and-drop target)
+  const featureList = document.createElement("div");
+  featureList.className = "day-feature-list";
+
   if (dayFeatures.length === 0) {
-    featureList.innerHTML = `<div class="day-drop-zone"><svg class="day-drop-zone-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#A89880" stroke-width="1.2" stroke-linecap="round"><polyline points="2,17 6,5 10,12 13,3 18,17"/></svg><span class="day-drop-zone-label">Drag waypoints here</span></div>`;
+    featureList.innerHTML = `
+      <div class="day-drop-zone">
+        <svg class="day-drop-zone-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#A89880" stroke-width="1.2" stroke-linecap="round">
+          <polyline points="2,17 6,5 10,12 13,3 18,17"/>
+        </svg>
+        <span class="day-drop-zone-label">Drag waypoints here</span>
+      </div>`;
   } else {
     for (const f of dayFeatures) {
-      featureList.appendChild(buildFeatureTile(f, day.id));
+      featureList.appendChild(buildFeatureTile(f, dayId));
     }
   }
 
-  // Mark as active if this day is the current highlight
-  if (activeDayId === day.id) section.classList.add("day-active");
-
-  return section;
+  wrap.appendChild(featureList);
+  return wrap;
 }
 
 // ---------------------------------------------------------------------------
@@ -954,6 +1036,7 @@ function getFeatureStats(props, type) {
 function computeDayStats(features) {
   let totalMiles = 0;
   let totalElevGain = 0;
+  let totalElevLoss = 0;
   let totalMinutes = 0;
   let hasWater = false;
 
@@ -963,12 +1046,13 @@ function computeDayStats(features) {
     if (type === "route") {
       totalMiles += (p.main_route_distance_mi || 0) + (p.dayhike_distance_mi || 0);
       totalElevGain += p.elevation_gain_ft || 0;
+      totalElevLoss += p.elevation_loss_ft || 0;
     }
     if (p.estimatedDuration) totalMinutes += p.estimatedDuration;
     if ((type === "camp") && p.water_nearby) hasWater = true;
   }
 
-  return { totalMiles, totalElevGain, totalMinutes, hasWater };
+  return { totalMiles, totalElevGain, totalElevLoss, totalMinutes, hasWater };
 }
 
 function formatDuration(minutes) {
@@ -1068,31 +1152,33 @@ function handleFileUpload(file) {
 // Sidebar open/close helpers
 // ---------------------------------------------------------------------------
 
-function switchToTab(tabName) {
-  document.querySelectorAll(".sidebar-tab").forEach(t => {
-    const active = t.dataset.tab === tabName;
-    t.classList.toggle("active", active);
-    t.setAttribute("aria-selected", active ? "true" : "false");
-  });
-  document.getElementById("timelinePanel").classList.toggle("sidebar-tab-panel--hidden", tabName !== "timeline");
-  document.getElementById("readmePanel").classList.toggle("sidebar-tab-panel--hidden", tabName !== "readme");
+/** Map padding used to keep the visible map centered next to the open panel. */
+function panelMapPadding() {
+  // On mobile the panel overlays the full map — don't pad.
+  return window.innerWidth <= 640 ? 0 : 520;
+}
+
+/** Re-align the floating planning toolbar with the Plan map control. */
+function alignPlanningToolbar() {
+  const planBtnEl = document.getElementById("planBtn");
+  const planningToolbarEl = document.getElementById("planningToolbar");
+  if (planBtnEl && planningToolbarEl) {
+    planningToolbarEl.style.top = planBtnEl.getBoundingClientRect().top + "px";
+  }
 }
 
 function openSidebar() {
   const tripPanel = document.getElementById("tripPanel");
   const toolbar = document.getElementById("planningToolbar");
-  const planBtnEl = document.getElementById("planBtn");
   // Align toolbar top with planBtn before making it visible
-  if (planBtnEl && toolbar) {
-    toolbar.style.top = planBtnEl.getBoundingClientRect().top + "px";
-  }
+  alignPlanningToolbar();
   tripPanel.classList.add("open");
   document.getElementById("planBtn").classList.add("active");
   toolbar.classList.add("visible");
   document.body.classList.add("panel-open");
-  map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 520 }, duration: 250 });
+  map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: panelMapPadding() }, duration: 250 });
   if (!TripManager.currentTrip) {
-    TripManager.create("Untitled Trip");
+    showOnboardingModal();
   }
 }
 
@@ -1129,19 +1215,6 @@ function initTripPanel() {
     closeSidebar();
   });
 
-  // Tab switching
-  document.querySelectorAll(".sidebar-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".sidebar-tab").forEach(t => {
-        t.classList.toggle("active", t === tab);
-        t.setAttribute("aria-selected", t === tab ? "true" : "false");
-      });
-      const tabName = tab.dataset.tab;
-      document.getElementById("timelinePanel").classList.toggle("sidebar-tab-panel--hidden", tabName !== "timeline");
-      document.getElementById("readmePanel").classList.toggle("sidebar-tab-panel--hidden", tabName !== "readme");
-    });
-  });
-
   // Add Day button
   document.getElementById("addDayBtn").addEventListener("click", () => {
     TripManager.addDay();
@@ -1156,15 +1229,6 @@ function initTripPanel() {
       else startDeleteMode();
     });
   }
-
-  // Expose alignment helper for planning.js (re-aligns toolbar with planBtn when needed)
-  window.alignPlanningToolbar = function () {
-    const planBtnEl = document.getElementById("planBtn");
-    const planningToolbarEl = document.getElementById("planningToolbar");
-    if (planBtnEl && planningToolbarEl) {
-      planningToolbarEl.style.top = planBtnEl.getBoundingClientRect().top + "px";
-    }
-  };
 
   // Point-type selector buttons
   initPointTypeSelector();
@@ -1184,95 +1248,26 @@ function initTripPanel() {
     });
   }
 
-  // Download button
-  document.getElementById("downloadTripBtn").addEventListener("click", () => {
-    TripManager.download();
+  // Overview section: collapse/expand toggle
+  document.getElementById("overviewHeader")?.addEventListener("click", (e) => {
+    // Header action links (e.g. Import .md) shouldn't toggle the section
+    if (e.target.closest(".overview-header-actions")) return;
+    const section = document.getElementById("overviewSection");
+    section?.classList.toggle("expanded");
   });
 
-  // Upload button
-  document.getElementById("loadTripInput").addEventListener("change", (e) => {
-    if (e.target.files[0]) {
-      handleFileUpload(e.target.files[0]);
-      e.target.value = "";
-    }
-  });
-
-  // New trip button
-  document.getElementById("newTripBtn").addEventListener("click", () => {
-    if (TripManager.currentTrip && TripManager.currentTrip.features.length > 0) {
-      if (!confirm("Start a new trip? Current trip will remain in Downloads if saved.")) return;
-    }
-    TripManager.create("Untitled Trip");
-  });
-
-  // Load saved trip from localStorage
-  TripManager.loadFromStorage();
-
-  // ---------------------------------------------------------------------------
-  // Readme tab wiring
-  // ---------------------------------------------------------------------------
-
-  // Preview toggle button — 3D flip
-  const previewBtn = document.getElementById("readmePreviewBtn");
-  if (previewBtn) {
-    const front = previewBtn.querySelector(".btn-face--front");
-    const back  = previewBtn.querySelector(".btn-face--back");
-    previewBtn.addEventListener("click", () => {
-      const editArea = document.getElementById("readmeEditArea");
-      const readArea = document.getElementById("readmeReadArea");
-      if (readmeMode === "edit") {
-        readmeMode = "preview";
-        previewBtn.dataset.mode = "preview";
-        front.textContent = "Preview";
-        back.textContent  = "Edit";
-        editArea.style.display = "none";
-        readArea.style.display  = "";
-        renderReadme();
-      } else {
-        readmeMode = "edit";
-        previewBtn.dataset.mode = "edit";
-        front.textContent = "Edit";
-        back.textContent  = "Preview";
-        editArea.style.display  = "";
-        readArea.style.display  = "none";
-      }
-      // Shimmy to confirm state change; suppress hover flip until mouseout
-      previewBtn.classList.remove("clicked");
-      void previewBtn.offsetWidth; // force reflow so animation restarts cleanly
-      previewBtn.classList.add("clicked");
-    });
-    previewBtn.addEventListener("mouseleave", () => {
-      previewBtn.classList.remove("clicked");
-    });
-  }
-
-  // Readme editor — save on input
+  // Overview notes editor — save on input
   const readmeEditor = document.getElementById("readmeEditor");
   if (readmeEditor) {
     readmeEditor.addEventListener("input", () => {
       if (!TripManager.currentTrip) return;
-      const content = readmeEditor.value;
-      TripManager.currentTrip.properties.readme = content;
+      TripManager.currentTrip.properties.readme = readmeEditor.value;
       TripManager.save();
-      renderReadmeTOC(content);
-      const picker = document.getElementById("readmeTemplatePicker");
-      if (picker) picker.style.display = content.trim() === "" ? "" : "none";
     });
+    readmeEditor.addEventListener("mousedown", e => e.stopPropagation());
   }
 
-  // Template buttons
-  document.querySelectorAll(".template-opt-btn[data-template]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (!TripManager.currentTrip) return;
-      const content = TEMPLATES[btn.dataset.template] || "";
-      TripManager.currentTrip.properties.readme = content;
-      TripManager.save();
-      if (readmeEditor) readmeEditor.value = content;
-      renderReadme();
-    });
-  });
-
-  // Import .md file
+  // Import .md file into overview
   const mdInput = document.getElementById("readmeMdInput");
   if (mdInput) {
     mdInput.addEventListener("change", (e) => {
@@ -1281,32 +1276,51 @@ function initTripPanel() {
       const reader = new FileReader();
       reader.onload = (ev) => {
         if (!TripManager.currentTrip) return;
-        const content = ev.target.result;
-        TripManager.currentTrip.properties.readme = content;
+        TripManager.currentTrip.properties.readme = ev.target.result;
         TripManager.save();
-        if (readmeEditor) readmeEditor.value = content;
-        renderReadme();
+        if (readmeEditor) readmeEditor.value = ev.target.result;
       };
       reader.readAsText(file);
       e.target.value = "";
     });
   }
 
-  // Print button — switch to preview mode then print
-  document.getElementById("readmePrintBtn")?.addEventListener("click", () => {
-    if (readmeMode !== "preview") {
-      document.getElementById("readmePreviewBtn")?.click();
-    }
-    setTimeout(() => window.print(), 100);
+  // Download GeoJSON
+  document.getElementById("downloadTripBtn").addEventListener("click", () => {
+    TripManager.download();
   });
 
+  // Export Markdown
+  document.getElementById("exportMarkdownBtn")?.addEventListener("click", () => {
+    TripManager.exportMarkdown();
+  });
+
+  // Load trip from file
+  document.getElementById("loadTripInput").addEventListener("change", (e) => {
+    if (e.target.files[0]) {
+      handleFileUpload(e.target.files[0]);
+      e.target.value = "";
+    }
+  });
+
+  // New trip button → show onboarding modal
+  document.getElementById("newTripBtn").addEventListener("click", () => {
+    if (TripManager.currentTrip && TripManager.currentTrip.features.length > 0) {
+      if (!confirm("Start a new trip? Current trip will remain in Downloads if saved.")) return;
+    }
+    showOnboardingModal();
+  });
+
+  // Load saved trip; if none, show onboarding on first open
+  TripManager.loadFromStorage();
+
   // ---------------------------------------------------------------------------
-  // Drag-and-drop event delegation (single listener on timeline panel)
+  // Drag-and-drop event delegation (notebook panel)
   // ---------------------------------------------------------------------------
 
-  const timelinePanel = document.getElementById("timelinePanel");
+  const notebookPanel = document.getElementById("notebookPanel");
 
-  timelinePanel.addEventListener("dragover", (e) => {
+  notebookPanel.addEventListener("dragover", (e) => {
     e.preventDefault();
     const featureList = e.target.closest(".day-feature-list");
     const pool = e.target.closest(".unassigned-pool");
@@ -1322,7 +1336,7 @@ function initTripPanel() {
     }
   });
 
-  timelinePanel.addEventListener("dragleave", (e) => {
+  notebookPanel.addEventListener("dragleave", (e) => {
     const featureList = e.target.closest(".day-feature-list");
     const pool = e.target.closest(".unassigned-pool");
     if (featureList && !featureList.contains(e.relatedTarget)) {
@@ -1333,7 +1347,7 @@ function initTripPanel() {
     }
   });
 
-  timelinePanel.addEventListener("drop", (e) => {
+  notebookPanel.addEventListener("drop", (e) => {
     e.preventDefault();
     const data = parseDragData(e);
     if (!data) return;
@@ -1345,6 +1359,8 @@ function initTripPanel() {
     if (featureList) {
       const dayId = featureList.closest(".day-section")?.dataset.dayId;
       if (dayId) {
+        // Auto-expand the day when something is dropped into it
+        expandedDayIds.add(dayId);
         TripManager.moveFeature(data.featureId, "day", dayId, featureList._dropInsertBefore || null);
       }
     } else if (pool) {
@@ -1353,27 +1369,80 @@ function initTripPanel() {
   });
 
   // ---------------------------------------------------------------------------
-  // Keyboard shortcuts
+  // Onboarding modal wiring
   // ---------------------------------------------------------------------------
 
-  // Enter on a day header toggles map highlight for that day
-  timelinePanel.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    const header = e.target.closest(".day-header[tabindex]");
-    if (!header) return;
-    const dayId = header.closest(".day-section")?.dataset.dayId;
-    if (dayId) setActiveDayHighlight(activeDayId === dayId ? null : dayId);
+  document.getElementById("onboardingSubmit")?.addEventListener("click", submitOnboardingModal);
+
+  // Dismiss the modal. With no trip yet, also close the panel so the user
+  // isn't trapped (they can reopen Plan to try again).
+  const dismissOnboarding = () => {
+    hideOnboardingModal();
+    if (!TripManager.currentTrip) closeSidebar();
+  };
+
+  document.getElementById("onboardingOverlay")?.addEventListener("click", (e) => {
+    if (e.target === document.getElementById("onboardingOverlay")) dismissOnboarding();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !document.getElementById("onboardingOverlay")?.hidden) {
+      dismissOnboarding();
+    }
+  });
+
+  // Enter inside any onboarding text field submits
+  document.getElementById("onboardingModal")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.tagName === "INPUT") {
+      e.preventDefault();
+      submitOnboardingModal();
+    }
   });
 }
 
+// ---------------------------------------------------------------------------
+// Onboarding modal
+// ---------------------------------------------------------------------------
+
+function showOnboardingModal() {
+  const overlay = document.getElementById("onboardingOverlay");
+  if (!overlay) return;
+  // Pre-fill today's date
+  const dateInput = document.getElementById("onboardingStartDate");
+  if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().slice(0, 10);
+  }
+  overlay.hidden = false;
+  document.getElementById("onboardingName")?.focus();
+}
+
+function hideOnboardingModal() {
+  const overlay = document.getElementById("onboardingOverlay");
+  if (overlay) overlay.hidden = true;
+}
+
+function submitOnboardingModal() {
+  const name     = document.getElementById("onboardingName")?.value.trim() || "Untitled Trip";
+  const location = document.getElementById("onboardingLocation")?.value.trim() || "";
+  const startDate = document.getElementById("onboardingStartDate")?.value || null;
+  const nightsRaw = parseInt(document.getElementById("onboardingNights")?.value, 10);
+  const nights   = Number.isFinite(nightsRaw) ? Math.min(30, Math.max(0, nightsRaw)) : 0;
+
+  TripManager.create(name, { location, startDate, nights });
+  hideOnboardingModal();
+
+  // Open the panel if not already open
+  if (!document.getElementById("tripPanel")?.classList.contains("open")) {
+    openSidebar();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Auto-save every 30 seconds
 // ---------------------------------------------------------------------------
 
 setInterval(() => {
-  if (TripManager.currentTrip) {
-    TripManager.save();
-  }
+  if (TripManager.currentTrip) TripManager.save();
 }, 30000);
 
 // ---------------------------------------------------------------------------

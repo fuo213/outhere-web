@@ -13,7 +13,8 @@
  *   - map                (global, from app.js)
  */
 
-let pendingFeatureType = null; // "route" when drawing
+// Set to true to re-enable verbose [snap] diagnostics in the console.
+const SNAP_DEBUG = false;
 
 // Route drawing state
 let isDrawingRoute = false;
@@ -39,6 +40,8 @@ let _routeKeyHandler = null;
 // ---------------------------------------------------------------------------
 
 function startRouteDrawing() {
+  if (isDrawingRoute) return;       // already drawing — ignore repeat clicks
+  if (isDeleteMode) exitDeleteMode(); // drawing and delete mode are exclusive
   isDrawingRoute = true;
   routeCoords = [];
   routeSnapped = [];
@@ -47,14 +50,12 @@ function startRouteDrawing() {
   routeSegments = [];
   routeDayhikeSegments = [];
   currentPointType = "route";
-  pendingFeatureType = "route";
   setActiveToolBtn("addRouteBtn");
   document.getElementById("planningToolbar")?.classList.add("active");
-  if (typeof window.alignPlanningToolbar === "function") window.alignPlanningToolbar();
+  alignPlanningToolbar();
   showPointTypeSelector();
   setActivePointType("route");
   showRouteModal();
-  if (typeof switchToTab === "function") switchToTab("timeline");
   map.doubleClickZoom.disable();
   map.getCanvas().style.cursor = "crosshair";
   updateRouteDrawing();
@@ -78,7 +79,7 @@ function handleMapClickForRoute(e) {
     : snapToTrail(coord);
 
   if (e.originalEvent.shiftKey) {
-    console.log("[snap] shift-bypass: straight line");
+    SNAP_DEBUG && console.log("[snap] shift-bypass: straight line");
   }
 
   routeCoords.push(result.coordinates);
@@ -120,7 +121,7 @@ function handleMapClickForRoute(e) {
         routeCoords[fromIdx], routeCoords[currIdx]
       );
       routeSegments.push(segment);
-      console.log("[snap] segment added:", JSON.stringify({
+      SNAP_DEBUG && console.log("[snap] segment added:", JSON.stringify({
         segmentIndex: routeSegments.length - 1,
         fromIdx,
         currIdx,
@@ -135,7 +136,7 @@ function handleMapClickForRoute(e) {
   }
 
   // Log full state after each click
-  console.log("[snap] state:", JSON.stringify({
+  SNAP_DEBUG && console.log("[snap] state:", JSON.stringify({
     totalVertices: routeCoords.length,
     totalSegments: routeSegments.length,
     totalDayhikeSpurs: routeDayhikeSegments.length,
@@ -163,7 +164,7 @@ function handleMapClickForRoute(e) {
 
   // Log the final display coords after this click
   const displayCoords = buildMainRouteDisplayCoords();
-  console.log("[snap] display line after click:", JSON.stringify({
+  SNAP_DEBUG && console.log("[snap] display line after click:", JSON.stringify({
     displayCoordCount: displayCoords.length,
     displayFirst: displayCoords[0],
     displayLast: displayCoords[displayCoords.length - 1],
@@ -221,6 +222,12 @@ function finishRouteDrawing() {
   };
   const routeIdx = TripManager.addFeature(geometry, properties);
 
+  // 1b. Fetch elevation profile async (patches the feature when resolved)
+  const addedFeature = TripManager.currentTrip?.features[routeIdx];
+  if (addedFeature && mainDisplayCoords.length >= 2) {
+    fetchElevationProfile(mainDisplayCoords, addedFeature.properties._id);
+  }
+
   // 2. Create dayhike spur LineString features
   for (const spur of routeDayhikeSegments) {
     if (spur.coords.length >= 2) {
@@ -266,8 +273,6 @@ function finishRouteDrawing() {
 
   resetRouteDrawing();
   cancelDrawing();
-  // Switch to timeline tab so user can see and edit the new features
-  switchToTab("timeline");
 }
 
 function resetRouteDrawing() {
@@ -444,7 +449,7 @@ function snapToTrail(coord) {
   }
 
   if (bestPoint && bestPixelDist <= SNAP_PIXEL_RADIUS) {
-    console.log("[snap] snapped to trail:", JSON.stringify({
+    SNAP_DEBUG && console.log("[snap] snapped to trail:", JSON.stringify({
       originalClick: coord,
       snappedTo: bestPoint.geometry.coordinates,
       pixelDist: Math.round(bestPixelDist * 10) / 10,
@@ -463,7 +468,7 @@ function snapToTrail(coord) {
     };
   }
 
-  console.log("[snap] no trail in range, unsnapped:", coord);
+  SNAP_DEBUG && console.log("[snap] no trail in range, unsnapped:", coord);
   return { coordinates: coord, snapped: false, trailFeature: null, indexOnLine: null };
 }
 
@@ -481,7 +486,7 @@ function snapToTrail(coord) {
  */
 function trailsMatch(refA, refB) {
   if (!refA || !refB) {
-    console.log("[snap] trailsMatch: null ref", { refA: !!refA, refB: !!refB });
+    SNAP_DEBUG && console.log("[snap] trailsMatch: null ref", { refA: !!refA, refB: !!refB });
     return false;
   }
 
@@ -495,7 +500,7 @@ function trailsMatch(refA, refB) {
     ac[ac.length - 1][0] === bc[bc.length - 1][0] &&
     ac[ac.length - 1][1] === bc[bc.length - 1][1];
 
-  console.log("[snap] trailsMatch check:", JSON.stringify({
+  SNAP_DEBUG && console.log("[snap] trailsMatch check:", JSON.stringify({
     aLen: ac.length, bLen: bc.length,
     lengthMatch, firstMatch, lastMatch,
     aFirst: ac[0], bFirst: bc[0],
@@ -506,20 +511,20 @@ function trailsMatch(refA, refB) {
   }));
 
   if (lengthMatch && firstMatch && lastMatch) {
-    console.log("[snap] trailsMatch → same");
+    SNAP_DEBUG && console.log("[snap] trailsMatch → same");
     return "same";
   }
 
   // Same trail id or name but different geometry = tile-boundary fragments
   if (refA.trailId && refB.trailId && refA.trailId === refB.trailId) {
-    console.log("[snap] trailsMatch → related (by id)");
+    SNAP_DEBUG && console.log("[snap] trailsMatch → related (by id)");
     return "related";
   }
   if (refA.trailName && refB.trailName && refA.trailName === refB.trailName) {
-    console.log("[snap] trailsMatch → related (by name)");
+    SNAP_DEBUG && console.log("[snap] trailsMatch → related (by name)");
     return "related";
   }
-  console.log("[snap] trailsMatch → false (no match)");
+  SNAP_DEBUG && console.log("[snap] trailsMatch → false (no match)");
   return false;
 }
 
@@ -540,7 +545,7 @@ function extractTrailSlice(trailCoords, startCoord, startIdx, endCoord, endIdx) 
   const forward = startIdx <= endIdx;
   const coords = [];
 
-  console.log("[snap] extractTrailSlice input:", JSON.stringify({
+  SNAP_DEBUG && console.log("[snap] extractTrailSlice input:", JSON.stringify({
     trailCoordsLength: trailCoords.length,
     startCoord, startIdx,
     endCoord, endIdx,
@@ -570,7 +575,7 @@ function extractTrailSlice(trailCoords, startCoord, startIdx, endCoord, endIdx) 
     coords.push(endCoord);
   }
 
-  console.log("[snap] extractTrailSlice output:", JSON.stringify({
+  SNAP_DEBUG && console.log("[snap] extractTrailSlice output:", JSON.stringify({
     resultLength: coords.length,
     first: coords[0],
     last: coords[coords.length - 1],
@@ -589,7 +594,7 @@ function extractTrailSlice(trailCoords, startCoord, startIdx, endCoord, endIdx) 
 function getTrailSegmentBetween(prevRef, currRef, prevCoord, currCoord) {
   // Either endpoint unsnapped → straight line
   if (!prevRef || !currRef) {
-    console.log("[snap] unsnapped-endpoint fallback");
+    SNAP_DEBUG && console.log("[snap] unsnapped-endpoint fallback");
     return { coords: [prevCoord, currCoord], isTrailSnapped: false };
   }
 
@@ -606,7 +611,7 @@ function getTrailSegmentBetween(prevRef, currRef, prevCoord, currCoord) {
       );
       if (slicedCoords.length >= 2) {
         const trailName = prevRef.trailName || "unnamed";
-        console.log("[snap] same-trail index-slice:", trailName, slicedCoords.length, "coords, idx", prevRef.indexOnLine, "→", currRef.indexOnLine);
+        SNAP_DEBUG && console.log("[snap] same-trail index-slice:", trailName, slicedCoords.length, "coords, idx", prevRef.indexOnLine, "→", currRef.indexOnLine);
         return { coords: slicedCoords, isTrailSnapped: true };
       }
     } catch (err) {
@@ -629,7 +634,7 @@ function getTrailSegmentBetween(prevRef, currRef, prevCoord, currCoord) {
         { geometry: { coordinates: currRef.trailCoords } }
       );
       if (merged) {
-        console.log("[snap] tile-boundary merge:", 2, "fragments");
+        SNAP_DEBUG && console.log("[snap] tile-boundary merge:", 2, "fragments");
         const sliced = turf.lineSlice(
           turf.point(prevCoord),
           turf.point(currCoord),
@@ -643,7 +648,7 @@ function getTrailSegmentBetween(prevRef, currRef, prevCoord, currCoord) {
           result = { coords: sc, isTrailSnapped: true };
         }
       } else {
-        console.log("[snap] tile-boundary merge failed, straight line fallback");
+        SNAP_DEBUG && console.log("[snap] tile-boundary merge failed, straight line fallback");
       }
     } catch (err) {
       console.warn("[snap] tile-boundary slice error, falling back to straight line:", err.message);
@@ -658,7 +663,7 @@ function getTrailSegmentBetween(prevRef, currRef, prevCoord, currCoord) {
   if (!result) {
     const name1 = prevRef.trailName || "unnamed";
     const name2 = currRef.trailName || "unnamed";
-    console.log("[snap] different-trails fallback:", name1, name2);
+    SNAP_DEBUG && console.log("[snap] different-trails fallback:", name1, name2);
     return { coords: [prevCoord, currCoord], isTrailSnapped: false };
   }
 
@@ -707,7 +712,7 @@ function mergeTrailFragments(featA, featB) {
   }
 
   const minGap = Math.min(dAEndBStart, dAEndBEnd, dBEndAStart, dBStartAStart);
-  console.log("[snap] mergeTrailFragments failed: closest gap", Math.round(minGap), "m exceeds", MERGE_GAP_TOLERANCE_METERS, "m tolerance");
+  SNAP_DEBUG && console.log("[snap] mergeTrailFragments failed: closest gap", Math.round(minGap), "m exceeds", MERGE_GAP_TOLERANCE_METERS, "m tolerance");
   return null;
 }
 
@@ -780,7 +785,7 @@ function tryConnectTrails(prevRef, currRef, prevCoord, currCoord) {
         );
         if (slicedCoords.length >= 2) {
           const trailName = trail.properties?.name || "unnamed";
-          console.log("[snap] corridor-connect via:", trailName, slicedCoords.length, "coords");
+          SNAP_DEBUG && console.log("[snap] corridor-connect via:", trailName, slicedCoords.length, "coords");
           return { coords: slicedCoords, isTrailSnapped: true };
         }
       } catch (_) { /* continue to next trail */ }
@@ -848,7 +853,7 @@ function tryConnectTrails(prevRef, currRef, prevCoord, currCoord) {
               const stitched = [...legA, ...legB.slice(1)];
               const nameA = pc.trail.properties?.name || "unnamed";
               const nameB = cc.trail.properties?.name || "unnamed";
-              console.log("[snap] two-hop connect via:", nameA, "→", nameB,
+              SNAP_DEBUG && console.log("[snap] two-hop connect via:", nameA, "→", nameB,
                 "at junction", JSON.stringify(junctionCoord),
                 stitched.length, "coords");
               return { coords: stitched, isTrailSnapped: true };
@@ -958,7 +963,6 @@ function cancelDrawing() {
     resetRouteDrawing();
   }
   if (isDeleteMode) exitDeleteMode();
-  pendingFeatureType = null;
   setActiveToolBtn(null);
   hideDrawingHint();
   hideRouteModal();
@@ -971,7 +975,7 @@ function startDeleteMode() {
   isDeleteMode = true;
   map.getCanvas().style.cursor = "crosshair";
   document.getElementById("planningToolbar")?.classList.add("active");
-  if (typeof window.alignPlanningToolbar === "function") window.alignPlanningToolbar();
+  alignPlanningToolbar();
   setActiveToolBtn("deleteWaypointBtn");
 }
 
@@ -1079,6 +1083,75 @@ function handleRouteKeyDown(e) {
 // ---------------------------------------------------------------------------
 // Trip date range helper
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Elevation profile — Open-Meteo API
+// ---------------------------------------------------------------------------
+
+/**
+ * Subsample a coordinate array to at most maxPoints evenly-spaced entries.
+ * @param {number[][]} coords - [lng, lat] pairs
+ * @param {number} maxPoints
+ * @returns {number[][]}
+ */
+function subsampleCoords(coords, maxPoints) {
+  if (coords.length <= maxPoints) return coords;
+  const result = [];
+  const step = (coords.length - 1) / (maxPoints - 1);
+  for (let i = 0; i < maxPoints; i++) {
+    result.push(coords[Math.round(i * step)]);
+  }
+  return result;
+}
+
+/**
+ * Fetch elevation for a route's display coords from Open-Meteo, then patch
+ * the feature in TripManager with elevation_profile (ft), elevation_gain_ft,
+ * and elevation_loss_ft.
+ *
+ * @param {number[][]} coords - [lng, lat] display coords of the route
+ * @param {string} featureId - the feature's _id property
+ */
+async function fetchElevationProfile(coords, featureId) {
+  const sampled = subsampleCoords(coords, 100);
+  const lats = sampled.map(c => c[1]).join(",");
+  const lons = sampled.map(c => c[0]).join(",");
+
+  try {
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data.elevation)) throw new Error("Unexpected response shape");
+
+    // Convert meters → feet, round to nearest foot
+    const profileFt = data.elevation.map(m => Math.round(m * 3.28084));
+
+    // Compute cumulative gain and loss
+    let gain = 0, loss = 0;
+    for (let i = 1; i < profileFt.length; i++) {
+      const diff = profileFt[i] - profileFt[i - 1];
+      if (diff > 0) gain += diff;
+      else loss += -diff;
+    }
+
+    // Patch the feature in place (no full render cycle needed for the map)
+    const trip = TripManager.currentTrip;
+    if (!trip) return;
+    const feature = trip.features.find(f => f.properties._id === featureId);
+    if (!feature) return;
+
+    feature.properties.elevation_profile = profileFt;
+    feature.properties.elevation_gain_ft = Math.round(gain);
+    feature.properties.elevation_loss_ft = Math.round(loss);
+
+    TripManager.render();
+    TripManager.save();
+  } catch (err) {
+    console.warn("[elevation] fetch failed:", err.message);
+  }
+}
 
 function getTripDateRange() {
   if (!TripManager.currentTrip) return [];
