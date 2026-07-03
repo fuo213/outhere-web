@@ -22,6 +22,10 @@
 
 const STORAGE_KEY = "outhere_trip";
 
+// Canonical trip format version (see outhere/trips/trip.schema.json + FORMAT.md).
+// Distinct from the legacy _schema_version integer migration counter.
+const TRIP_SCHEMA_VERSION = "1.0";
+
 let activeDayId = null;       // day ID currently highlighted on map, or null
 const expandedDayIds = new Set(); // which day sections are expanded (UI state only)
 
@@ -38,6 +42,8 @@ const TripManager = {
         created: new Date().toISOString(),
         sharing: "private",
         readme: "",
+        notes: "",
+        schema_version: TRIP_SCHEMA_VERSION,
         _schema_version: 4,
         dates: startDate ? {
           start: startDate,
@@ -199,14 +205,44 @@ const TripManager = {
     this.save();
   },
 
+  /**
+   * Build the canonical export document (schema_version 1.0) without
+   * mutating the live trip: stamps schema_version, mirrors the readme into
+   * `notes` (mobile reads `notes`), and guarantees a `dates` key.
+   */
+  buildExport() {
+    if (!this.currentTrip) return null;
+    const out = JSON.parse(JSON.stringify(this.currentTrip));
+    out.properties.schema_version = TRIP_SCHEMA_VERSION;
+    // The UI edits `readme`; write `notes` from the same value for mobile.
+    out.properties.notes = out.properties.readme || "";
+    if (out.properties.dates === undefined) out.properties.dates = null;
+    if (!Array.isArray(out.days)) out.days = [];
+    if (!Array.isArray(out.unassigned)) out.unassigned = [];
+    return out;
+  },
+
   download() {
-    if (!this.currentTrip) return;
-    const data = JSON.stringify(this.currentTrip, null, 2);
+    const exportTrip = this.buildExport();
+    if (!exportTrip) return;
+
+    // Lightweight structural self-check against the canonical format.
+    // Warn (don't block) so users can still get their data out.
+    const problems = validateTripExport(exportTrip);
+    if (problems.length > 0) {
+      console.warn(
+        `[trip] export does not conform to trip schema ${TRIP_SCHEMA_VERSION} ` +
+        `(${problems.length} issue${problems.length !== 1 ? "s" : ""}):\n- ` +
+        problems.join("\n- ")
+      );
+    }
+
+    const data = JSON.stringify(exportTrip, null, 2);
     const blob = new Blob([data], { type: "application/geo+json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const slug = this.currentTrip.properties.name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    const slug = (exportTrip.properties.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_") || "trip";
     a.download = `${slug}.geojson`;
     a.click();
     URL.revokeObjectURL(url);
@@ -256,7 +292,7 @@ const TripManager = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "trip";
     a.download = `${slug}.md`;
     a.click();
     URL.revokeObjectURL(url);
@@ -319,7 +355,126 @@ function migrateTrip(trip) {
     trip.properties._schema_version = 4;
   }
 
+  // Normalization (idempotent): files from schema.py / mobile carry trip text
+  // in `notes` only — surface it in the readme editor.
+  if (!trip.properties.readme && trip.properties.notes) {
+    trip.properties.readme = trip.properties.notes;
+  }
+
   return trip;
+}
+
+// ---------------------------------------------------------------------------
+// Export self-check — lightweight structural validation against the canonical
+// trip format (outhere/trips/trip.schema.json, schema_version 1.0). This is
+// deliberately NOT a JSON-Schema engine; it checks required fields and
+// geometry types and returns a list of human-readable problems.
+// ---------------------------------------------------------------------------
+
+const FEATURE_GEOMETRY_TYPES = {
+  route: "LineString",
+  dayhike_spur: "LineString",
+  gps_track: "LineString",
+  camp: "Point",
+  dayhike: "Point",
+  rest: "Point",
+  waypoint: "Point",
+  photo: "Point",
+};
+
+const WAYPOINT_SUBTYPES = ["water", "hazard", "resupply", "scenic"];
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function validateTripExport(trip) {
+  const problems = [];
+  const push = (msg) => problems.push(msg);
+
+  if (!trip || typeof trip !== "object") return ["trip is not an object"];
+  if (trip.type !== "FeatureCollection") push(`type is "${trip.type}", expected "FeatureCollection"`);
+
+  // --- properties ---
+  const meta = trip.properties;
+  if (!meta || typeof meta !== "object") {
+    push("missing top-level properties object");
+  } else {
+    if (typeof meta.trip_id !== "string" || meta.trip_id.length === 0) push("properties.trip_id missing or empty");
+    if (typeof meta.name !== "string") push("properties.name missing");
+    if (meta.schema_version !== TRIP_SCHEMA_VERSION) push(`properties.schema_version is ${JSON.stringify(meta.schema_version)}, expected "${TRIP_SCHEMA_VERSION}"`);
+    if (meta.dates !== null && meta.dates !== undefined) {
+      if (typeof meta.dates !== "object" ||
+          !ISO_DATE_RE.test(meta.dates.start || "") ||
+          !ISO_DATE_RE.test(meta.dates.end || "")) {
+        push("properties.dates must be null or { start, end } with YYYY-MM-DD strings");
+      }
+    }
+    if (meta.sharing !== undefined && !["private", "link", "public"].includes(meta.sharing)) {
+      push(`properties.sharing "${meta.sharing}" not one of private|link|public`);
+    }
+  }
+
+  // --- features ---
+  if (!Array.isArray(trip.features)) {
+    push("features is not an array");
+    return problems;
+  }
+
+  const featureIds = new Set();
+  trip.features.forEach((f, i) => {
+    const where = `features[${i}]`;
+    if (!f || f.type !== "Feature") { push(`${where}: type is not "Feature"`); return; }
+    if (!f.geometry || typeof f.geometry !== "object") { push(`${where}: missing geometry`); return; }
+    if (!f.properties || typeof f.properties !== "object") { push(`${where}: missing properties`); return; }
+
+    const ftype = f.properties.type;
+    if (typeof ftype !== "string" || !ftype) {
+      push(`${where}: properties.type missing`);
+      return;
+    }
+
+    const expectedGeom = FEATURE_GEOMETRY_TYPES[ftype];
+    if (expectedGeom && f.geometry.type !== expectedGeom) {
+      push(`${where} (${ftype}): geometry.type is "${f.geometry.type}", expected "${expectedGeom}"`);
+    }
+    if (!Array.isArray(f.geometry.coordinates)) {
+      push(`${where} (${ftype}): geometry.coordinates is not an array`);
+    } else if (f.geometry.type === "LineString" && f.geometry.coordinates.length < 2) {
+      push(`${where} (${ftype}): LineString has fewer than 2 positions`);
+    } else if (f.geometry.type === "Point" &&
+               (f.geometry.coordinates.length < 2 || typeof f.geometry.coordinates[0] !== "number")) {
+      push(`${where} (${ftype}): Point coordinates are not [lon, lat]`);
+    }
+
+    if (ftype === "waypoint" && !WAYPOINT_SUBTYPES.includes(f.properties.subtype)) {
+      push(`${where}: waypoint subtype "${f.properties.subtype}" not one of ${WAYPOINT_SUBTYPES.join("|")}`);
+    }
+    if (ftype === "dayhike_spur" &&
+        (!Number.isInteger(f.properties.route_index) || f.properties.route_index < 0)) {
+      push(`${where}: dayhike_spur missing non-negative integer route_index`);
+    }
+    if (["camp", "dayhike", "rest"].includes(ftype) &&
+        f.properties.date !== undefined && f.properties.date !== "" &&
+        !ISO_DATE_RE.test(f.properties.date)) {
+      push(`${where} (${ftype}): date "${f.properties.date}" is neither "" nor YYYY-MM-DD`);
+    }
+
+    if (typeof f.properties._id === "string") featureIds.add(f.properties._id);
+  });
+
+  // --- days / unassigned referential integrity ---
+  (trip.days || []).forEach((day, i) => {
+    if (!day || typeof day.id !== "string" || !day.id) push(`days[${i}]: missing id`);
+    if (day && day.date != null && !ISO_DATE_RE.test(day.date)) {
+      push(`days[${i}]: date "${day.date}" is neither null nor YYYY-MM-DD`);
+    }
+    for (const fid of (day?.features || [])) {
+      if (!featureIds.has(fid)) push(`days[${i}] references unknown feature _id ${fid}`);
+    }
+  });
+  for (const fid of (trip.unassigned || [])) {
+    if (!featureIds.has(fid)) push(`unassigned references unknown feature _id ${fid}`);
+  }
+
+  return problems;
 }
 
 // ---------------------------------------------------------------------------
