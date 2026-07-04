@@ -324,7 +324,11 @@ function migrateTrip(trip) {
   // v1 → v2: add point_type to waypoints / camps
   if ((trip.properties._schema_version || 1) < 2) {
     for (const f of trip.features) {
-      if (f.properties.type === "waypoint" && !f.properties.point_type) {
+      // Legacy web v1 used type "waypoint" for what became dayhike points.
+      // Canonical files (schema_version "1.0", e.g. from schema.py/mobile)
+      // carry real waypoints (subtype water|hazard|...) — never stamp those.
+      if (f.properties.type === "waypoint" && !f.properties.point_type &&
+          !trip.properties.schema_version) {
         f.properties.point_type = "dayhike";
       }
       if (f.properties.type === "camp" && !f.properties.point_type) {
