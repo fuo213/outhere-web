@@ -16,7 +16,7 @@ import {
   handleMapClickForRoute,
   handleMapDblClickForRoute,
 } from "./planning.js";
-import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML } from "./trip-panel.js";
+import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -741,7 +741,7 @@ function showTripFeaturePopup(e) {
   const f = e.features[0];
   const props = f.properties;
   const coords = f.geometry.coordinates.slice();
-  const type = props.point_type || props.type;
+  const type = getDisplayType(props);
   const typeLabel = POINT_TYPE_LABELS[type] || type;
 
   let html = `<strong>${escapeHTML(props.name || typeLabel)}</strong>`;

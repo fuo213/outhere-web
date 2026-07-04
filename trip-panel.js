@@ -282,7 +282,7 @@ export const TripManager = {
 
       for (const f of dayFeatures) {
         const props = f.properties;
-        const type = props.point_type || props.type;
+        const type = getDisplayType(props);
         const label = getFeatureLabel(props, type);
         const stats = getFeatureStats(props, type);
         md += `- **${label}**${stats ? ` — ${stats}` : ""}\n`;
@@ -670,7 +670,7 @@ function getDayElevationProfile(dayFeatures) {
   const profile = [];
   for (const f of dayFeatures) {
     const p = f.properties;
-    if ((p.point_type || p.type) === "route" && Array.isArray(p.elevation_profile)) {
+    if (getDisplayType(p) === "route" && Array.isArray(p.elevation_profile)) {
       if (profile.length > 0) profile.push(...p.elevation_profile.slice(1));
       else profile.push(...p.elevation_profile);
     }
@@ -776,7 +776,7 @@ function parseDragData(e) {
 
 function buildFeatureChip(feature) {
   const props = feature.properties;
-  const type = props.point_type || props.type;
+  const type = getDisplayType(props);
   const chip = document.createElement("div");
   chip.className = "feature-chip";
   chip.dataset.id = props._id || "";
@@ -975,7 +975,7 @@ function buildFeatureTile(feature, dayId) {
   const tile = document.createElement("div");
   tile.className = "feature-tile";
   tile.dataset.id = featureId || "";
-  tile.dataset.type = props.point_type || props.type || "waypoint";
+  tile.dataset.type = getDisplayType(props) || "waypoint";
   tile.setAttribute("tabindex", "0");
 
   // Single delegated click handler covers all interactive children
@@ -1061,7 +1061,7 @@ function setTileViewContent(tile, featureId) {
   const feature = TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
   if (!feature) return;
   const props = feature.properties;
-  const type = props.point_type || props.type;
+  const type = getDisplayType(props);
   const stats = getFeatureStats(props, type);
   const notes = props.notes || "";
 
@@ -1081,7 +1081,7 @@ function setTileEditContent(tile, featureId, dayId) {
   const feature = TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
   if (!feature) return;
   const props = feature.properties;
-  const type = props.point_type || props.type;
+  const type = getDisplayType(props);
 
   let fieldsHTML = "";
   if (type === "camp") {
@@ -1162,6 +1162,18 @@ export const POINT_TYPE_LABELS = {
   waypoint: "Waypoint",
 };
 
+/**
+ * Effective display type for a feature. point_type normally wins (it
+ * duplicates type for web rendering), but is IGNORED on waypoints: the old
+ * v1->v2 migration stamped point_type "dayhike" onto real waypoints, and the
+ * canonical format (outhere/trips/FORMAT.md, drift item 13) says readers must
+ * ignore it there.
+ */
+export function getDisplayType(props) {
+  if (props.type === "waypoint") return "waypoint";
+  return props.point_type || props.type;
+}
+
 const WAYPOINT_LABELS = {
   water: "Water",
   hazard: "Hazard",
@@ -1215,7 +1227,7 @@ function computeDayStats(features) {
 
   for (const f of features) {
     const p = f.properties;
-    const type = p.point_type || p.type;
+    const type = getDisplayType(p);
     if (type === "route") {
       totalMiles += (p.main_route_distance_mi || 0) + (p.dayhike_distance_mi || 0);
       totalElevGain += p.elevation_gain_ft || 0;
