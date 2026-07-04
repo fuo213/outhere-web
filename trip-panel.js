@@ -1447,6 +1447,10 @@ export function initTripPanel() {
     readmeEditor.addEventListener("input", () => {
       if (!TripManager.currentTrip) return;
       TripManager.currentTrip.properties.readme = readmeEditor.value;
+      // Keep the canonical `notes` mirror in sync (mobile reads `notes`;
+      // also prevents a stale notes value from resurrecting cleared readme
+      // text via the notes->readme normalization on the next load).
+      TripManager.currentTrip.properties.notes = readmeEditor.value;
       TripManager.save();
     });
     readmeEditor.addEventListener("mousedown", e => e.stopPropagation());
@@ -1462,6 +1466,7 @@ export function initTripPanel() {
       reader.onload = (ev) => {
         if (!TripManager.currentTrip) return;
         TripManager.currentTrip.properties.readme = ev.target.result;
+        TripManager.currentTrip.properties.notes = ev.target.result;
         TripManager.save();
         if (readmeEditor) readmeEditor.value = ev.target.result;
       };
