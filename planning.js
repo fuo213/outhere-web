@@ -56,6 +56,9 @@ export function startRouteDrawing() {
   setActivePointType("route");
   showRouteModal();
   map.doubleClickZoom.disable();
+  // Box zoom swallows shift+mousedown, which would eat the documented
+  // shift-click "straight segment, no snapping" gesture — disable while drawing.
+  map.boxZoom.disable();
   map.getCanvas().style.cursor = "crosshair";
   updateRouteDrawing();
   updateSnapPreview(null);
@@ -284,6 +287,7 @@ function resetRouteDrawing() {
   routeDayhikeSegments = [];
   currentPointType = "route";
   map.doubleClickZoom.enable();
+  map.boxZoom.enable();
   map.getCanvas().style.cursor = "";
   updateRouteDrawing();
   updateSnapPreview(null);
