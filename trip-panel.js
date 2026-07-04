@@ -346,7 +346,12 @@ function migrateTrip(trip) {
       }
     }
     if (!trip.unassigned) {
-      trip.unassigned = trip.features.map(f => f.properties._id);
+      // Only pool features not already assigned to a day (canonical files
+      // may carry days without an unassigned member — both are optional).
+      const assigned = new Set((trip.days || []).flatMap(d => d.features || []));
+      trip.unassigned = trip.features
+        .map(f => f.properties._id)
+        .filter(id => !assigned.has(id));
     }
     if (!trip.days) {
       trip.days = [];
