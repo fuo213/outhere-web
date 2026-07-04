@@ -556,8 +556,15 @@ map.on("load", () => {
       if (isDrawingRoute) return;
       showTripFeaturePopup(e);
     });
-    map.on("mouseenter", layerId, () => { map.getCanvas().style.cursor = "pointer"; });
-    map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; });
+    // Don't clobber the crosshair cursor while drawing or in delete mode
+    map.on("mouseenter", layerId, () => {
+      if (isDrawingRoute || isDeleteMode) return;
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", layerId, () => {
+      if (isDrawingRoute || isDeleteMode) return;
+      map.getCanvas().style.cursor = "";
+    });
   }
 });
 
@@ -712,11 +719,14 @@ map.on("click", "pois", (e) => {
     .addTo(map);
 });
 
-// Pointer cursor on hoverable features
+// Pointer cursor on hoverable features (not while drawing / delete mode,
+// which own the crosshair cursor)
 map.on("mouseenter", "pois", () => {
+  if (isDrawingRoute || isDeleteMode) return;
   map.getCanvas().style.cursor = "pointer";
 });
 map.on("mouseleave", "pois", () => {
+  if (isDrawingRoute || isDeleteMode) return;
   map.getCanvas().style.cursor = "";
 });
 
