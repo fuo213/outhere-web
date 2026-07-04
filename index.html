@@ -191,11 +191,9 @@
     </div>
   </div>
 
-  <!-- App scripts — config first, then app logic, then planning -->
-  <script src="config.js"></script>
-  <script src="layer-styles.js"></script>
-  <script src="app.js"></script>
-  <script src="planning.js"></script>
-  <script src="trip-panel.js"></script>
+  <!-- App entry — native ES module; imports config.js, layer-styles.js,
+       planning.js, and trip-panel.js. CDN libraries above stay classic
+       scripts and are referenced as globals (maplibregl, pmtiles, turf). -->
+  <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -8,17 +8,18 @@
  *
  * Hotkeys 1-4 switch point type during drawing.
  *
- * Dependencies (loaded before this script):
- *   - turf               (global, via turf.min.js)
- *   - map                (global, from app.js)
+ * CDN global: turf (via turf.min.js classic script).
  */
+
+import { map } from "./app.js"; // circular with app.js; only used at runtime
+import { TripManager, updateDrawingPreview, alignPlanningToolbar } from "./trip-panel.js";
 
 // Set to true to re-enable verbose [snap] diagnostics in the console.
 const SNAP_DEBUG = false;
 
-// Route drawing state
-let isDrawingRoute = false;
-let isDeleteMode = false;
+// Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
+export let isDrawingRoute = false;
+export let isDeleteMode = false;
 let routeCoords = [];
 let routeSnapped = [];      // parallel array: true if vertex was snapped
 let routeVertexTypes = [];   // parallel array: "route" | "camp" | "dayhike" | "rest"
@@ -29,8 +30,6 @@ let currentPointType = "route";
 
 const SNAP_PIXEL_RADIUS = 30; // pixel radius for trail query + snap threshold
 
-const POINT_TYPES = ["route", "camp", "dayhike", "rest"];
-
 // Bound handler references so we can add/remove listeners
 let _routeMouseMoveHandler = null;
 let _routeKeyHandler = null;
@@ -39,7 +38,7 @@ let _routeKeyHandler = null;
 // Route drawing — custom click-based with trail snapping
 // ---------------------------------------------------------------------------
 
-function startRouteDrawing() {
+export function startRouteDrawing() {
   if (isDrawingRoute) return;       // already drawing — ignore repeat clicks
   if (isDeleteMode) exitDeleteMode(); // drawing and delete mode are exclusive
   isDrawingRoute = true;
@@ -70,7 +69,7 @@ function startRouteDrawing() {
   document.addEventListener("keydown", _routeKeyHandler);
 }
 
-function handleMapClickForRoute(e) {
+export function handleMapClickForRoute(e) {
   if (!isDrawingRoute) return;
 
   const coord = [e.lngLat.lng, e.lngLat.lat];
@@ -175,7 +174,7 @@ function handleMapClickForRoute(e) {
   }));
 }
 
-function handleMapDblClickForRoute(e) {
+export function handleMapDblClickForRoute(e) {
   if (!isDrawingRoute) return;
   e.preventDefault();
   finishRouteDrawing();
@@ -292,9 +291,7 @@ function resetRouteDrawing() {
   hidePointTypeSelector();
 
   // Clear sidebar drawing preview
-  if (typeof updateDrawingPreview === "function") {
-    updateDrawingPreview(null);
-  }
+  updateDrawingPreview(null);
 
   // Remove mousemove handler
   if (_routeMouseMoveHandler) {
@@ -944,21 +941,19 @@ function computeDayhikeDistance() {
 // ---------------------------------------------------------------------------
 
 function notifyDrawingProgress() {
-  if (typeof updateDrawingPreview === "function") {
-    updateDrawingPreview({
-      vertexCount: routeCoords.length,
-      mainDistanceMi: computeMainRouteDistance(),
-      dayhikeDistanceMi: computeDayhikeDistance(),
-      vertexTypes: [...routeVertexTypes],
-    });
-  }
+  updateDrawingPreview({
+    vertexCount: routeCoords.length,
+    mainDistanceMi: computeMainRouteDistance(),
+    dayhikeDistanceMi: computeDayhikeDistance(),
+    vertexTypes: [...routeVertexTypes],
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Cancel / shared UI
 // ---------------------------------------------------------------------------
 
-function cancelDrawing() {
+export function cancelDrawing() {
   if (isDrawingRoute) {
     resetRouteDrawing();
   }
@@ -970,7 +965,7 @@ function cancelDrawing() {
   document.getElementById("planningToolbar")?.classList.remove("active");
 }
 
-function startDeleteMode() {
+export function startDeleteMode() {
   if (isDrawingRoute) cancelDrawing();
   isDeleteMode = true;
   map.getCanvas().style.cursor = "crosshair";
@@ -979,14 +974,14 @@ function startDeleteMode() {
   setActiveToolBtn("deleteWaypointBtn");
 }
 
-function exitDeleteMode() {
+export function exitDeleteMode() {
   isDeleteMode = false;
   map.getCanvas().style.cursor = "";
   document.getElementById("planningToolbar")?.classList.remove("active");
   setActiveToolBtn(null);
 }
 
-function handleDeleteClick(e) {
+export function handleDeleteClick(e) {
   if (!TripManager.currentTrip) return;
   const tripLayers = ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"];
   const features = map.queryRenderedFeatures(e.point, { layers: tripLayers });
@@ -1052,7 +1047,7 @@ function setActivePointType(pointType) {
   });
 }
 
-function initPointTypeSelector() {
+export function initPointTypeSelector() {
   document.querySelectorAll(".point-type-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1153,7 +1148,7 @@ async function fetchElevationProfile(coords, featureId) {
   }
 }
 
-function getTripDateRange() {
+export function getTripDateRange() {
   if (!TripManager.currentTrip) return [];
   const meta = TripManager.currentTrip.properties;
   if (!meta.dates?.start || !meta.dates?.end) return [];

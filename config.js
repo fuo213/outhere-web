@@ -11,12 +11,12 @@
 // Replace with your actual R2 public URL after running deploy_to_r2.py.
 // Format: https://pub-{account-id}.r2.dev/utah/utah_hiking.pmtiles
 //    or:  https://tiles.yourdomain.com/utah/utah_hiking.pmtiles
-const TILE_URL = "https://pub-facc37c75f49450988b436c5307ce8dd.r2.dev/utah/utah_hiking.pmtiles";
+export const TILE_URL = "https://pub-facc37c75f49450988b436c5307ce8dd.r2.dev/utah/utah_hiking.pmtiles";
 
 // ---------------------------------------------------------------------------
 // Map defaults
 // ---------------------------------------------------------------------------
-const MAP_CONFIG = {
+export const MAP_CONFIG = {
   center: [-110.0, 38.5],   // lng, lat — central Utah
   zoom: 7,
   minZoom: 6,
@@ -37,7 +37,7 @@ const MAP_CONFIG = {
 // Each entry maps a UI toggle to one or more MapLibre style layer IDs.
 // "group" is the source-layer name from tippecanoe; "layers" lists the
 // style layer IDs that should toggle together.
-const LAYER_GROUPS = [
+export const LAYER_GROUPS = [
   {
     id: "trails",
     label: "Trails",
@@ -105,7 +105,7 @@ const LAYER_GROUPS = [
 // ---------------------------------------------------------------------------
 // Dash pattern presets
 // ---------------------------------------------------------------------------
-const DASH_PRESETS = {
+export const DASH_PRESETS = {
   solid:  [1, 0],
   dashed: [2, 1],
   dotted: [1, 1],
@@ -118,7 +118,7 @@ const DASH_PRESETS = {
 // "line-width" is the base (low zoom) value; "line-width-max" is the high
 // zoom value, used to preserve the zoom-interpolation ratio when the user
 // adjusts width.
-const LAYER_STYLE_DEFAULTS = {
+export const LAYER_STYLE_DEFAULTS = {
   trails: {
     type: "line",
     "line-color": "#666666",

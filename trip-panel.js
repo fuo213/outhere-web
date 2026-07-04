@@ -11,10 +11,19 @@
  *   trip.days              — array of { id, date, features: [featureId, ...], notes }
  *   trip.properties.readme — markdown string for the Overview section
  *
- * Dependencies (loaded before this script):
- *   - map        (global, from app.js)
- *   - planning.js (cancelDrawing, initPointTypeSelector, getTripDateRange, etc.)
+ * CDN global: maplibregl (classic script in index.html).
  */
+
+import { map } from "./app.js"; // circular with app.js; only used at runtime
+import {
+  cancelDrawing,
+  initPointTypeSelector,
+  startRouteDrawing,
+  startDeleteMode,
+  exitDeleteMode,
+  isDeleteMode,
+  getTripDateRange,
+} from "./planning.js";
 
 // ---------------------------------------------------------------------------
 // Trip state manager
@@ -29,7 +38,7 @@ const TRIP_SCHEMA_VERSION = "1.0";
 let activeDayId = null;       // day ID currently highlighted on map, or null
 const expandedDayIds = new Set(); // which day sections are expanded (UI state only)
 
-const TripManager = {
+export const TripManager = {
   currentTrip: null,
 
   create(name, { location = "", startDate = null, nights = 0 } = {}) {
@@ -1134,7 +1143,7 @@ function buildTypeIconHTML(type) {
 // Feature label + stats helpers
 // ---------------------------------------------------------------------------
 
-const POINT_TYPE_LABELS = {
+export const POINT_TYPE_LABELS = {
   route: "Route",
   camp: "Camp",
   dayhike: "Day Hike",
@@ -1257,7 +1266,7 @@ function zoomToFeature(index) {
 // Drawing progress live preview (shown in sidebar during route drawing)
 // ---------------------------------------------------------------------------
 
-function updateDrawingPreview(info) {
+export function updateDrawingPreview(info) {
   const poolEl = document.getElementById("unassignedChips");
   if (!poolEl) return;
 
@@ -1314,7 +1323,7 @@ function panelMapPadding() {
 }
 
 /** Re-align the floating planning toolbar with the Plan map control. */
-function alignPlanningToolbar() {
+export function alignPlanningToolbar() {
   const planBtnEl = document.getElementById("planBtn");
   const planningToolbarEl = document.getElementById("planningToolbar");
   if (planBtnEl && planningToolbarEl) {
@@ -1352,7 +1361,7 @@ function closeSidebar() {
 // Panel wiring
 // ---------------------------------------------------------------------------
 
-function initTripPanel() {
+export function initTripPanel() {
   const planBtn = document.getElementById("planBtn");
   const tripPanel = document.getElementById("tripPanel");
 
@@ -1604,7 +1613,7 @@ setInterval(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function escapeHTML(str) {
+export function escapeHTML(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 

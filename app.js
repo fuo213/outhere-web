@@ -4,11 +4,19 @@
  * Initializes MapLibre GL JS with PMTiles protocol, builds the style
  * from config, and wires up layer toggle controls.
  *
- * Dependencies (loaded before this script):
- *   - maplibregl (global)
- *   - pmtiles    (global, via pmtiles.js)
- *   - config.js  (TILE_URL, MAP_CONFIG, LAYER_GROUPS)
+ * CDN globals (classic scripts in index.html): maplibregl, pmtiles, turf.
  */
+
+import { TILE_URL, MAP_CONFIG, LAYER_GROUPS } from "./config.js";
+import { LayerStyleManager, buildStyleControls, toggleStyleControls } from "./layer-styles.js";
+import {
+  isDrawingRoute,
+  isDeleteMode,
+  handleDeleteClick,
+  handleMapClickForRoute,
+  handleMapDblClickForRoute,
+} from "./planning.js";
+import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML } from "./trip-panel.js";
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -218,7 +226,7 @@ function buildStyle() {
 // Map initialization
 // ---------------------------------------------------------------------------
 
-const map = new maplibregl.Map({
+export const map = new maplibregl.Map({
   container: "map",
   style: buildStyle(),
   center: MAP_CONFIG.center,
@@ -227,6 +235,10 @@ const map = new maplibregl.Map({
   maxZoom: MAP_CONFIG.maxZoom,
   maxBounds: MAP_CONFIG.maxBounds,
 });
+
+// Debug handle: module scope is unreachable from devtools, so expose the two
+// core objects for console debugging. Not part of the public API.
+window.__outhere = { map, TripManager };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -720,7 +732,7 @@ function showTripFeaturePopup(e) {
   const props = f.properties;
   const coords = f.geometry.coordinates.slice();
   const type = props.point_type || props.type;
-  const typeLabel = (typeof POINT_TYPE_LABELS !== "undefined" && POINT_TYPE_LABELS[type]) || type;
+  const typeLabel = POINT_TYPE_LABELS[type] || type;
 
   let html = `<strong>${escapeHTML(props.name || typeLabel)}</strong>`;
   if (props.date) {
