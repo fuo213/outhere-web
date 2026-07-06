@@ -138,15 +138,23 @@ export const TripsStore = {
       if (!trip.properties.trip_id) trip.properties.trip_id = crypto.randomUUID();
       const id = trip.properties.trip_id;
 
-      // Don't clobber an existing entry with the same id (already migrated).
-      if (!localStorage.getItem(TRIP_KEY_PREFIX + id)) {
+      // Don't clobber an existing valid entry with the same id (already
+      // migrated), but repair a missing index entry from an earlier
+      // partial migration (saveTrip upserts the index).
+      const stored = this.loadTrip(id);
+      if (!stored) {
         this.saveTrip(trip);
+      } else if (!this.readIndex().trips.some((t) => t.id === id)) {
+        this.saveTrip(stored);
       }
       // The legacy trip was "the open trip" — keep that behaviour.
       if (!this.getActiveTripId()) this.setActiveTripId(id);
 
-      // Verify before removing the legacy key.
-      if (this.loadTrip(id)) {
+      // Verify the trip is both stored AND indexed before removing the
+      // legacy key — writeIndex swallows quota errors, so the trip key
+      // existing alone doesn't prove the trip is reachable from the home
+      // view.
+      if (this.loadTrip(id) && this.readIndex().trips.some((t) => t.id === id)) {
         localStorage.removeItem(LEGACY_TRIP_KEY);
         console.info(`[trips] migrated legacy trip "${trip.properties.name || id}" into multi-trip store`);
       }
