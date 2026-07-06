@@ -204,6 +204,9 @@ export const TripManager = {
 
   /** Make an already-parsed stored trip the open one (used by trips home). */
   setTrip(trip) {
+    // A half-drawn route belongs to the trip it was started in — don't let
+    // finishRouteDrawing deposit it into the newly opened trip.
+    cancelDrawing();
     this.currentTrip = migrateTrip(trip);
     this.render();
     this.save();

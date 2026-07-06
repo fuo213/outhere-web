@@ -14,6 +14,7 @@
 import { DEFAULT_REGION, CATALOG_URL, MAP_CONFIG } from "./config.js";
 import { map, buildStyle, restoreRuntimeLayers } from "./app.js"; // circular with app.js; only used at runtime
 import { TripManager, escapeHTML } from "./trip-panel.js"; // circular; only used at runtime
+import { cancelDrawing } from "./planning.js"; // only used at runtime
 
 const CATALOG_CACHE_KEY = "outhere_catalog_cache";   // { fetchedAt, catalog }
 const ACTIVE_REGION_KEY = "outhere_active_region";   // full region record
@@ -166,6 +167,11 @@ async function revalidateCatalog() {
  * into the region's bounds.
  */
 export function applyRegion(region, { fly = true } = {}) {
+  // An in-progress route drawing (or delete mode) can't meaningfully survive
+  // the style swap + camera move — its snap queries would hit the new
+  // region's trails and the route would stitch vertices across regions.
+  cancelDrawing();
+
   activeRegion = region;
   persistActiveRegion();
   updateRegionButton();
