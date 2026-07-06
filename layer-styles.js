@@ -4,11 +4,10 @@
  * Manages user overrides for map layer paint properties (color, width,
  * dash pattern, opacity). Persists to localStorage and applies via
  * MapLibre's setPaintProperty() for instant, no-rebuild updates.
- *
- * Dependencies (loaded before this script):
- *   - LAYER_STYLE_DEFAULTS, DASH_PRESETS  (from config.js)
- *   - map                                 (from app.js, used at runtime only)
  */
+
+import { DASH_PRESETS, LAYER_STYLE_DEFAULTS } from "./config.js";
+import { map } from "./app.js"; // circular with app.js; only used at runtime
 
 const STYLE_STORAGE_KEY = "outhere_layer_styles";
 
@@ -16,7 +15,7 @@ const STYLE_STORAGE_KEY = "outhere_layer_styles";
 // LayerStyleManager — singleton for overrides, persistence, map application
 // ---------------------------------------------------------------------------
 
-const LayerStyleManager = {
+export const LayerStyleManager = {
   overrides: {},
 
   load() {
@@ -256,7 +255,7 @@ function layerDisplayName(layerId) {
 }
 
 /** Build all style controls for a layer group. */
-function buildStyleControls(group, container) {
+export function buildStyleControls(group, container) {
   for (const layerId of group.styleLayers) {
     const defaults = LAYER_STYLE_DEFAULTS[layerId];
     if (!defaults) continue;
@@ -312,7 +311,7 @@ function buildStyleControls(group, container) {
 }
 
 /** Accordion toggle — only one group open at a time. */
-function toggleStyleControls(groupId) {
+export function toggleStyleControls(groupId) {
   document.querySelectorAll(".style-controls").forEach(el => {
     if (el.id === `style-controls-${groupId}`) {
       el.style.display = el.style.display === "none" ? "block" : "none";

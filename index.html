@@ -74,42 +74,26 @@
       <div class="trip-meta-chips" id="tripMetaChips"></div>
     </div>
 
-    <!-- Tab bar -->
-    <div class="sidebar-tabs" role="tablist">
-      <button class="sidebar-tab active" id="tabReadme" role="tab" aria-selected="true" data-tab="readme">Readme</button>
-      <button class="sidebar-tab" id="tabTimeline" role="tab" aria-selected="false" data-tab="timeline">Timeline</button>
-    </div>
+    <!-- Unified notebook panel (no tabs — days are collapsible accordion sections) -->
+    <div class="notebook-panel" id="notebookPanel">
 
-    <!-- Readme tab panel -->
-    <div class="sidebar-tab-panel" id="readmePanel" role="tabpanel">
-      <div class="readme-toolbar">
-        <button class="readme-preview-btn" id="readmePreviewBtn" data-mode="edit" aria-label="Toggle preview mode">
-          <span class="btn-face btn-face--front">Edit</span>
-          <span class="btn-face btn-face--back">Preview</span>
-        </button>
-        <button class="readme-print-btn" id="readmePrintBtn" title="Print readme">Print</button>
-      </div>
-      <nav class="readme-toc" id="readmeToc" aria-label="Table of contents"></nav>
-      <div id="readmeEditArea">
-        <div class="readme-template-picker" id="readmeTemplatePicker">
-          <p class="template-prompt">Start from a template?</p>
-          <div class="template-options">
-            <button class="template-opt-btn" data-template="solo">Solo overnight</button>
-            <button class="template-opt-btn" data-template="group">Group multi-day</button>
-            <label class="template-opt-btn">Import .md file<input type="file" id="readmeMdInput" accept=".md,.txt" hidden /></label>
-            <button class="template-opt-btn template-opt-blank" data-template="blank">Blank</button>
+      <!-- Overview section (collapsible, replaces top-level readme) -->
+      <div class="notebook-overview" id="overviewSection">
+        <div class="overview-header" id="overviewHeader">
+          <svg class="overview-chevron" id="overviewChevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="2,3 5,7 8,3"/>
+          </svg>
+          <span class="overview-label">Overview</span>
+          <div class="overview-header-actions">
+            <label class="overview-action-link">Import .md<input type="file" id="readmeMdInput" accept=".md,.txt" hidden /></label>
           </div>
         </div>
-        <textarea id="readmeEditor" class="readme-editor" placeholder="Write your trip notes in Markdown&#10;&#10;## Example heading&#10;- [ ] Checklist item&#10;**bold** *italic*"></textarea>
+        <div class="overview-body" id="overviewBody">
+          <textarea id="readmeEditor" class="notes-editor" placeholder="Trip overview — permits, emergency contacts, logistics&#10;&#10;Markdown supported: **bold**, *italic*, - [ ] checklist"></textarea>
+        </div>
       </div>
-      <div id="readmeReadArea" style="display:none">
-        <div class="readme-rendered" id="readmeRendered"></div>
-      </div>
-    </div>
 
-    <!-- Timeline tab panel -->
-    <div class="sidebar-tab-panel sidebar-tab-panel--hidden" id="timelinePanel" role="tabpanel">
-      <!-- Unassigned pool (pinned at top) -->
+      <!-- Unassigned feature pool -->
       <div class="unassigned-pool" id="unassignedPool">
         <div class="pool-label">Unassigned</div>
         <div class="pool-chips" id="unassignedChips">
@@ -117,7 +101,7 @@
         </div>
       </div>
 
-      <!-- Day sections -->
+      <!-- Day accordion sections -->
       <div id="daySections">
         <!-- Populated by trip-panel.js -->
       </div>
@@ -126,6 +110,7 @@
       <div class="add-day-row">
         <button class="add-day-btn" id="addDayBtn">+ Add day</button>
       </div>
+
     </div>
 
     <div class="trip-panel-divider"></div>
@@ -133,6 +118,7 @@
     <!-- Action buttons -->
     <div class="trip-actions-section">
       <button class="trip-action-btn" id="downloadTripBtn">Download GeoJSON</button>
+      <button class="trip-action-btn" id="exportMarkdownBtn">Export Notes (.md)</button>
       <label class="trip-action-btn upload-label">
         Load Trip
         <input type="file" id="loadTripInput" accept=".geojson,.json" hidden />
@@ -173,11 +159,41 @@
   <!-- Error banner (hidden by default) -->
   <div class="error-banner" id="errorBanner"></div>
 
-  <!-- App scripts — config first, then app logic, then planning -->
-  <script src="config.js"></script>
-  <script src="layer-styles.js"></script>
-  <script src="app.js"></script>
-  <script src="planning.js"></script>
-  <script src="trip-panel.js"></script>
+  <!-- Onboarding modal — shown when creating a new trip -->
+  <div class="onboarding-overlay" id="onboardingOverlay" hidden>
+    <div class="onboarding-modal" id="onboardingModal" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+      <div class="onboarding-header">
+        <span class="nps-badge">NEW TRIP</span>
+      </div>
+      <h2 class="onboarding-title" id="onboardingTitle">Plan a trip</h2>
+      <p class="onboarding-subtitle">Set up the basics — you can edit everything later.</p>
+      <div class="onboarding-fields">
+        <div class="onboarding-field">
+          <label class="onboarding-label" for="onboardingName">Trip name</label>
+          <input class="onboarding-input" id="onboardingName" type="text" placeholder="e.g. Zion Narrows" autocomplete="off" />
+        </div>
+        <div class="onboarding-field">
+          <label class="onboarding-label" for="onboardingLocation">Location / park</label>
+          <input class="onboarding-input" id="onboardingLocation" type="text" placeholder="e.g. Zion National Park, UT" autocomplete="off" />
+        </div>
+        <div class="onboarding-field-row">
+          <div class="onboarding-field">
+            <label class="onboarding-label" for="onboardingStartDate">Start date</label>
+            <input class="onboarding-input" id="onboardingStartDate" type="date" />
+          </div>
+          <div class="onboarding-field">
+            <label class="onboarding-label" for="onboardingNights">Nights out</label>
+            <input class="onboarding-input onboarding-input--short" id="onboardingNights" type="number" min="0" max="30" value="3" />
+          </div>
+        </div>
+      </div>
+      <button class="onboarding-submit" id="onboardingSubmit">Start planning</button>
+    </div>
+  </div>
+
+  <!-- App entry — native ES module; imports config.js, layer-styles.js,
+       planning.js, and trip-panel.js. CDN libraries above stay classic
+       scripts and are referenced as globals (maplibregl, pmtiles, turf). -->
+  <script type="module" src="app.js"></script>
 </body>
 </html>

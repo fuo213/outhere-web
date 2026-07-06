@@ -4,11 +4,19 @@
  * Initializes MapLibre GL JS with PMTiles protocol, builds the style
  * from config, and wires up layer toggle controls.
  *
- * Dependencies (loaded before this script):
- *   - maplibregl (global)
- *   - pmtiles    (global, via pmtiles.js)
- *   - config.js  (TILE_URL, MAP_CONFIG, LAYER_GROUPS)
+ * CDN globals (classic scripts in index.html): maplibregl, pmtiles, turf.
  */
+
+import { TILE_URL, MAP_CONFIG, LAYER_GROUPS } from "./config.js";
+import { LayerStyleManager, buildStyleControls, toggleStyleControls } from "./layer-styles.js";
+import {
+  isDrawingRoute,
+  isDeleteMode,
+  handleDeleteClick,
+  handleMapClickForRoute,
+  handleMapDblClickForRoute,
+} from "./planning.js";
+import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -218,7 +226,7 @@ function buildStyle() {
 // Map initialization
 // ---------------------------------------------------------------------------
 
-const map = new maplibregl.Map({
+export const map = new maplibregl.Map({
   container: "map",
   style: buildStyle(),
   center: MAP_CONFIG.center,
@@ -227,6 +235,10 @@ const map = new maplibregl.Map({
   maxZoom: MAP_CONFIG.maxZoom,
   maxBounds: MAP_CONFIG.maxBounds,
 });
+
+// Debug handle: module scope is unreachable from devtools, so expose the two
+// core objects for console debugging. Not part of the public API.
+window.__outhere = { map, TripManager };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -544,8 +556,15 @@ map.on("load", () => {
       if (isDrawingRoute) return;
       showTripFeaturePopup(e);
     });
-    map.on("mouseenter", layerId, () => { map.getCanvas().style.cursor = "pointer"; });
-    map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; });
+    // Don't clobber the crosshair cursor while drawing or in delete mode
+    map.on("mouseenter", layerId, () => {
+      if (isDrawingRoute || isDeleteMode) return;
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", layerId, () => {
+      if (isDrawingRoute || isDeleteMode) return;
+      map.getCanvas().style.cursor = "";
+    });
   }
 });
 
@@ -685,9 +704,9 @@ map.on("click", "pois", (e) => {
   const coords = f.geometry.coordinates.slice();
 
   // Build popup content
-  let html = `<strong>${props.name || "Unnamed"}</strong>`;
+  let html = `<strong>${escapeHTML(props.name || "Unnamed")}</strong>`;
   if (props.poi_category) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${props.poi_category}</span>`;
+    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.poi_category)}</span>`;
   }
   if (props.elevation) {
     const ft = Math.round(props.elevation * 3.28084);
@@ -700,11 +719,14 @@ map.on("click", "pois", (e) => {
     .addTo(map);
 });
 
-// Pointer cursor on hoverable features
+// Pointer cursor on hoverable features (not while drawing / delete mode,
+// which own the crosshair cursor)
 map.on("mouseenter", "pois", () => {
+  if (isDrawingRoute || isDeleteMode) return;
   map.getCanvas().style.cursor = "pointer";
 });
 map.on("mouseleave", "pois", () => {
+  if (isDrawingRoute || isDeleteMode) return;
   map.getCanvas().style.cursor = "";
 });
 
@@ -719,22 +741,22 @@ function showTripFeaturePopup(e) {
   const f = e.features[0];
   const props = f.properties;
   const coords = f.geometry.coordinates.slice();
-  const type = props.point_type || props.type;
-  const typeLabel = (typeof POINT_TYPE_LABELS !== "undefined" && POINT_TYPE_LABELS[type]) || type;
+  const type = getDisplayType(props);
+  const typeLabel = POINT_TYPE_LABELS[type] || type;
 
-  let html = `<strong>${props.name || typeLabel}</strong>`;
+  let html = `<strong>${escapeHTML(props.name || typeLabel)}</strong>`;
   if (props.date) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${props.date}</span>`;
+    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.date)}</span>`;
   }
   if (type === "camp") {
     let detail = "";
     if (props.water_nearby) detail += "Water nearby";
     if (detail) html += `<br><span style="color:#6b7280;font-size:0.85em">${detail}</span>`;
   } else if (type === "waypoint" && props.subtype) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${props.subtype}</span>`;
+    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.subtype)}</span>`;
   }
   if (props.notes) {
-    html += `<br><span style="color:#6b7280;font-size:0.8em">${props.notes}</span>`;
+    html += `<br><span style="color:#6b7280;font-size:0.8em">${escapeHTML(props.notes)}</span>`;
   }
 
   new maplibregl.Popup({ offset: 12, maxWidth: "260px" })
