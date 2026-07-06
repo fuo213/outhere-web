@@ -8,10 +8,9 @@
 // ---------------------------------------------------------------------------
 // Tile source
 // ---------------------------------------------------------------------------
-// Replace with your actual R2 public URL after running deploy_to_r2.py.
-// Format: https://pub-{account-id}.r2.dev/utah/utah_hiking.pmtiles
-//    or:  https://tiles.yourdomain.com/utah/utah_hiking.pmtiles
-export const TILE_URL = "https://pub-facc37c75f49450988b436c5307ce8dd.r2.dev/utah/utah_hiking.pmtiles";
+// Production tile host (R2 custom domain, see outhere/DEPLOYMENT.md).
+// Rollback path: https://pub-facc37c75f49450988b436c5307ce8dd.r2.dev/utah/utah_hiking.pmtiles
+export const TILE_URL = "https://tiles.booot.org/utah/utah_hiking.pmtiles";
 
 // ---------------------------------------------------------------------------
 // Map defaults
