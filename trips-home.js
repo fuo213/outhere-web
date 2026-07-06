@@ -21,6 +21,7 @@ import {
   openSidebar,
   showOnboardingModal,
   escapeHTML,
+  escapeAttr,
   getDisplayType,
 } from "./trip-panel.js"; // circular; only used at runtime
 import { getActiveRegionId, findRegionById, getRegionName, applyRegion } from "./region-picker.js";
@@ -275,7 +276,7 @@ function buildTripCard(trip) {
   if (p.region) chips.push(`<span class="trip-card-stat">${CARD_STAT_ICONS.region}${escapeHTML(getRegionName(p.region))}</span>`);
 
   card.innerHTML = `
-    <div class="trip-card-body" data-action="open" role="button" tabindex="0" aria-label="Open ${escapeHTML(p.name || "Untitled Trip")}">
+    <div class="trip-card-body" data-action="open" role="button" tabindex="0" aria-label="Open ${escapeAttr(p.name || "Untitled Trip")}">
       <h3 class="trip-card-name">${escapeHTML(p.name || "Untitled Trip")}${isOpen ? '<span class="trip-card-open-tag">Open</span>' : ""}</h3>
       ${p.location ? `<p class="trip-card-location">${escapeHTML(p.location)}</p>` : ""}
       <div class="trip-card-meta">${chips.join("")}</div>
