@@ -197,7 +197,14 @@ function duplicateTrip(id) {
   copy.properties.name = `${copy.properties.name || "Untitled Trip"} (copy)`;
   copy.properties.created = new Date().toISOString();
   copy.properties.updated = new Date().toISOString();
-  TripsStore.saveTrip(copy);
+  try {
+    TripsStore.saveTrip(copy);
+  } catch (err) {
+    // Quota exceeded or storage unavailable — surface it instead of dying
+    console.warn("[trips] could not duplicate trip:", err.message);
+    alert("Could not duplicate this trip — browser storage may be full.");
+    return;
+  }
   renderTripsHome();
 }
 
