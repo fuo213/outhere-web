@@ -17,6 +17,8 @@ import {
   handleMapDblClickForRoute,
 } from "./planning.js";
 import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
+import { getInitialRegion, regionMaxBounds, initRegionPicker } from "./region-picker.js";
+import { initTripsHome } from "./trips-home.js";
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -28,19 +30,21 @@ const protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 
 // ---------------------------------------------------------------------------
-// Build MapLibre style from the existing Utah style.json
+// Build MapLibre style for a region
 // ---------------------------------------------------------------------------
 // We inline the style here (rather than fetching style.json) so the viewer
 // works with zero extra requests. The layer definitions mirror what
 // tile_generator.py generates — see outhere/utah_maps/output/style.json.
+// The tile source URL comes from the active region (catalog-driven); the
+// hardcoded TILE_URL from config.js is the last-resort fallback.
 
-function buildStyle() {
-  const source = "utah";
-  const pmtilesUrl = `pmtiles://${TILE_URL}`;
+export function buildStyle(region) {
+  const source = "outhere";
+  const pmtilesUrl = `pmtiles://${region?.url || TILE_URL}`;
 
   return {
     version: 8,
-    name: "Utah Hiking",
+    name: region?.name ? `${region.name} Hiking` : "OutHere Hiking",
     glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     sprite: "https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite",
     sources: {
@@ -226,14 +230,18 @@ function buildStyle() {
 // Map initialization
 // ---------------------------------------------------------------------------
 
+// Boot with the persisted active region (or the Utah fallback) — the full
+// catalog is fetched asynchronously by initRegionPicker() after load.
+const initialRegion = getInitialRegion();
+
 export const map = new maplibregl.Map({
   container: "map",
-  style: buildStyle(),
-  center: MAP_CONFIG.center,
-  zoom: MAP_CONFIG.zoom,
+  style: buildStyle(initialRegion),
+  center: initialRegion.center || MAP_CONFIG.center,
+  zoom: initialRegion.zoom ?? MAP_CONFIG.zoom,
   minZoom: MAP_CONFIG.minZoom,
   maxZoom: MAP_CONFIG.maxZoom,
-  maxBounds: MAP_CONFIG.maxBounds,
+  maxBounds: regionMaxBounds(initialRegion),
 });
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
@@ -282,6 +290,14 @@ const layersIconSvg = `<svg width="18" height="18" viewBox="0 0 20 20" fill="non
   <polyline points="2,11 10,15.5 18,11"/>
 </svg>`;
 
+const homeIconSvg = `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4 3.5 h10 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 h-10 z"/>
+  <line x1="4" y1="3.5" x2="4" y2="16.5"/>
+  <line x1="7.5" y1="7" x2="12.5" y2="7"/>
+  <line x1="7.5" y1="10" x2="12.5" y2="10"/>
+</svg>`;
+
+map.addControl(makeMapControl("homeBtn", "My Trips", homeIconSvg), "top-left");
 map.addControl(makeMapControl("planBtn", "Trip Planning", planIconSvg), "top-left");
 map.addControl(makeMapControl("layersBtn", "Map Layers", layersIconSvg), "top-left");
 
@@ -292,8 +308,15 @@ map.addControl(makeMapControl("layersBtn", "Map Layers", layersIconSvg), "top-le
 const loadingEl = document.getElementById("loading");
 const errorEl = document.getElementById("errorBanner");
 
-map.on("load", () => {
-  loadingEl.classList.add("hidden");
+// ---------------------------------------------------------------------------
+// Runtime (non-tile) sources + layers — trip rendering & drawing previews
+// ---------------------------------------------------------------------------
+// These live outside buildStyle(), so any map.setStyle() call (region switch)
+// wipes them. addTripLayers() is idempotent and is re-run after every style
+// swap via restoreRuntimeLayers().
+
+function addTripLayers() {
+  if (map.getSource("trip")) return; // already present (initial load path)
 
   // -------------------------------------------------------------------
   // Trip planning GeoJSON source + layers
@@ -518,6 +541,25 @@ map.on("load", () => {
       "circle-stroke-opacity": 0.8,
     },
   });
+}
+
+/**
+ * Re-establish everything a style swap (map.setStyle) destroys: the trip +
+ * drawing sources/layers, the current trip's data, the user's layer style
+ * overrides, and the layer panel's visibility toggles.
+ * Called by region-picker.js after each region switch.
+ */
+export function restoreRuntimeLayers() {
+  addTripLayers();
+  TripManager.render();          // repopulate the "trip" source data
+  LayerStyleManager.applyAll();  // re-apply saved paint overrides
+  applyLayerToggleState();       // re-apply layer panel checkboxes
+}
+
+map.on("load", () => {
+  loadingEl.classList.add("hidden");
+
+  addTripLayers();
 
   // -------------------------------------------------------------------
   // Initialize trip planning tools
@@ -529,6 +571,12 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   LayerStyleManager.load();
   LayerStyleManager.applyAll();
+
+  // -------------------------------------------------------------------
+  // Region picker (async catalog fetch) + trips home view
+  // -------------------------------------------------------------------
+  initRegionPicker();
+  initTripsHome();
 
   // -------------------------------------------------------------------
   // Click handlers for route drawing + trip features
@@ -597,6 +645,20 @@ function setLayerGroupVisibility(group, visible) {
   }
 }
 
+// group.id → checkbox element, so visibility can be re-applied after a
+// region switch rebuilds the style with default visibility.
+const layerGroupCheckboxes = new Map();
+
+/** Re-apply the layer panel's checkbox state to the (rebuilt) style. */
+function applyLayerToggleState() {
+  for (const group of LAYER_GROUPS) {
+    const checkbox = layerGroupCheckboxes.get(group.id);
+    if (checkbox && !checkbox.checked) {
+      setLayerGroupVisibility(group, false);
+    }
+  }
+}
+
 /** Build the layer control panel from LAYER_GROUPS config. */
 function buildLayerControls() {
   const container = document.getElementById("layerList");
@@ -612,6 +674,7 @@ function buildLayerControls() {
     checkbox.addEventListener("change", () => {
       setLayerGroupVisibility(group, checkbox.checked);
     });
+    layerGroupCheckboxes.set(group.id, checkbox);
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "layer-name";

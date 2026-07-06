@@ -327,6 +327,425 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Region switcher (top-right) — catalog-driven tile region picker
+   --------------------------------------------------------------------------- */
+
+.region-switcher {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.region-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 14px;
+  background: #F2EDE3;
+  border: 1px solid #D5CBBA;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(30,26,20,0.18);
+  color: #1E1A14;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-left: auto;
+}
+
+.region-btn:hover {
+  background: #EDE7DA;
+}
+
+.region-btn.active {
+  background: #EDE7DA;
+  color: #B8431A;
+}
+
+.region-btn-chevron {
+  color: #A89880;
+  transition: transform 0.2s;
+}
+
+.region-btn.active .region-btn-chevron {
+  transform: rotate(180deg);
+}
+
+.region-panel {
+  display: none;
+  margin-top: 8px;
+  width: 300px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  background: #F2EDE3;
+  border: 1px solid #D5CBBA;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(30,26,20,0.22);
+  padding: 12px 0 10px;
+}
+
+.region-panel.open {
+  display: block;
+}
+
+.region-panel h3 {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #6B5E4C;
+  padding: 0 16px 8px;
+  border-bottom: 1px solid #D5CBBA;
+}
+
+.region-state-header {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 15px;
+  font-weight: 800;
+  color: #1E1A14;
+  letter-spacing: -0.01em;
+  padding: 12px 16px 2px;
+}
+
+.region-category-header {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #A89880;
+  padding: 7px 16px 3px;
+}
+
+.region-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.region-row:hover:not(:disabled) {
+  background: #EDE7DA;
+}
+
+.region-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.region-row-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1E1A14;
+}
+
+.region-row-desc {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 11px;
+  font-style: italic;
+  color: #8A7B68;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.region-status {
+  flex-shrink: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: #A89880;
+  font-style: italic;
+}
+
+.region-status-active {
+  font-style: normal;
+  font-weight: 500;
+  color: #7D9168;
+  background: #EFF4EB;
+  border: 1px solid #A8C098;
+  border-radius: 10px;
+  padding: 2px 8px;
+}
+
+.region-row-active .region-row-name {
+  color: #B8431A;
+}
+
+.region-row-unavailable {
+  cursor: default;
+}
+
+.region-row-unavailable .region-row-name,
+.region-row-unavailable .region-row-desc {
+  color: #B5A88F;
+}
+
+/* ---------------------------------------------------------------------------
+   Trips home — multi-trip management view
+   --------------------------------------------------------------------------- */
+
+.trips-home-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 26, 20, 0.55);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  backdrop-filter: blur(2px);
+}
+
+.trips-home-overlay[hidden] {
+  display: none;
+}
+
+.trips-home {
+  background: #F2EDE3;
+  background-image: repeating-linear-gradient(0deg, transparent 28px, rgba(180,168,148,0.06) 29px);
+  border-radius: 6px;
+  box-shadow: 0 8px 40px rgba(30,26,20,0.30);
+  width: 100%;
+  max-width: 680px;
+  max-height: calc(100vh - 64px);
+  padding: 28px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  font-family: 'DM Sans', sans-serif;
+  color: #1E1A14;
+}
+
+.trips-home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.trips-home-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0 0 6px;
+}
+
+.trips-home-subtitle {
+  font-size: 12px;
+  color: #8A7B68;
+  margin: 0 0 18px;
+}
+
+.trips-home-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-shrink: 0;
+}
+
+.trips-home-new-btn {
+  padding: 9px 18px;
+  background: #B8431A;
+  border: none;
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #F2EDE3;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background 0.15s;
+}
+
+.trips-home-new-btn:hover {
+  background: #9E3915;
+}
+
+.trips-home-import-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 16px;
+  background: #EDE6D9;
+  border: 1px solid #D5CBBA;
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1E1A14;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.trips-home-import-btn:hover {
+  background: #D5CBBA;
+}
+
+.trips-grid {
+  overflow-y: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+  align-content: start;
+  padding-bottom: 4px;
+}
+
+.trips-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 42px 20px;
+  border: 1.5px dashed #C0B098;
+  border-radius: 8px;
+}
+
+.trips-empty p {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: #6B5E4C;
+  margin: 0 0 4px;
+}
+
+.trips-empty .trips-empty-sub {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 400;
+  color: #A89880;
+  margin: 0;
+}
+
+.trip-card {
+  background: #FBF8F1;
+  border: 1px solid #D5CBBA;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(30,26,20,0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.trip-card:hover {
+  box-shadow: 0 3px 12px rgba(30,26,20,0.14);
+}
+
+.trip-card-open {
+  border-color: #7D9168;
+}
+
+.trip-card-body {
+  padding: 13px 15px 11px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.trip-card-name {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: #1E1A14;
+  margin: 0 0 3px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.trip-card-open-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7D9168;
+  background: #EFF4EB;
+  border: 1px solid #A8C098;
+  border-radius: 8px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+
+.trip-card-location {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 12px;
+  font-style: italic;
+  color: #8A7B68;
+  margin: 0 0 8px;
+}
+
+.trip-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.trip-card-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: #6B5E4C;
+  white-space: nowrap;
+}
+
+.trip-card-actions {
+  display: flex;
+  border-top: 1px solid #E5DCCB;
+  background: #F2EDE3;
+}
+
+.trip-card-actions button {
+  flex: 1;
+  padding: 7px 0;
+  background: none;
+  border: none;
+  border-right: 1px solid #E5DCCB;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6B5E4C;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.trip-card-actions button:last-child {
+  border-right: none;
+}
+
+.trip-card-actions button:hover {
+  background: #EDE7DA;
+  color: #1E1A14;
+}
+
+.trip-card-actions .trip-card-delete {
+  color: #B8431A;
+}
+
+.trip-card-actions .trip-card-delete:hover {
+  background: rgba(184,67,26,0.08);
+  color: #8B1A1A;
+}
+
+/* ---------------------------------------------------------------------------
    Loading overlay
    --------------------------------------------------------------------------- */
 

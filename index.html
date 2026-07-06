@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta name="description" content="OutHere — offline hiking map viewer for Utah trails, contours, and points of interest">
-  <title>OutHere — Utah Hiking Map</title>
+  <meta name="description" content="OutHere — offline hiking map viewer for trails, contours, and points of interest">
+  <title>OutHere — Hiking Map</title>
 
   <!-- Boot emoji favicon (matches booot-landing) -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🥾</text></svg>">
@@ -60,6 +60,46 @@
 
   <!-- Map container -->
   <div id="map"></div>
+
+  <!-- Region switcher (top-right) — populated by region-picker.js -->
+  <div class="region-switcher" id="regionSwitcher">
+    <button class="region-btn" id="regionBtn" type="button" aria-haspopup="listbox" aria-expanded="false" title="Switch map region">
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7 3 L2 5 V17 L7 15 L13 17 L18 15 V3 L13 5 Z"/>
+        <line x1="7" y1="3" x2="7" y2="15"/>
+        <line x1="13" y1="5" x2="13" y2="17"/>
+      </svg>
+      <span class="region-btn-label" id="regionBtnLabel">Utah</span>
+      <svg class="region-btn-chevron" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="2,3.5 5,7 8,3.5"/>
+      </svg>
+    </button>
+    <div class="region-panel" id="regionPanel" role="listbox" aria-label="Map regions">
+      <!-- Populated by region-picker.js -->
+    </div>
+  </div>
+
+  <!-- Trips home — the state when no trip is open (multi-trip management) -->
+  <div class="trips-home-overlay" id="tripsHomeOverlay" hidden>
+    <div class="trips-home" role="dialog" aria-modal="true" aria-labelledby="tripsHomeTitle">
+      <div class="trips-home-header">
+        <span class="nps-badge">TRIP JOURNAL</span>
+        <button class="modal-close-btn" id="tripsHomeCloseBtn" aria-label="Close trips">&#10005;</button>
+      </div>
+      <h2 class="trips-home-title" id="tripsHomeTitle">Your Trips</h2>
+      <p class="trips-home-subtitle">Open a trip to keep planning, or start something new.</p>
+      <div class="trips-home-actions">
+        <button class="trips-home-new-btn" id="tripsHomeNewBtn" type="button">+ New trip</button>
+        <label class="trips-home-import-btn">
+          Import .geojson
+          <input type="file" id="tripsHomeImportInput" accept=".geojson,.json" hidden />
+        </label>
+      </div>
+      <div class="trips-grid" id="tripsGrid">
+        <!-- Populated by trips-home.js -->
+      </div>
+    </div>
+  </div>
 
   <!-- Trip planning panel (right-side modal) -->
   <aside class="trip-panel" id="tripPanel">
