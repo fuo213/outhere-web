@@ -12,6 +12,10 @@
 // Rollback path: https://pub-facc37c75f49450988b436c5307ce8dd.r2.dev/utah/utah_hiking.pmtiles
 export const TILE_URL = "https://tiles.booot.org/utah/utah_hiking.pmtiles";
 
+// Machine-readable region catalog published by the tile pipeline. Fetched at
+// startup by region-picker.js (cached in localStorage, ~24h TTL).
+export const CATALOG_URL = "https://tiles.booot.org/catalog.json";
+
 // ---------------------------------------------------------------------------
 // Map defaults
 // ---------------------------------------------------------------------------
@@ -28,6 +32,29 @@ export const MAP_CONFIG = {
   attribution:
     '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors, ' +
     '<a href="https://www.usgs.gov">USGS</a>',
+};
+
+// ---------------------------------------------------------------------------
+// Fallback region
+// ---------------------------------------------------------------------------
+// Used when the catalog has never been fetched (or the fetch fails) so the
+// app always boots. Mirrors the catalog's "utah-full" record but keeps the
+// original Utah-specific MAP_CONFIG camera values as the defaults.
+export const DEFAULT_REGION = {
+  id: "utah-full",
+  name: "Utah (Full State)",
+  state: "utah",
+  state_name: "Utah",
+  category: "full_state",
+  category_name: "Full State",
+  type: "state",
+  description: "All of Utah — trails, contours, POIs",
+  url: TILE_URL,
+  bounds: { west: -114.052998, south: 36.997905, east: -109.041058, north: 42.001567 },
+  center: MAP_CONFIG.center,
+  zoom: MAP_CONFIG.zoom,
+  maxBounds: MAP_CONFIG.maxBounds,
+  available: true,
 };
 
 // ---------------------------------------------------------------------------

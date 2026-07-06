@@ -24,12 +24,14 @@ import {
   isDeleteMode,
   getTripDateRange,
 } from "./planning.js";
+import { TripsStore, hideTripsHome } from "./trips-home.js"; // circular; only used at runtime
+import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
 
 // ---------------------------------------------------------------------------
 // Trip state manager
 // ---------------------------------------------------------------------------
-
-const STORAGE_KEY = "outhere_trip";
+// Persistence lives in TripsStore (trips-home.js): an index plus one
+// localStorage entry per trip, keyed by trip_id.
 
 // Canonical trip format version (see outhere/trips/trip.schema.json + FORMAT.md).
 // Distinct from the legacy _schema_version integer migration counter.
@@ -52,6 +54,7 @@ export const TripManager = {
         sharing: "private",
         readme: "",
         notes: "",
+        region: getActiveRegionId(),
         schema_version: TRIP_SCHEMA_VERSION,
         _schema_version: 4,
         dates: startDate ? {
@@ -72,6 +75,7 @@ export const TripManager = {
         notes: "",
       });
     }
+    hideTripsHome(); // creating a trip leaves the home view
     this.render();
     this.save();
   },
@@ -168,8 +172,16 @@ export const TripManager = {
 
   save() {
     if (!this.currentTrip) return;
+    const props = this.currentTrip.properties;
+    if (!props.trip_id) props.trip_id = crypto.randomUUID();
+    // Stamp the active region on trips that don't carry one yet (legacy /
+    // imported trips). An explicit region switch while a trip is open
+    // re-stamps it in region-picker.js.
+    if (!props.region) props.region = getActiveRegionId();
+    props.updated = new Date().toISOString();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentTrip));
+      TripsStore.saveTrip(this.currentTrip);
+      TripsStore.setActiveTripId(props.trip_id);
     } catch (err) {
       // Quota exceeded or storage unavailable — keep the app running
       console.warn("[trip] could not save trip to localStorage:", err.message);
@@ -177,23 +189,27 @@ export const TripManager = {
   },
 
   loadFromStorage() {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return false;
-    try {
-      const parsed = JSON.parse(saved);
-      if (!parsed || parsed.type !== "FeatureCollection" ||
-          !Array.isArray(parsed.features) || !parsed.properties) {
-        throw new Error("saved trip has invalid shape");
-      }
-      this.currentTrip = migrateTrip(parsed);
-      this.render();
-      return true;
-    } catch (err) {
-      // Corrupt saved trip: drop it so we don't fail on every load
-      console.warn("[trip] discarding corrupt saved trip:", err.message);
-      localStorage.removeItem(STORAGE_KEY);
+    const activeId = TripsStore.getActiveTripId();
+    if (!activeId) return false;
+    const saved = TripsStore.loadTrip(activeId);
+    if (!saved) {
+      // Stale pointer (trip deleted or corrupt) — clear it
+      TripsStore.setActiveTripId(null);
       return false;
     }
+    this.currentTrip = migrateTrip(saved);
+    this.render();
+    return true;
+  },
+
+  /** Make an already-parsed stored trip the open one (used by trips home). */
+  setTrip(trip) {
+    // A half-drawn route belongs to the trip it was started in — don't let
+    // finishRouteDrawing deposit it into the newly opened trip.
+    cancelDrawing();
+    this.currentTrip = migrateTrip(trip);
+    this.render();
+    this.save();
   },
 
   loadFromGeoJSON(geojson) {
@@ -214,47 +230,12 @@ export const TripManager = {
     this.save();
   },
 
-  /**
-   * Build the canonical export document (schema_version 1.0) without
-   * mutating the live trip: stamps schema_version, mirrors the readme into
-   * `notes` (mobile reads `notes`), and guarantees a `dates` key.
-   */
   buildExport() {
-    if (!this.currentTrip) return null;
-    const out = JSON.parse(JSON.stringify(this.currentTrip));
-    out.properties.schema_version = TRIP_SCHEMA_VERSION;
-    // The UI edits `readme`; write `notes` from the same value for mobile.
-    out.properties.notes = out.properties.readme || "";
-    if (out.properties.dates === undefined) out.properties.dates = null;
-    if (!Array.isArray(out.days)) out.days = [];
-    if (!Array.isArray(out.unassigned)) out.unassigned = [];
-    return out;
+    return buildTripExport(this.currentTrip);
   },
 
   download() {
-    const exportTrip = this.buildExport();
-    if (!exportTrip) return;
-
-    // Lightweight structural self-check against the canonical format.
-    // Warn (don't block) so users can still get their data out.
-    const problems = validateTripExport(exportTrip);
-    if (problems.length > 0) {
-      console.warn(
-        `[trip] export does not conform to trip schema ${TRIP_SCHEMA_VERSION} ` +
-        `(${problems.length} issue${problems.length !== 1 ? "s" : ""}):\n- ` +
-        problems.join("\n- ")
-      );
-    }
-
-    const data = JSON.stringify(exportTrip, null, 2);
-    const blob = new Blob([data], { type: "application/geo+json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const slug = (exportTrip.properties.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_") || "trip";
-    a.download = `${slug}.geojson`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadTripGeoJSON(this.currentTrip);
   },
 
   exportMarkdown() {
@@ -307,18 +288,67 @@ export const TripManager = {
     URL.revokeObjectURL(url);
   },
 
+  /** Close the current trip (it stays saved in the trips store). */
   clear() {
-    localStorage.removeItem(STORAGE_KEY);
+    TripsStore.setActiveTripId(null);
     this.currentTrip = null;
     this.render();
   },
 };
 
 // ---------------------------------------------------------------------------
+// Canonical export helpers (shared with trips-home.js so any stored trip can
+// be exported without opening it)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the canonical export document (schema_version 1.0) without mutating
+ * the live trip: stamps schema_version, mirrors the readme into `notes`
+ * (mobile reads `notes`), and guarantees a `dates` key.
+ */
+export function buildTripExport(trip) {
+  if (!trip) return null;
+  const out = JSON.parse(JSON.stringify(trip));
+  out.properties.schema_version = TRIP_SCHEMA_VERSION;
+  // The UI edits `readme`; write `notes` from the same value for mobile.
+  out.properties.notes = out.properties.readme || "";
+  if (out.properties.dates === undefined) out.properties.dates = null;
+  if (!Array.isArray(out.days)) out.days = [];
+  if (!Array.isArray(out.unassigned)) out.unassigned = [];
+  return out;
+}
+
+export function downloadTripGeoJSON(trip) {
+  const exportTrip = buildTripExport(trip);
+  if (!exportTrip) return;
+
+  // Lightweight structural self-check against the canonical format.
+  // Warn (don't block) so users can still get their data out.
+  const problems = validateTripExport(exportTrip);
+  if (problems.length > 0) {
+    console.warn(
+      `[trip] export does not conform to trip schema ${TRIP_SCHEMA_VERSION} ` +
+      `(${problems.length} issue${problems.length !== 1 ? "s" : ""}):\n- ` +
+      problems.join("\n- ")
+    );
+  }
+
+  const data = JSON.stringify(exportTrip, null, 2);
+  const blob = new Blob([data], { type: "application/geo+json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const slug = (exportTrip.properties.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_") || "trip";
+  a.download = `${slug}.geojson`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
 // Data migration
 // ---------------------------------------------------------------------------
 
-function migrateTrip(trip) {
+export function migrateTrip(trip) {
   if (!trip || !trip.properties) return trip;
 
   // v1 → v2: add point_type to waypoints / camps
@@ -1352,7 +1382,7 @@ export function alignPlanningToolbar() {
   }
 }
 
-function openSidebar() {
+export function openSidebar() {
   const tripPanel = document.getElementById("tripPanel");
   const toolbar = document.getElementById("planningToolbar");
   // Align toolbar top with planBtn before making it visible
@@ -1496,12 +1526,14 @@ export function initTripPanel() {
   // New trip button → show onboarding modal
   document.getElementById("newTripBtn").addEventListener("click", () => {
     if (TripManager.currentTrip && TripManager.currentTrip.features.length > 0) {
-      if (!confirm("Start a new trip? Current trip will remain in Downloads if saved.")) return;
+      if (!confirm("Start a new trip? Your current trip stays saved in My Trips.")) return;
     }
     showOnboardingModal();
   });
 
-  // Load saved trip; if none, show onboarding on first open
+  // Migrate the legacy single-trip localStorage entry into the multi-trip
+  // store (lossless, one-time), then load the active trip if there is one.
+  TripsStore.migrateLegacy();
   TripManager.loadFromStorage();
 
   // ---------------------------------------------------------------------------
@@ -1593,7 +1625,7 @@ export function initTripPanel() {
 // Onboarding modal
 // ---------------------------------------------------------------------------
 
-function showOnboardingModal() {
+export function showOnboardingModal() {
   const overlay = document.getElementById("onboardingOverlay");
   if (!overlay) return;
   // Pre-fill today's date
@@ -1643,6 +1675,6 @@ export function escapeHTML(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function escapeAttr(str) {
+export function escapeAttr(str) {
   return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
