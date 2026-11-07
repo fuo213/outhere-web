@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Booot Design System</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🥾</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="motion.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    /* Specimen-page layout only. Nothing here is part of the system. */
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--surface); color: var(--text-body); font: var(--text-base)/var(--leading-normal) var(--font-ui); }
+    .page { max-width: 1080px; margin: 0 auto; padding: var(--space-12) var(--space-6) 96px; }
+    header.top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+    header.top h1 { margin: 0; font: 800 var(--text-hero)/1 var(--font-display); letter-spacing: -0.03em; color: var(--text); }
+    header.top p { margin: var(--space-2) 0 0; max-width: 56ch; color: var(--text-secondary); }
+    section { margin-top: var(--space-12); padding-top: var(--space-6); border-top: 1px solid var(--border); }
+    section > h2 { margin: 0 0 var(--space-1); font: var(--weight-bold) var(--text-xl)/1.2 var(--font-display); color: var(--text); }
+    section > p.lede { margin: 0 0 var(--space-5); color: var(--text-secondary); max-width: 64ch; }
+    .grid { display: grid; gap: var(--space-4); }
+    .cols-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+    .cols-swatch { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); }
+    .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+    .note { font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--space-2); }
+    .principle h3 { margin: 0 0 var(--space-1); font: var(--weight-bold) var(--text-lg)/1.2 var(--font-ui); color: var(--text); }
+    .principle p { margin: 0; }
+    .principle .test { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
+    .swatch { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-raised); }
+    .swatch .chipcolor { height: 56px; }
+    .swatch .meta { padding: var(--space-2) var(--space-3); display: grid; gap: 2px; }
+    .swatch .name { font: var(--weight-semi) var(--text-sm)/1.2 var(--font-ui); color: var(--text); }
+    .swatch .val { font: var(--text-xs)/1.2 var(--font-data); color: var(--text-secondary); }
+    .type-row { display: grid; grid-template-columns: 140px 1fr; gap: var(--space-4); align-items: baseline; padding: var(--space-3) 0; border-bottom: 1px dashed var(--border); }
+    .type-row .spec { font: var(--text-xs)/1.3 var(--font-data); color: var(--text-secondary); }
+    .verb { display: grid; gap: var(--space-3); align-content: start; }
+    .verb h3 { margin: 0; font: var(--weight-bold) var(--text-md)/1 var(--font-ui); color: var(--text); }
+    .verb .t-meta { margin: 0; }
+    .route-svg { width: 100%; height: 120px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .stats { display: flex; gap: var(--space-4); }
+    .stat { display: grid; gap: 2px; }
+    .stat .t-data { font-size: var(--text-lg); color: var(--text); }
+
+    /* Trip panel sketch */
+    .sketch { display: grid; grid-template-columns: 1fr 400px; min-height: 620px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-3); }
+    .sketch-map { position: relative; background:
+        repeating-radial-gradient(circle at 30% 60%, transparent 0 22px, rgba(125,145,104,0.18) 22px 23px),
+        repeating-radial-gradient(circle at 75% 25%, transparent 0 18px, rgba(125,145,104,0.14) 18px 19px),
+        #E9E4D6; }
+    .sketch-map > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .sketch-tools { position: absolute; top: var(--space-4); left: var(--space-4); display: grid; gap: var(--space-2); }
+    .sketch-panel { background: var(--surface); box-shadow: var(--shadow-4); display: flex; flex-direction: column; }
+    .sp-head { padding: var(--space-6) var(--space-6) var(--space-4); }
+    .sp-head .t-meta { margin-top: var(--space-1); }
+    .sp-head .row { margin-top: var(--space-3); gap: var(--space-2); }
+    .sp-body { flex: 1; padding: 0 var(--space-6); display: grid; align-content: start; gap: var(--space-3); }
+    .day { padding: var(--space-3) var(--space-4); }
+    .day-top { display: flex; justify-content: space-between; align-items: baseline; }
+    .day-name { font: var(--weight-bold) var(--text-md)/1.2 var(--font-ui); color: var(--text); }
+    .day-date { font: var(--text-sm)/1 var(--font-data); color: var(--text-secondary); }
+    .day .row { margin-top: var(--space-2); gap: var(--space-2); }
+    .sp-foot { padding: var(--space-4) var(--space-6) var(--space-6); display: flex; gap: var(--space-2); }
+    .sp-foot .btn--primary { flex: 1; }
+    @media (max-width: 820px) { .sketch { grid-template-columns: 1fr; } .sketch-map { min-height: 280px; } }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header class="top">
+    <div>
+      <h1>Booot</h1>
+      <p>Design system v0.1. A field notebook for planning multi-day trips: warm paper, precise ink, one rust accent, and motion that confirms what you did.</p>
+    </div>
+    <div class="row">
+      <span class="chip">v0.1 · 2026-11-07</span>
+    </div>
+  </header>
+
+  <section id="principles">
+    <h2>Principles</h2>
+    <p class="lede">Each one has a test. A screen that fails the test is wrong even if it looks nice.</p>
+    <div class="grid cols-2">
+      <div class="card principle"><h3>The map is the hero</h3><p>Chrome frames the map and gets out of the way.</p><p class="test">Test: the map owns most of the viewport; one panel at a time.</p></div>
+      <div class="card principle"><h3>One clear next step</h3><p>Exactly one primary action per view. Empty states say what to do next.</p><p class="test">Test: squint, and you see exactly one rust-filled element.</p></div>
+      <div class="card principle"><h3>Ink on paper</h3><p>Paper surfaces, near-black ink, rust for action. Type colors mean kinds of places.</p><p class="test">Test: remove every color but rust and the type colors and nothing important is lost.</p></div>
+      <div class="card principle"><h3>Quiet type, loud numbers</h3><p>Playfair for titles, DM Sans for UI, Plex Mono for numbers. Sentence case.</p><p class="test">Test: nothing below 11px; mono never sets words.</p></div>
+      <div class="card principle"><h3>Motion confirms, never decorates</h3><p>Six verbs, each triggered by something the user did.</p><p class="test">Test: idle UI is still; under reduced motion nothing moves.</p></div>
+      <div class="card principle"><h3>Honest and specific</h3><p>Name real things. Promise only what ships.</p><p class="test">Test: no exclamation marks, no features a user can't use today.</p></div>
+    </div>
+  </section>
+
+  <section id="sketch">
+    <h2>Trip panel, rebuilt from the system</h2>
+    <p class="lede">A sketch, not the app: the planner panel composed only from tokens and base components. One primary action, numbers in mono, days that show what's in them, labeled tools.</p>
+    <div class="sketch">
+      <div class="sketch-map">
+        <svg viewBox="0 0 600 620" preserveAspectRatio="none" aria-hidden="true">
+          <path id="sketchRoute" d="M70 520 C 140 470, 160 420, 220 400 S 320 330, 360 300 S 450 230, 470 160 S 520 110, 540 80" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="220" cy="400" r="7" fill="var(--type-camp)" stroke="var(--surface-raised)" stroke-width="2.5"/>
+          <circle cx="470" cy="160" r="7" fill="var(--type-camp)" stroke="var(--surface-raised)" stroke-width="2.5"/>
+          <circle cx="70" cy="520" r="6" fill="var(--surface-raised)" stroke="var(--accent)" stroke-width="3"/>
+          <circle cx="540" cy="80" r="6" fill="var(--accent)" stroke="var(--surface-raised)" stroke-width="2.5"/>
+        </svg>
+        <div class="sketch-tools">
+          <button class="tool" aria-pressed="true" title="Draw route" aria-label="Draw route">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15 C6 11, 7 9, 10 8 S14 5, 15 3"/><circle cx="3" cy="15" r="1.6"/><circle cx="15" cy="3" r="1.6"/></svg>
+          </button>
+          <button class="tool" title="Layers" aria-label="Layers">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9 2 16 6 9 10 2 6Z"/><path d="M2 9.5 9 13.5 16 9.5"/><path d="M2 12.8 9 16.8 16 12.8"/></svg>
+          </button>
+        </div>
+      </div>
+      <aside class="sketch-panel">
+        <div class="sp-head">
+          <div class="t-title">Zion Traverse</div>
+          <div class="t-meta">Zion National Park · Sat, Nov 7 → Mon, Nov 9</div>
+          <div class="row">
+            <span class="chip"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M1 12 5 4 8 9 10 6 13 12Z"/></svg><span id="tripMiles">36.3</span> mi</span>
+            <span class="chip">+<span id="tripGain">6,120</span> ft</span>
+            <span class="chip">3 days</span>
+          </div>
+        </div>
+        <div class="sp-body">
+          <div class="t-label">Itinerary</div>
+          <div class="card day m-lift">
+            <div class="day-top"><span class="day-name">Day 1 · Lee Pass to La Verkin</span><span class="day-date">Nov 7</span></div>
+            <div class="row"><span class="t-data">11.2 mi · +1,840 ft</span></div>
+            <div class="row"><span class="pill" data-type="camp"><svg viewBox="0 0 14 14" fill="currentColor"><path d="M7 2 13 12H1Z" fill-opacity=".35" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>Camp 4</span></div>
+          </div>
+          <div class="card day m-lift">
+            <div class="day-top"><span class="day-name">Day 2 · Hop Valley</span><span class="day-date">Nov 8</span></div>
+            <div class="row"><span class="t-data">13.0 mi · +2,410 ft</span></div>
+            <div class="row"><span class="pill" data-type="dayhike">Kolob Arch</span><span class="pill" data-type="camp">Hop Valley 2</span></div>
+          </div>
+          <div class="empty">
+            Day 3 is empty. Drag the rest of your route here, or draw it.
+            <button class="btn btn--quiet btn--sm">Draw day 3</button>
+          </div>
+        </div>
+        <div class="sp-foot">
+          <button class="btn btn--primary" id="sendBtn">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12h2"/></svg>
+            Send to phone
+          </button>
+          <button class="btn btn--quiet btn--icon" title="More" aria-label="More actions">
+            <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="13" cy="8" r="1.4"/></svg>
+          </button>
+        </div>
+      </aside>
+    </div>
+    <p class="note">Try it: hover the day cards (lift), press any button (press), click "Send to phone" (confirm).</p>
+  </section>
+
+  <section id="motion">
+    <h2>Motion</h2>
+    <p class="lede">Six verbs. Each one answers "did that work?" or "where did that go?". Turn on Reduce Motion in your OS and everything still works without moving.</p>
+    <div class="grid cols-2">
+      <div class="card verb">
+        <h3>press</h3><p class="t-meta">Every button sinks when pressed and springs back.</p>
+        <div class="row"><button class="btn btn--primary">Primary</button><button class="btn btn--quiet">Quiet</button><button class="tool" aria-label="Tool"><svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="2" x2="8" y2="14"/><line x1="2" y1="8" x2="14" y2="8"/></svg></button></div>
+      </div>
+      <div class="card verb">
+        <h3>lift</h3><p class="t-meta">Things you can grab rise on hover.</p>
+        <div class="row"><span class="pill m-lift">Route segment</span><span class="pill m-lift" data-type="camp">Camp</span><span class="pill m-lift" data-type="dayhike">Dayhike</span><span class="pill m-lift" data-type="rest">Rest</span></div>
+      </div>
+      <div class="card verb">
+        <h3>confirm</h3><p class="t-meta">A short shiver when a state change lands.</p>
+        <div class="row"><button class="btn btn--quiet" id="confirmDemo">Assign to Day 2</button><span class="t-meta" id="confirmMsg"></span></div>
+      </div>
+      <div class="card verb">
+        <h3>flip</h3><p class="t-meta">Two-state toggle. Hover previews the other state.</p>
+        <div class="row"><button class="flip-btn" id="flipDemo" data-mode="a"><span class="flip-face flip-face--front"></span><span class="flip-face flip-face--back"></span></button><button class="flip-btn" id="unitsDemo" data-mode="a" style="--flip-a: var(--ink-700); --flip-b: var(--sage-700)"><span class="flip-face flip-face--front"></span><span class="flip-face flip-face--back"></span></button></div>
+      </div>
+      <div class="card verb">
+        <h3>draw</h3><p class="t-meta">A finished route draws itself in.</p>
+        <svg class="route-svg" viewBox="0 0 400 120" preserveAspectRatio="none"><path id="drawDemo" d="M14 100 C 70 90, 90 40, 150 50 S 240 100, 290 60 S 360 20, 388 22" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/></svg>
+        <div><button class="btn btn--ghost btn--sm" id="drawBtn">Replay</button></div>
+      </div>
+      <div class="card verb">
+        <h3>count</h3><p class="t-meta">Totals tick to their new value after an edit.</p>
+        <div class="stats">
+          <div class="stat"><span class="t-label">Distance</span><span class="t-data"><span id="countMi">11.2</span> mi</span></div>
+          <div class="stat"><span class="t-label">Gain</span><span class="t-data">+<span id="countFt">1840</span> ft</span></div>
+        </div>
+        <div><button class="btn btn--ghost btn--sm" id="countBtn">Add a segment</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="color">
+    <h2>Color</h2>
+    <p class="lede">Components use semantic tokens. Palette swatches show their contrast on paper; anything under 4.5 is not for small text, and ink-300 and the type fills are never text.</p>
+    <div class="t-label" style="margin-bottom: var(--space-3)">Semantic</div>
+    <div class="grid cols-swatch" id="semanticSwatches"></div>
+    <div class="t-label" style="margin: var(--space-6) 0 var(--space-3)">Palette</div>
+    <div class="grid cols-swatch" id="paletteSwatches"></div>
+    <div class="t-label" style="margin: var(--space-6) 0 var(--space-3)">Point types</div>
+    <div class="row"><span class="pill">Route</span><span class="pill" data-type="camp">Camp</span><span class="pill" data-type="dayhike">Dayhike</span><span class="pill" data-type="rest">Rest</span></div>
+  </section>
+
+  <section id="type">
+    <h2>Type</h2>
+    <p class="lede">Three families, strict jobs. Sentence case. 11px floor.</p>
+    <div class="type-row"><span class="spec">2xl · 28 · Playfair 700</span><span class="t-title">Zion Traverse</span></div>
+    <div class="type-row"><span class="spec">xl · 22 · Playfair 700</span><span style="font: 700 var(--text-xl)/1.2 var(--font-display); color: var(--text)">Plan a trip</span></div>
+    <div class="type-row"><span class="spec">lg · 17 · DM Sans 700</span><span class="t-heading">Day 2 · Hop Valley</span></div>
+    <div class="type-row"><span class="spec">base · 14 · DM Sans 400</span><span class="t-body">Permits are required for overnight trips. Pick up at the Kolob Canyons visitor center.</span></div>
+    <div class="type-row"><span class="spec">md · 13 · DM Sans 500</span><span style="font: 500 var(--text-md)/1.4 var(--font-ui); color: var(--text)">Default interface text</span></div>
+    <div class="type-row"><span class="spec">sm · 12 · Plex Mono 500</span><span class="t-data">36.3 mi · +6,120 ft · 37.4532, -113.2241</span></div>
+    <div class="type-row"><span class="spec">xs · 11 · DM Sans 600 caps</span><span class="t-label">Itinerary</span></div>
+  </section>
+
+  <section id="components">
+    <h2>Components</h2>
+    <p class="lede">The base layer. Features compose these instead of re-styling buttons.</p>
+    <div class="grid cols-2">
+      <div class="card verb">
+        <h3>Buttons</h3>
+        <div class="row"><button class="btn btn--primary">Send to phone</button><button class="btn btn--quiet">Export notes</button><button class="btn btn--ghost">Cancel</button><button class="btn btn--danger">Delete trip</button></div>
+        <div class="row"><button class="btn btn--primary btn--sm">Small</button><button class="btn btn--quiet btn--sm">Small quiet</button><button class="btn btn--quiet" disabled>Disabled</button></div>
+      </div>
+      <div class="card verb">
+        <h3>Fields</h3>
+        <label class="field"><span class="field-label">Trip name</span><input class="input" placeholder="e.g. Zion Traverse"></label>
+        <label class="field"><span class="field-label">Start date</span><input class="input" type="date"></label>
+      </div>
+      <div class="card verb">
+        <h3>Chips</h3>
+        <div class="row"><span class="chip">36.3 mi</span><span class="chip">+6,120 ft</span><span class="chip">3 days</span></div>
+      </div>
+      <div class="card verb">
+        <h3>Empty state</h3>
+        <div class="empty">No route yet. Draw one on the map and it'll show up here, split into days.<button class="btn btn--primary btn--sm">Draw route</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="anti">
+    <h2>Don't</h2>
+    <p class="lede">The fastest way to look AI-generated. Full list in DESIGN.md.</p>
+    <div class="grid cols-2">
+      <div class="card"><p class="t-body" style="margin:0">Tiny tracked uppercase on every label · restating badges above titles · four equal buttons in a stack · purple gradients, glass, glow · emoji icons · a fourth font · motion on idle UI · "Untitled" and "No items" empty states.</p></div>
+    </div>
+  </section>
+
+</div>
+
+<script type="module">
+  import { confirm, wireFlip, countUp, drawIn } from "./motion.js";
+
+  // Swatches read live from tokens.css so this page can't drift from it.
+  const css = getComputedStyle(document.documentElement);
+  const hexOf = (name) => css.getPropertyValue(name).trim();
+  const lum = (hex) => {
+    const m = hex.replace("#", "").match(/../g);
+    if (!m) return null;
+    const c = m.map((x) => parseInt(x, 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const contrast = (a, b) => { const x = lum(a), y = lum(b); if (x == null || y == null) return null; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const paper = hexOf("--earth-100");
+  const swatch = (name) => {
+    const v = hexOf(name);
+    const resolved = getComputedStyle(document.body).getPropertyValue(name).trim();
+    const el = document.createElement("div");
+    el.className = "swatch";
+    const cr = /^#[0-9a-f]{6}$/i.test(v) ? contrast(v, paper) : null;
+    el.innerHTML = `<div class="chipcolor" style="background: var(${name})"></div>
+      <div class="meta"><span class="name">${name}</span><span class="val">${v || resolved}${cr ? ` · ${cr.toFixed(1)}:1` : ""}</span></div>`;
+    return el;
+  };
+  const sem = ["--surface", "--surface-raised", "--surface-sunken", "--surface-pressed", "--border", "--border-strong", "--text", "--text-body", "--text-secondary", "--text-muted", "--accent", "--accent-hover", "--danger"];
+  const pal = ["--earth-50", "--earth-100", "--earth-200", "--earth-300", "--earth-400", "--earth-500", "--earth-600", "--ink-900", "--ink-700", "--ink-500", "--ink-400", "--ink-300", "--rust-500", "--rust-600", "--teal-500", "--teal-700", "--sage-500", "--sage-700", "--dust-500", "--dust-700", "--gold-500", "--gold-700", "--water-500"];
+  sem.forEach((n) => document.getElementById("semanticSwatches").append(swatch(n)));
+  pal.forEach((n) => document.getElementById("paletteSwatches").append(swatch(n)));
+
+  // Motion demos
+  const confirmBtn = document.getElementById("confirmDemo");
+  confirmBtn.addEventListener("click", () => { confirm(confirmBtn); document.getElementById("confirmMsg").textContent = "Assigned."; });
+  const send = document.getElementById("sendBtn");
+  send.addEventListener("click", () => confirm(send));
+  wireFlip(document.getElementById("flipDemo"), { a: "Edit", b: "Preview" });
+  wireFlip(document.getElementById("unitsDemo"), { a: "Miles", b: "Kilometers" });
+  const drawPath = document.getElementById("drawDemo");
+  drawIn(drawPath);
+  drawIn(document.getElementById("sketchRoute"));
+  document.getElementById("drawBtn").addEventListener("click", () => drawIn(drawPath));
+  let mi = 11.2, ft = 1840;
+  document.getElementById("countBtn").addEventListener("click", () => {
+    mi += 4.6; ft += 920;
+    countUp(document.getElementById("countMi"), +mi.toFixed(1), { decimals: 1 });
+    countUp(document.getElementById("countFt"), ft);
+  });
+</script>
+</body>
+</html>

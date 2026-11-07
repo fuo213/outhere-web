@@ -5,6 +5,13 @@ Web-based hiking map viewer displaying OutHere vector tiles (PMTiles) via MapLib
 **Live**: https://outhere-web.pages.dev
 **Tiles**: Loaded from Cloudflare R2 at `pub-facc37c75f49450988b436c5307ce8dd.r2.dev`
 
+## Design system
+
+All UI work follows `design/` (tokens, principles, motion, components, taste
+log; see `design/DESIGN.md`). The `booot-design` skill loads it automatically.
+Use tokens, never raw colors; one primary action per view; screenshot visible
+changes with `node design/tools/shoot.mjs` before calling them done.
+
 ## Related Repositories
 
 - **outhere** — Tile generation pipeline ([../outhere](../outhere))
