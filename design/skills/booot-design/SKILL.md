@@ -32,7 +32,9 @@ The system lives in `~/development/booot/outhere-web/design/`:
 4. **Motion = the six verbs** (press, lift, confirm, flip, draw, count) from
    `motion.css`/`motion.js`, triggered by user actions or state changes. Idle
    UI never moves. Reduced motion is respected through tokens; don't hardcode
-   durations.
+   durations. Loading states are the one place for more expressive motion
+   (the "tabletop" direction in DESIGN.md), and it must never be slower than
+   the data.
 5. **Contrast:** `--text-muted` only ≥14px; ink-300 and `--type-*` fills are
    never text (use `--type-*-text`).
 6. **Copy:** plain, specific, verbs on buttons, units on numbers, no

@@ -122,6 +122,46 @@ press only), `--ease-in-out` (draw). Durations: 90 press / 160 hover / 260
 panels / 420 confirm / 900 draw. All collapse to 0 under
 `prefers-reduced-motion`.
 
+## Loading states and expressive motion (direction, not built yet)
+
+The rule above still holds: no animation for its own sake. **Waiting is the
+exception.** While the user is already waiting (the map loading, a region
+downloading, a trip importing), motion can be more expressive, because it
+fills time that would otherwise be dead and shows that something is
+happening.
+
+**The tabletop metaphor.** Planning a trip is spreading a map on a table and
+laying your notes on it. Loading should feel like that: things settle onto a
+surface rather than spin or shimmer.
+- **Map load:** the paper base appears first, then layers *drop onto the
+  table* in reading order (terrain/contours ink in, water, trails draw, POIs
+  drop like pins with a small settle). Each layer lands when its data is
+  actually ready.
+- **Panels and modals:** set down like a sheet of paper (short drop + settle,
+  shadow tightening as it lands), not a slide or fade from nowhere.
+- **Trip import / open:** the route draws in (`draw`), then day cards drop
+  into the itinerary one after another.
+- **Region download (mobile):** tiles fill in on a miniature of the region,
+  with honest progress (MB of MB), never an indeterminate spinner.
+
+**Guardrails for loading motion**
+1. **Never slower than the data.** Animation runs alongside real loading
+   and finishes quickly (≤ 300ms) once the data is there; it never holds
+   content back to finish a sequence.
+2. **Full sequence once per session.** The first map load can play the whole
+   tabletop sequence; later loads get a short version (quick settle) or none.
+3. **Tied to real states.** Each step corresponds to an actual load event
+   (style loaded, source loaded, tiles idle), not a timer.
+4. **Reduced motion:** a plain crossfade or nothing.
+5. **No shimmer skeletons, no bouncing dots, no spinner as the main
+   experience.** If something needs a placeholder, use flat paper-colored
+   blocks in the shape of the content.
+
+Likely additions when this is built: a `settle` verb (drop + slight
+overshoot + shadow tighten) in `motion.css`, `--dur-settle` and a stagger
+token, and a small loader helper in `motion.js` that maps MapLibre events
+(`styledata`, `sourcedata`, `idle`) to layer reveals.
+
 ## Components (base layer: `components.css`)
 - **Buttons:** `.btn--primary` (one per view), `.btn--quiet` (default
   secondary), `.btn--ghost` (inline/tertiary), `.btn--danger` (destructive,

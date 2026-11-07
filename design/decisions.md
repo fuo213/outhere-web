@@ -19,6 +19,11 @@ change tokens or principles. Propose, then log.
 
 ## Confirmed
 
+- **2026-11-07 · Design system v0.1 direction approved.** Vincent reviewed
+  DESIGN.md, the tokens and the specimen and likes the direction. The
+  "Trying" items below stay as defaults until real screens validate them.
+- **2026-11-07 · No animation for its own sake; loading is the exception.**
+  Waiting moments may be more expressive. See DESIGN.md "Loading states".
 - **2026-11-07 · Name is "Booot"** on every user-facing surface. OutHere is an
   internal repo name only. *Why:* matches booot.org.
 - **2026-11-07 · Web design leads, mobile follows.** Settle the visual and
@@ -57,5 +62,11 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
-_None yet._ Format:
+- 2026-11-07 · **"Tabletop" loading**: map layers drop onto the paper one
+  by one as they load; panels set down like sheets; imported trips draw in,
+  then day cards drop into place · not built yet; direction in DESIGN.md
+  "Loading states" · Vincent's idea: makes waiting feel like spreading a map
+  on a table. Build it with the map-loading work and validate on a real load.
+
+Format:
 `- YYYY-MM-DD · <what> · <where to see it> · <why it might be better>`
