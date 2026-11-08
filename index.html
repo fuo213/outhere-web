@@ -22,13 +22,14 @@
   <!-- Google Fonts: Playfair Display (trip titles), DM Sans (UI), IBM Plex Mono (numbers) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <!-- Booot design system (tokens -> motion -> base components), then app styles -->
   <link rel="stylesheet" href="design/tokens.css">
   <link rel="stylesheet" href="design/motion.css">
   <link rel="stylesheet" href="design/components.css">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="design/itinerary.css">
 </head>
 <body>
 
@@ -118,8 +119,11 @@
       <div class="trip-meta-chips" id="tripMetaChips"></div>
     </div>
 
-    <!-- Unified notebook panel (no tabs — days are collapsible accordion sections) -->
+    <!-- Notebook: one scroll area. The sketchbook profile sticks to its top
+         and the days scroll underneath it (itinerary-panel.js). -->
     <div class="notebook-panel" id="notebookPanel">
+
+      <figure class="itin-profile" id="itineraryProfile" aria-label="Elevation profile of the trip, divided into days"></figure>
 
       <!-- Overview section (collapsible, replaces top-level readme) -->
       <div class="notebook-overview" id="overviewSection">
@@ -145,15 +149,16 @@
         </div>
       </div>
 
-      <!-- Day accordion sections -->
-      <div id="daySections">
+      <!-- Days: one continuous story -->
+      <div class="itin-story" id="daySections">
         <!-- Populated by trip-panel.js -->
       </div>
 
       <!-- Add Day button -->
       <div class="add-day-row">
-        <button class="add-day-btn" id="addDayBtn">+ Add day</button>
+        <button class="btn btn--ghost btn--sm" id="addDayBtn">Add day</button>
       </div>
+      <div class="itin-tail" id="itineraryTail" aria-hidden="true"></div>
 
     </div>
 

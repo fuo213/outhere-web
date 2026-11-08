@@ -95,6 +95,57 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
+- 2026-11-08 · **Direction A in the real planner, with Vincent's sticky
+  profile** · trip panel, `?demo=maze` (localhost / Pages previews) ·
+  Vincent: "the profile should scroll down with us … the day planning sort of
+  disappears behind it." Calls made while building it:
+  - **Sticky profile + active day.** The profile is `position: sticky` at
+    the top of the panel's scroll area; days scroll under it and fade out
+    behind a short paper fade (`--itin-fade`, 24 px). The fade is the one
+    gradient in the panel: it's functional (content passing under paper), not
+    decoration. The active day is the section crossing a line 12 px below the
+    profile. Its band gets a second, denser pencil pass; the other bands drop
+    to 50 % and their tags to 55 %. With few days the active tag gets a pencil
+    underline in its day tone; with many days (bands too narrow for "Day N"),
+    tags become numbers and the active day's "Day N · x mi" appears on its own
+    row with a small pencil caret, so it never collides with a neighbor.
+    Clicking a band scrolls to that day (smooth, instant under reduced motion).
+    A tail spacer lets the last day reach the line.
+  - **Compact strip while drawing.** While a route is being drawn the profile
+    collapses to a 46 px strip: bands, the ink line, tents and day numbers, no
+    lettering, no axis, no caption. The map leads while you draw; the strip
+    keeps the trip's shape in view, and the live distance stays in the tray
+    chip. It restores when drawing ends (finish or Esc). Delete mode keeps the
+    full profile.
+  - **Day bands stay sage/dust** (exploration's choice). In the real panel
+    they read as "this day / next day", not as route/rest: the bands are
+    pencil texture inside a drawing, never a pill or a fill behind text, and
+    the rest point type only appears as a dust glyph in the stop list. Revisit
+    if a rest day lands inside a dust band and the two get confused.
+  - **The day's title is its first route.** Unnamed routes read "To {camp}"
+    when the day's camp is named, else "Untitled route" in secondary ink. Edit
+    renames the route (the title). Other features are stop rows in walking
+    order (projected onto the route), not data order.
+  - **Unassigned routes:** when no route is in a day yet, the profile draws
+    them as one neutral (earth pencil) stretch with "Drag it into a day to
+    split the profile". When some are assigned, the profile shows only the
+    days and the caption counts the loose routes.
+  - **No elevation yet:** that stretch is a pencil rule being inked back and
+    forth ("Elevation loading…"); after 20 s with nothing it becomes a quiet
+    dotted line, "No elevation for this stretch". When elevation arrives the
+    ink line draws itself in once (`draw` verb).
+  - **Empty trip:** the profile area becomes a faint dotted ridge over a
+    ruled baseline with one line ("Your elevation profile draws itself here.
+    Draw a route on the map, then drag it into a day.") and a quiet Draw route
+    button; days just say "Nothing planned yet." Empty days in a trip with
+    content say "Draw a route for this day, or drag a stop here", and their
+    Draw route puts the new route straight into that day.
+  - **Meals** are still derived from notes (breakfast/lunch/dinner/snack in a
+    stop's notes draws the mug). Follow-up: a `meal` waypoint subtype in the
+    schema first.
+  - The tray (Unassigned) is hidden when empty; it appears while dragging
+    ("Drop here to take it out of its day.") and while drawing.
+
 - 2026-11-07 · **Route legs on the map (trail routing)**: routed legs are
   solid `--type-route` on a 6 px `--surface-raised` casing; Shift legs dash
   [2,2]; no-path fallback legs are `--accent` dotted [1,1.5] with a gap pin
