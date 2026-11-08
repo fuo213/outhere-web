@@ -172,7 +172,7 @@ function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, previe
   const r = ctx.graph.route(A.snap, B.snap, { budgetMs });
   if (r?.aborted) return r;
   if (!r) return straightLeg(from, to, A, B, kind, "straight", "no_path", { preview });
-  return { from, to, kind, mode: "trail", coords: r.coords, length_m: r.length_m, wayIds: r.wayIds };
+  return { from, to, kind, mode: "trail", coords: r.coords, length_m: r.length_m, wayIds: r.wayIds, runs: r.runs };
 }
 
 // ---------------------------------------------------------------------------
@@ -307,9 +307,10 @@ function finishRouteDrawing() {
   const routing = routingInfo();
 
   const spurLegs = legs.filter((l) => l && l.kind === "spur");
+  const autoName = deriveRouteName(mainLegs);
   const properties = {
     type: "route",
-    name: "",
+    name: autoName,
     planned: true,
     notes: "",
     vertex_types: verts.map((v) => v.type),
@@ -319,6 +320,7 @@ function finishRouteDrawing() {
     dayhike_distance_mi: spurLegs.reduce((s, l) => s + (2 * lineLength(l.coords.map(round6))) / MI, 0),
     segments,
   };
+  if (autoName) properties.name_auto = true;
   if (routing) properties.routing = routing;
   const geometry = { type: "LineString", coordinates: geometryCoords };
   const routeIdx = TripManager.addFeature(geometry, properties);
@@ -333,12 +335,14 @@ function finishRouteDrawing() {
   // 2. Day-hike spurs: one direction, branch point → spur end.
   for (const leg of spurLegs) {
     const coords = leg.coords.map(round6);
+    const spurName = deriveRouteName([leg]);
     const props = {
       type: "dayhike_spur",
       route_index: routeIdx,
-      name: "",
+      name: spurName,
       segments: [segmentRecord(leg, [0, coords.length - 1])],
     };
+    if (spurName) props.name_auto = true;
     if (routing) props.routing = routing;
     const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
     if (leg.gap) gapMemo.set(`${TripManager.currentTrip.features[idx].properties._id}:0`, leg.gap);
@@ -372,6 +376,70 @@ function finishRouteDrawing() {
   TripManager.render(); // picks up the gap pins memoized above
   resetRouteDrawing();
   cancelDrawing();
+}
+
+// ---------------------------------------------------------------------------
+// Auto names: "Angels Landing Trail", "A to B", "via Kolob Terrace Road"
+// ---------------------------------------------------------------------------
+
+const ROAD_HIGHWAYS = new Set(["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "service", "living_street"]);
+const MAX_NAME = 40;
+const PLACE_WORDS = /\b(Landing|Arch|Overlook|Spring|Springs|Point|Peak|Lake|Falls|Pass|Summit|Rim|Narrows|Bridge|Canyon|Drops)\b/i;
+const GENERIC_TAIL = /\s+(Trail|Route|Path|Trailhead)$/i;
+
+/**
+ * Name for a route from the OSM names of the trail it follows, weighted by
+ * length. Longest named trail; "A to B" when two names cover most of it, in
+ * the order they're walked; "via X" when it's mostly road. "" when nothing
+ * useful is named (the panel's fallbacks then apply). Pure.
+ * @param {Array} legs routed legs carrying `runs` ({name, highway, m})
+ */
+export function deriveRouteName(legs) {
+  const runs = legs.filter((l) => l && l.mode === "trail" && l.runs).flatMap((l) => l.runs);
+  const total = runs.reduce((s, r) => s + r.m, 0);
+  if (!(total > 0)) return "";
+  const sum = (isRoad) => {
+    const m = new Map(); // name → { m, first }
+    runs.forEach((r, i) => {
+      if (!r.name || ROAD_HIGHWAYS.has(r.highway) !== isRoad) return;
+      const e = m.get(r.name) || { name: r.name, m: 0, first: i };
+      e.m += r.m;
+      m.set(r.name, e);
+    });
+    return [...m.values()].sort((a, b) => b.m - a.m);
+  };
+  const roadM = runs.filter((r) => ROAD_HIGHWAYS.has(r.highway)).reduce((s, r) => s + r.m, 0);
+  const trails = sum(false);
+  if (roadM > total / 2) {
+    const road = sum(true)[0];
+    return road && road.m >= total * 0.25 ? clip(`via ${road.name}`) : "";
+  }
+  const [a, b] = trails;
+  if (!a || a.m < total * 0.2) return "";
+  // Name it for where it goes: a different named trail at the very end.
+  const dest = [...runs].reverse().find((r) => r.name && !ROAD_HIGHWAYS.has(r.highway));
+  const destM = dest ? runs.filter((r) => r.name === dest.name && !ROAD_HIGHWAYS.has(r.highway)).reduce((s, r) => s + r.m, 0) : 0;
+  if (dest && dest.name !== a.name && (destM >= 161 || destM >= total * 0.05)) {
+    const place = PLACE_WORDS.test(dest.name);
+    const full = `${a.name} to ${dest.name}`;
+    const placeShort = place ? `${a.name} to ${dest.name.replace(GENERIC_TAIL, "")}` : full;
+    if (placeShort.length <= MAX_NAME) return placeShort;
+    const trimmed = `${a.name.replace(GENERIC_TAIL, "")} to ${dest.name.replace(GENERIC_TAIL, "")}`;
+    if (trimmed.length <= MAX_NAME) return trimmed;
+  }
+  if (b && a.m >= total * 0.25 && b.m >= total * 0.25 && a.m + b.m >= total * 0.7) {
+    const [x, y] = a.first < b.first ? [a, b] : [b, a];
+    let name = `${x.name} to ${y.name}`;
+    if (name.length > MAX_NAME) name = `${x.name.replace(GENERIC_TAIL, "")} to ${y.name.replace(GENERIC_TAIL, "")}`;
+    if (name.length <= MAX_NAME) return name;
+  }
+  return clip(a.name);
+}
+
+function clip(name) {
+  if (name.length <= MAX_NAME) return name;
+  const cut = name.slice(0, MAX_NAME - 1).replace(/\s+\S*$/, "");
+  return `${cut || name.slice(0, MAX_NAME - 1)}…`;
 }
 
 const round6 = (c) => [Math.round(c[0] * 1e6) / 1e6, Math.round(c[1] * 1e6) / 1e6];
