@@ -36,3 +36,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# ======================
+# Raw GPS recordings and private fixtures: never commit
+# ======================
+design/fixtures/local/
+*.gpx

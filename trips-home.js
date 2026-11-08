@@ -386,6 +386,10 @@ export function initTripsHome() {
     }
   });
 
+  // See a demo trip (also offered in the onboarding modal)
+  document.getElementById("tripsHomeDemoBtn")?.addEventListener("click", openDemoTrip);
+  document.getElementById("onboardingDemoBtn")?.addEventListener("click", openDemoTrip);
+
   // New trip → existing onboarding modal (TripManager.create hides home)
   document.getElementById("tripsHomeNewBtn")?.addEventListener("click", () => {
     showOnboardingModal();
@@ -419,23 +423,58 @@ export function initTripsHome() {
 }
 
 // ---------------------------------------------------------------------------
-// Dev only: ?demo=maze opens a bundled demo trip (design/fixtures/).
-// Honored on localhost and Pages branch previews, never on production.
+// Demo trips (design/fixtures/). ?demo=spanish-bottom works everywhere; the
+// older ?demo=maze is dev only (localhost and Pages previews, never production).
 // ---------------------------------------------------------------------------
 
-const DEMO_TRIPS = {
-  maze: "design/fixtures/demo-maze-chocolate-drops.trip.geojson",
-};
+// Public demo: Vincent's real May 2026 Maze trip (built with the GPX importer).
+// Opens as a throwaway copy (TripManager.openDemo), in production too.
+const DEMO_URL = "design/fixtures/spanish-bottom-2026.trip.geojson";
+const PUBLIC_DEMOS = { "spanish-bottom": DEMO_URL };
+// Dev only: its notes are invented.
+const DEV_DEMOS = { maze: "design/fixtures/demo-maze-chocolate-drops.trip.geojson" };
+
+/** A quiet one-line note that fades out on its own (demo loader status). */
+function demoNote(text) {
+  const el = document.createElement("p");
+  el.className = "demo-note";
+  el.setAttribute("role", "status");
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 8000);
+}
+
+/** Open the bundled demo trip (button on trips home / onboarding, or ?demo=spanish-bottom). */
+export async function openDemoTrip() {
+  try {
+    const res = await fetch(DEMO_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    TripManager.openDemo(await res.json());
+    syncRegionForTrip(TripManager.currentTrip);
+    hideTripsHome();
+    document.getElementById("onboardingOverlay")?.setAttribute("hidden", "");
+    openSidebar();
+    fitTripToView();
+  } catch (err) {
+    console.warn("[demo] could not open the demo trip:", err.message);
+    demoNote("Couldn't open the demo trip. Check your connection and try again.");
+  }
+}
 
 /** @param {Promise} regionsReady resolves once the region catalog is loaded */
 export async function loadDemoTripFromURL(regionsReady) {
   const key = new URLSearchParams(location.search).get("demo");
+  if (!key) return;
+  if (PUBLIC_DEMOS[key]) {
+    await regionsReady;
+    return openDemoTrip();
+  }
   const host = location.hostname;
   const devHost = ["localhost", "127.0.0.1", "[::1]"].includes(host) || host.endsWith(".outhere-web.pages.dev");
-  if (!key || !devHost || !DEMO_TRIPS[key]) return;
+  if (!devHost || !DEV_DEMOS[key]) return;
   try {
     await regionsReady;
-    const res = await fetch(DEMO_TRIPS[key]);
+    const res = await fetch(DEV_DEMOS[key]);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     // Same path as Load trip. The fixture keeps a fixed trip_id, so reloading
     // overwrites the saved copy instead of piling up duplicates.

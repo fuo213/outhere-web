@@ -2148,6 +2148,42 @@ body.panel-open .route-instructions {
   cursor: pointer;
 }
 
+/* GPX import: status line above the actions, the tray's quick action, and the
+   drop affordance while files are dragged over the panel. */
+.btn[hidden] { display: none; }
+
+.import-note {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.pool-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.pool-head .pool-label { margin-bottom: 0; }
+
+.trip-panel.is-file-over::after {
+  content: "Drop GPX files to import them";
+  position: absolute;
+  inset: var(--space-3);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--border-dashed);
+  border-radius: var(--radius-lg);
+  background: var(--scrim);
+  color: var(--surface-raised);
+  font: var(--weight-semi) var(--text-base)/1.4 var(--font-ui);
+  pointer-events: none;
+}
+
 /* ---------------------------------------------------------------------------
    Drawing preview chip (live feedback during route drawing)
    --------------------------------------------------------------------------- */
@@ -2335,3 +2371,43 @@ body.panel-open .route-instructions {
   white-space: nowrap;
 }
 .meta-chip-num { font-family: var(--font-data); }
+
+/* Demo loader status (dev only): a quiet one-liner, gone after a few seconds. */
+.demo-note {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-6);
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.onboarding-demo { margin-top: var(--space-2); }
+
+/* Demo trip notice: a calm strip above the trip title while the bundled demo is open. */
+.demo-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-7);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+}
+.demo-banner[hidden] { display: none; }
+.demo-banner-text {
+  flex: 1 1 220px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-body);
+}
+.demo-banner-text strong { color: var(--text); font-weight: var(--weight-semi); }
+.demo-banner-actions { display: flex; gap: var(--space-1); }

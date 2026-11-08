@@ -32,8 +32,9 @@ import { buildItinerary, kindOf, ruleSVG, mentionsMeal } from "./itinerary-profi
 import { initItineraryPanel, updateItinerary, setItineraryCompact } from "./itinerary-panel.js";
 import { glyphIcon, glyphDefsSVG } from "./sketch.js";
 import { confirm as confirmMotion } from "./design/motion.js";
-import { TripsStore, hideTripsHome } from "./trips-home.js"; // circular; only used at runtime
+import { TripsStore, hideTripsHome, showTripsHome } from "./trips-home.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
+import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
 
 // ---------------------------------------------------------------------------
 // Trip state manager
@@ -55,8 +56,11 @@ let confirmFeatureId = null;  // feature just dropped into a day (gets the confi
 
 export const TripManager = {
   currentTrip: null,
+  /** true while the bundled demo trip is open: a copy that is never saved (see openDemo). */
+  demo: false,
 
   create(name, { location = "", startDate = null, nights = 0 } = {}) {
+    this.demo = false;
     this.currentTrip = {
       type: "FeatureCollection",
       properties: {
@@ -190,10 +194,44 @@ export const TripManager = {
     renderSidebar();
     renderTripTitle();
     renderMetaChips();
+    renderDemoBanner();
+  },
+
+  /**
+   * Open a bundled demo trip as a throwaway copy: it never touches the saved
+   * trips list or the active-trip pointer. "Make it your own" (keepDemo)
+   * saves an editable copy; Close (closeDemo) returns to trips home.
+   */
+  openDemo(geojson) {
+    if (geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
+      throw new Error("Invalid GeoJSON: expected a FeatureCollection");
+    }
+    cancelDrawing();
+    this.demo = true;
+    this.currentTrip = migrateTrip(geojson);
+    this.render();
+    prefetchRoutingGraph();
+  },
+
+  keepDemo() {
+    if (!this.demo || !this.currentTrip) return;
+    this.demo = false;
+    this.currentTrip.properties.trip_id = crypto.randomUUID(); // a new trip, never the fixture's id
+    this.currentTrip.properties.created = new Date().toISOString();
+    this.save();
+    this.render();
+  },
+
+  closeDemo() {
+    if (!this.demo) return;
+    cancelDrawing();
+    this.demo = false;
+    this.currentTrip = null;
+    this.render();
   },
 
   save() {
-    if (!this.currentTrip) return;
+    if (!this.currentTrip || this.demo) return; // the demo is a copy: never written to storage
     const props = this.currentTrip.properties;
     if (!props.trip_id) props.trip_id = crypto.randomUUID();
     // Stamp the active region on trips that don't carry one yet (legacy /
@@ -211,6 +249,7 @@ export const TripManager = {
   },
 
   loadFromStorage() {
+    this.demo = false;
     const activeId = TripsStore.getActiveTripId();
     if (!activeId) return false;
     const saved = TripsStore.loadTrip(activeId);
@@ -227,6 +266,7 @@ export const TripManager = {
 
   /** Make an already-parsed stored trip the open one (used by trips home). */
   setTrip(trip) {
+    this.demo = false;
     // A half-drawn route belongs to the trip it was started in — don't let
     // finishRouteDrawing deposit it into the newly opened trip.
     cancelDrawing();
@@ -237,6 +277,7 @@ export const TripManager = {
   },
 
   loadFromGeoJSON(geojson) {
+    this.demo = false;
     if (geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
       throw new Error("Invalid GeoJSON: expected a FeatureCollection");
     }
@@ -314,6 +355,7 @@ export const TripManager = {
 
   /** Close the current trip (it stays saved in the trips store). */
   clear() {
+    this.demo = false;
     TripsStore.setActiveTripId(null);
     this.currentTrip = null;
     this.render();
@@ -610,6 +652,11 @@ function offsetDate(isoDate, days) {
 // Sidebar: trip title + metadata chips
 // ---------------------------------------------------------------------------
 
+function renderDemoBanner() {
+  const el = document.getElementById("demoBanner");
+  if (el) el.hidden = !TripManager.demo;
+}
+
 function renderTripTitle() {
   const titleEl = document.getElementById("tripTitle");
   if (!titleEl) return;
@@ -685,6 +732,7 @@ function renderUnassignedPool() {
   // The tray only takes room when it holds something (or while you drag or
   // draw: then it's where a feature can go back to / where the new route lands).
   poolEl?.classList.toggle("has-items", unassignedFeatures.length > 0);
+  refreshGpxActions();
   if (unassignedFeatures.length === 0) {
     chipsEl.innerHTML = `<span class="pool-empty">Drop here to take it out of its day.</span>`;
     return;
@@ -1646,6 +1694,20 @@ export function initTripPanel() {
       e.target.value = "";
     }
   });
+
+  // Demo trip banner: keep a copy, or close and go back to trips home
+  document.getElementById("demoOwnBtn")?.addEventListener("click", (e) => {
+    TripManager.keepDemo();
+    confirmMotion(e.currentTarget.closest(".demo-banner") || e.currentTarget);
+  });
+  document.getElementById("demoCloseBtn")?.addEventListener("click", () => {
+    TripManager.closeDemo();
+    closeSidebar();
+    showTripsHome();
+  });
+
+  // Import GPX (button, multi-select, drop on the panel) + Assign by date
+  initGpxImport(TripManager);
 
   // New trip button → show onboarding modal
   document.getElementById("newTripBtn").addEventListener("click", () => {

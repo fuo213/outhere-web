@@ -39,6 +39,7 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `sketch.js` | The drawing kit: ink strokes, pencil hatching, paper grain, the hand-drawn glyph family (also used as stop icons) |
 | `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = straight leg, Esc cancels, double-click finishes), live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
 | `map-trip-style.js` | How the trip is drawn on the map (itinerary direction B, "Trip chart"): inked route on a paper casing, colored-pencil `line-pattern` band per day, glyphs (tent, drop, day-hike arrow, start/end rings, gap pin), circled day numerals, italic labels, all rasterized at runtime with `map.addImage`. Drawing/preview leg styles. Active-day highlight (feature-state) + the `booot:active-day` event |
+| `gpx-core.js` / `gpx-import.js` | GPX import. Core is pure (parse via DOMParser, 1.5 m simplification, recorded-elevation profile and gain/loss with a 3 m hysteresis, route feature with `segments: [{mode:"imported"}]` + `source`). Import wires the trip panel: Import GPX (multi-select), drop files on the panel, "Assign by date". Client-side only; recorded elevation beats Open-Meteo for imported routes |
 | `routing.js` | Trail routing: loads the region's `booot-trail-graph`, flatbush snapping (meters), A* |
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
@@ -146,6 +147,7 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   different name. Re-derive only while `name_auto` is true.
 - **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
   maps a region id to a local graph file (keep `dev-graphs/` out of git).
+- **Demo trip:** "See a demo trip" (trips home and the new-trip dialog) or `?demo=spanish-bottom` opens `design/fixtures/spanish-bottom-2026.trip.geojson` as a throwaway copy (`TripManager.openDemo`: never saved; banner with "Make it your own" / Close). `?demo=maze` stays dev only. Never commit `.gpx` files or `design/fixtures/local/` (git-ignored).
 - **Verify:** `node design/tools/shoot.mjs --scenes design/tools/scenes-routing.json`
   (add `--base https://<branch>.outhere-web.pages.dev` for a Pages preview)
   draws Angels Landing / West Rim / Hop Valley, a no-path gap, interactions

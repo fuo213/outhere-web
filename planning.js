@@ -585,7 +585,8 @@ export const routingDebug = {
  * cross_region) is not a mapping problem, so it renders as a normal route
  * line; the data keeps mode "straight" + reason. Only no_path is flagged.
  */
-const drawMode = (mode, reason) => (mode === "straight" && reason !== "no_path" ? "trail" : mode);
+// Imported recordings are drawn like trail legs (the trip-chart ink), not flagged.
+const drawMode = (mode, reason) => ((mode === "straight" && reason !== "no_path") || mode === "imported" ? "trail" : mode);
 
 function legFeature(leg, extra = {}) {
   return {
@@ -644,7 +645,7 @@ const gapMemo = new Map(); // `${featureId}:${segmentIndex}` → [lon, lat]
  * Extra features for the "trip" map source: each saved route/spur with
  * `segments` is split into `route_leg` lines (styled per mode) plus
  * `route_gap` pins on straight legs. Legacy routes (no segments) render
- * as before. Unknown modes (e.g. future "imported") render as trail.
+ * as before. "imported" (GPX) legs render as trail.
  */
 export function buildRoutingOverlay(trip) {
   const out = [];
@@ -1005,7 +1006,7 @@ export function sampleByDistance(coords, maxPoints = 100, minSpacingM = 25) {
  * @param {number[][]} coords - [lng, lat] display coords of the route
  * @param {string} featureId - the feature's _id property
  */
-async function fetchElevationProfile(coords, featureId) {
+export async function fetchElevationProfile(coords, featureId) {
   const sampled = sampleByDistance(coords, 100);
   const lats = sampled.map(c => c[1].toFixed(6)).join(",");
   const lons = sampled.map(c => c[0].toFixed(6)).join(",");

@@ -100,6 +100,7 @@
           Import .geojson
           <input type="file" id="tripsHomeImportInput" accept=".geojson,.json" hidden />
         </label>
+        <button class="btn btn--ghost" id="tripsHomeDemoBtn" type="button">See a demo trip</button>
       </div>
       <div class="trips-grid" id="tripsGrid">
         <!-- Populated by trips-home.js -->
@@ -109,6 +110,15 @@
 
   <!-- Trip planning panel (right-side modal) -->
   <aside class="trip-panel" id="tripPanel">
+
+    <!-- Demo trip notice (only while the bundled demo is open; see TripManager.openDemo) -->
+    <div class="demo-banner" id="demoBanner" hidden>
+      <p class="demo-banner-text"><strong>Demo trip.</strong> Vincent's five days in the Maze, May 2026. Changes here aren't saved.</p>
+      <div class="demo-banner-actions">
+        <button class="btn btn--quiet btn--sm" id="demoOwnBtn" type="button">Make it your own</button>
+        <button class="btn btn--ghost btn--sm" id="demoCloseBtn" type="button">Close</button>
+      </div>
+    </div>
 
     <!-- Modal header: trip title + close button, metadata chips -->
     <div class="modal-header">
@@ -143,7 +153,10 @@
 
       <!-- Unassigned feature pool -->
       <div class="unassigned-pool" id="unassignedPool">
-        <div class="pool-label">Unassigned</div>
+        <div class="pool-head">
+          <div class="pool-label">Unassigned</div>
+          <button class="btn btn--ghost btn--sm" id="assignByDateBtn" hidden>Assign by date</button>
+        </div>
         <div class="pool-chips" id="unassignedChips">
           <!-- Populated by trip-panel.js -->
         </div>
@@ -166,12 +179,17 @@
 
     <!-- Action buttons -->
     <div class="trip-actions-section">
+      <p class="import-note" id="gpxImportNote" role="status" hidden></p>
       <button class="btn btn--primary btn--block" id="downloadTripBtn">Download trip (.geojson)</button>
       <div class="trip-actions-secondary">
         <button class="btn btn--ghost btn--sm" id="exportMarkdownBtn">Export notes (.md)</button>
         <label class="btn btn--ghost btn--sm upload-label">
           Load trip
           <input type="file" id="loadTripInput" accept=".geojson,.json" hidden />
+        </label>
+        <label class="btn btn--ghost btn--sm upload-label">
+          Import GPX
+          <input type="file" id="importGpxInput" accept=".gpx,application/gpx+xml" multiple hidden />
         </label>
         <button class="btn btn--ghost btn--sm" id="newTripBtn">New trip</button>
       </div>
@@ -235,6 +253,7 @@
         </div>
       </div>
       <button class="btn btn--primary btn--block onboarding-submit" id="onboardingSubmit">Start planning</button>
+      <button class="btn btn--ghost btn--block onboarding-demo" id="onboardingDemoBtn" type="button">Or look at a finished trip first</button>
     </div>
   </div>
 
