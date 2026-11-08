@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booot · Itinerary C: Field journal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../../motion.css">
+<link rel="stylesheet" href="../../components.css">
+<link rel="stylesheet" href="itin.css">
+<style>
+  /* ---- C · Field journal (the Paper timeline, revived) -------------------- */
+  .ch-ann { font: italic var(--weight-regular) var(--text-xs) var(--font-ui); fill: var(--text-body); }
+  .ch-note { font: var(--weight-regular) var(--text-xs) var(--font-ui); fill: var(--text-body); }
+  .ch-num-mark { font: var(--weight-semi) var(--text-xs) var(--font-ui); fill: var(--text); }
+  .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px; stroke-linejoin: round; }
+
+  .overview { padding: 0 var(--space-7); color: var(--text-body); font-size: var(--text-base); line-height: 1.55; }
+  .overview p { margin: var(--space-2) 0 0; }
+  .story { padding: var(--space-4) var(--space-7) var(--space-8); }
+  .day { padding: var(--space-4) 0 var(--space-5); }
+  .day-head { display: flex; align-items: baseline; gap: var(--space-2); }
+  .day-label { font-weight: var(--weight-bold); font-size: var(--text-md); }
+  .day-date { font-family: var(--font-data); font-size: var(--text-sm); color: var(--text-secondary); }
+  .day-head .rule { flex: 1; height: 1px; background: var(--border-strong); align-self: center; min-width: 16px; transition: background var(--dur-quick) var(--ease-out); }
+  .day-sum { font-family: var(--font-data); font-size: var(--text-sm); color: var(--text-body); white-space: nowrap; }
+  .day-sum .loss { color: var(--text-secondary); }
+  .day-grid { display: grid; grid-template-columns: 148px 1fr; gap: var(--space-4); margin-top: var(--space-3); }
+  .sketch-mini { width: 148px; }
+  .sketch-mini svg { display: block; width: 148px; height: auto; }
+  .sketch-mini figcaption { margin-top: 2px; font-size: var(--text-xs); color: var(--text-secondary); font-style: italic; }
+  .day-title { font-size: var(--text-lg); }
+  .day-notes { font-size: var(--text-md); }
+  .stops { list-style: none; margin: var(--space-3) 0 0; padding: 0; }
+  .stop-note { font-size: var(--text-sm); }
+  .stop-note .osm-link { color: var(--text-body); }
+  .day.is-hover .rule, .day:hover .rule { background: var(--ink-500); }
+  .day .edit-row { margin: var(--space-1) 0 0 calc(-1 * var(--space-3)); }
+  @media (max-width: 760px) {
+    .overview, .story { padding-left: var(--space-4); padding-right: var(--space-4); }
+    .day-grid { grid-template-columns: 1fr; }
+    .sketch-mini, .sketch-mini svg { width: 100%; }
+    .day-sum .loss { display: none; }
+  }
+</style>
+</head>
+<body data-state="default">
+<div id="bar"></div>
+<main class="stage">
+  <div class="stage-map" id="map"></div>
+  <aside class="panel" aria-label="Trip">
+    <div class="panel-scroll">
+      <div id="head"></div>
+      <div class="overview" id="overview"></div>
+      <div id="tray"></div>
+      <div class="story" id="story"></div>
+    </div>
+    <div id="foot"></div>
+  </aside>
+</main>
+<script type="module">
+import { loadTrip, loadContours, esc, fmt, wireStates } from "./itin.js";
+import { drawChart } from "./chart-kit.js";
+import { expBar, panelHead, panelFoot, tray, stopsHTML, editRow, emptyDayHTML, renderMapStandIn } from "./shared-page.js";
+
+const [m, contours] = await Promise.all([loadTrip(), loadContours()]);
+document.getElementById("bar").outerHTML = expBar("journal");
+document.getElementById("head").outerHTML = panelHead(m);
+document.getElementById("foot").outerHTML = panelFoot();
+document.getElementById("tray").outerHTML = tray();
+const firstPara = (m.readme.split(/\n\n/)[0] || "").replace(/^#+ .*\n/, "");
+document.getElementById("overview").innerHTML = `<p>${esc(firstPara)} <a href="#" style="color:var(--text-secondary)">Trip notes</a></p>`;
+
+function story(state) {
+  const narrow = matchMedia("(max-width: 760px)").matches;
+  let html = "";
+  for (const d of m.days) {
+    const W = narrow ? Math.max(240, Math.min(420, innerWidth - 32)) : 148;
+    const H = narrow ? 180 : 132;
+    const svg = drawChart(m, contours, { W, H, days: [d.i], focus: d.i, id: `mini${d.i}`, mini: true, labels: true, padM: 180, pad: 8, scale: false, aria: `Day ${d.n} route sketch` });
+    html += `<section class="day${state === "hover" && d.i === 1 ? " is-hover" : ""}" data-day="${d.i}">
+      <header class="day-head">
+        <span class="day-label">Day ${d.n}</span>
+        <span class="day-date">${esc(fmt.date(d.date))}</span>
+        <span class="rule"></span>
+        <span class="day-sum">${fmt.mi(d.miles)} · ${fmt.gain(d.gain)}<span class="loss"> ${fmt.loss(d.loss)}</span> ft</span>
+      </header>
+      <div class="day-grid">
+        <figure class="sketch-mini" style="margin:0">${svg}</figure>
+        <div>
+          <h3 class="day-title">${esc(d.title)}</h3>
+          <p class="day-notes">${esc(d.notes)}</p>
+          ${state === "drag" && d.i === m.days.length - 1 ? `<div class="drop-line">Drop into day ${d.n}</div><div><span class="pill is-dragging" data-type="camp">Water cache</span></div>` : ""}
+          ${stopsHTML(d)}
+          ${editRow()}
+        </div>
+      </div>
+    </section>`;
+  }
+  const e = emptyDayHTML(m);
+  html += `<section class="day empty-day">
+      <header class="day-head"><span class="day-label">Day ${e.n}</span><span class="day-date">${esc(fmt.date(e.date))}</span><span class="rule"></span><span class="day-sum">0.0 mi</span></header>
+      <p class="empty-hint">Nothing planned yet. Draw a route from Maze Overlook, or drag a stop here.</p>
+      <button class="btn btn--quiet btn--sm">Draw route</button>
+    </section>`;
+  document.getElementById("story").innerHTML = html;
+}
+document.addEventListener("statechange", (e) => story(e.detail));
+wireStates();
+let lastNarrow = matchMedia("(max-width: 760px)").matches;
+addEventListener("resize", () => { const n = matchMedia("(max-width: 760px)").matches; if (n !== lastNarrow) { lastNarrow = n; story(document.body.dataset.state); } });
+const mapEl = document.getElementById("map");
+new ResizeObserver(() => renderMapStandIn(mapEl, m, contours)).observe(mapEl);
+document.body.dataset.ready = "1";
+</script>
+</body>
+</html>

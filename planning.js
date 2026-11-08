@@ -22,6 +22,7 @@ import {
   loadGraph, peekGraph, pickGraphRegion, graphInfoForRegion,
   metersPerPixel, lineLength, haversine,
 } from "./routing.js";
+import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
 export let isDrawingRoute = false;
@@ -128,10 +129,12 @@ function straightLeg(from, to, A, B, kind, mode, reason, { preview = false } = {
   const coords = [A.coord, B.coord];
   const leg = { from, to, kind, mode, coords, length_m: lineLength(coords), wayIds: [] };
   if (reason) leg.reason = reason;
-  if (mode === "straight") {
+  // Only a real OSM gap (no_path inside a routed area) gets a pin. Legs where
+  // there is no graph (no_graph, cross_region) stay plain lines.
+  if (mode === "straight" && reason === "no_path") {
     // Previews skip the gap search: it can cost a few ms and the pin is only
     // shown for placed legs.
-    const gap = reason === "no_path" && ctx?.graph && !preview
+    const gap = ctx?.graph && !preview
       ? ctx.graph.gapFor(A.coord, B.coord, A.snap, B.snap)
       : { lon: (A.coord[0] + B.coord[0]) / 2, lat: (A.coord[1] + B.coord[1]) / 2 };
     leg.gap = [gap.lon, gap.lat];
@@ -509,11 +512,18 @@ export const routingDebug = {
 // Map sources
 // ---------------------------------------------------------------------------
 
+/**
+ * How a leg is drawn. A straight leg with no graph behind it (no_graph,
+ * cross_region) is not a mapping problem, so it renders as a normal route
+ * line; the data keeps mode "straight" + reason. Only no_path is flagged.
+ */
+const drawMode = (mode, reason) => (mode === "straight" && reason !== "no_path" ? "trail" : mode);
+
 function legFeature(leg, extra = {}) {
   return {
     type: "Feature",
     geometry: { type: "LineString", coordinates: leg.coords },
-    properties: { leg_mode: leg.mode, kind: leg.kind, ...extra },
+    properties: { leg_mode: drawMode(leg.mode, leg.reason), kind: leg.kind, ...extra },
   };
 }
 
@@ -582,9 +592,9 @@ export function buildRoutingOverlay(trip) {
       out.push({
         type: "Feature",
         geometry: { type: "LineString", coordinates: legCoords },
-        properties: { type: "route_leg", _id: p._id, leg_mode: seg.mode, kind },
+        properties: { type: "route_leg", _id: p._id, leg_mode: drawMode(seg.mode, seg.reason || "no_path"), kind },
       });
-      if (seg.mode === "straight") {
+      if (seg.mode === "straight" && (seg.reason || "no_path") === "no_path") {
         const gap = savedGap(p, k, legCoords);
         out.push({
           type: "Feature",
@@ -594,7 +604,7 @@ export function buildRoutingOverlay(trip) {
       }
     });
   }
-  return out;
+  return tripChartOverlay(trip, out); // + day info, glyphs, labels, numerals (map-trip-style.js)
 }
 
 function savedGap(props, k, legCoords) {
@@ -686,6 +696,22 @@ function gapLegAt(point) {
   return null;
 }
 
+let unroutedHintShown = false;
+
+/** "Trail routing covers Zion, the Maze and the Needles. ..." built from the catalog. */
+function unroutedHint() {
+  const names = getCatalogRegions()
+    .filter((r) => r.type === "area" && r.available !== false && graphInfoForRegion(r))
+    .map((r) => {
+      const short = r.name.replace(/ National Park$/, "").replace(/ District$/, "");
+      return short !== r.name && / District$/.test(r.name) ? `the ${short}` : short;
+    });
+  if (!names.length) return "";
+  names.sort((a, b) => (a.startsWith("the ") ? 1 : 0) - (b.startsWith("the ") ? 1 : 0));
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  return `Trail routing covers ${list}. Here, lines are drawn as you click.`;
+}
+
 let flashUntil = 0;
 let flashTimer = 0;
 /** A one-off message in the hint slot; the state hint returns after it. */
@@ -701,10 +727,12 @@ function updateDrawingHint() {
   if (!isDrawingRoute) { hideDrawingHint(); return; }
   if (performance.now() < flashUntil) return;
   if (ctx?.status === "loading") return showDrawingHint("Loading trails for routing…", "loading");
-  if (ctx && (ctx.status === "none" || ctx.status === "error")) {
-    return showDrawingHint(ctx.status === "error"
-      ? "Couldn’t load trails for routing. Legs are drawn straight."
-      : "Routing isn’t available here yet. Legs are drawn straight.");
+  if (ctx?.status === "error") return showDrawingHint("Couldn’t load trails for routing. Legs are drawn straight.");
+  if (ctx?.status === "none") {
+    // Once per page load, quietly; after that unrouted areas just draw lines.
+    const text = !unroutedHintShown && unroutedHint();
+    if (text) { unroutedHintShown = true; return flashDrawingHint(text, 8000); }
+    return hideDrawingHint();
   }
   if (ctx?.graph && map.getZoom() < SNAP_MIN_ZOOM) return showDrawingHint("Zoom in to snap to trails");
   hideDrawingHint();
@@ -719,7 +747,7 @@ function notifyDrawingProgress() {
   for (const leg of legs) {
     if (!leg) continue;
     if (leg.kind === "main") main += leg.length_m; else spur += 2 * leg.length_m;
-    if (leg.mode === "straight") off += leg.length_m;
+    if (leg.mode === "straight" && leg.reason === "no_path") off += leg.length_m;
   }
   updateDrawingPreview({
     vertexCount: verts.length,
@@ -764,8 +792,7 @@ export function exitDeleteMode() {
 
 export function handleDeleteClick(e) {
   if (!TripManager.currentTrip) return;
-  const tripLayers = ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"];
-  const features = map.queryRenderedFeatures(e.point, { layers: tripLayers });
+  const features = map.queryRenderedFeatures(e.point, { layers: TRIP_POINT_LAYERS });
   if (!features.length) return;
   const clickedId = features[0].properties._id;
   const idx = TripManager.currentTrip.features.findIndex(

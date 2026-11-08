@@ -19,7 +19,8 @@
 //   Map steps by coordinate (projected through window.__outhere.map; the
 //   point must be on screen): {"mapClickLngLat": [lon, lat]},
 //   {"mapDblClickLngLat": [lon, lat]}, {"mapMoveLngLat": [lon, lat]}.
-//   {"mapClickExpr": "js returning [lon, lat]"} clicks a computed point.
+//   {"mapClickExpr": "js returning [lon, lat]"} clicks a computed point
+//   ({"mapMoveExpr": ...} moves the mouse there).
 //   Add "shift": true to hold Shift. {"eval": "..."} prints its result when it
 //   returns one; {"save": ["name.json", "expr"]} writes the result as JSON to OUT.
 
@@ -128,6 +129,7 @@ async function main() {
           else if (step.mapClickLngLat) await mouse(...(await lngLatPoint(step.mapClickLngLat)), 1, step.shift ? 8 : 0);
           else if (step.mapDblClickLngLat) await mouse(...(await lngLatPoint(step.mapDblClickLngLat)), 2, step.shift ? 8 : 0);
           else if (step.mapClickExpr) await mouse(...(await lngLatPoint(await evalJS(step.mapClickExpr))));
+          else if (step.mapMoveExpr) { const [x, y] = await lngLatPoint(await evalJS(step.mapMoveExpr)); await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); await sleep(step.pause ?? 50); }
           else if (step.mapMoveLngLat) { const [x, y] = await lngLatPoint(step.mapMoveLngLat); await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers: step.shift ? 8 : 0 }); await sleep(step.pause ?? 50); }
           else if (step.shot) {
             const { data } = await send("Page.captureScreenshot", { format: "png" });

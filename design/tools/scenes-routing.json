@@ -2423,5 +2423,181 @@
     "eval": "(() => { const s = window.__outhere.routing.stats; const q = (a, p) => { const b = [...a].sort((x, y) => x - y); return +(b[Math.min(b.length - 1, Math.floor(p * b.length))] || 0).toFixed(2); }; return { warm_up_ms: +(window.__outhere.routing.warmUpMs ?? -1).toFixed(1), first_frame_ms: +(s.frameMs[0] ?? 0).toFixed(2), frames: s.frames, memoHits: s.memoHits, aborted: s.aborted, over4ms: s.frameMs.map((x, i) => [i, +x.toFixed(1)]).filter((x) => x[1] > 4), route_ms: { p50: q(s.routeMs, 0.5), p95: q(s.routeMs, 0.95), max: q(s.routeMs, 1) }, frame_ms: { p50: q(s.frameMs, 0.5), p95: q(s.frameMs, 0.95), max: q(s.frameMs, 1) } }; })()"
    }
   ]
+ },
+ {
+  "name": "routing-unrouted-utah",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Utah unrouted"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('utah-full'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-110.9,38.45], zoom: 9 })"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickLngLat": [
+     -111.25,
+     38.3
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 400
+   },
+   {
+    "shot": "unrouted-first-click-hint"
+   },
+   {
+    "mapClickLngLat": [
+     -111.05,
+     38.45
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "mapClickLngLat": [
+     -110.8,
+     38.38
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "mapClickLngLat": [
+     -110.6,
+     38.55
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "mapDblClickLngLat": [
+     -110.6,
+     38.55
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 1500
+   },
+   {
+    "eval": "(() => ({ hint: document.getElementById('drawingHint')?.textContent, hintVisible: document.getElementById('drawingHint')?.classList.contains('visible'), popups: document.querySelectorAll('.maplibregl-popup').length, gapPins: window.__outhere.map.querySourceFeatures('trip').filter((f) => f.properties.type === 'route_gap').length, legModes: [...new Set(window.__outhere.map.querySourceFeatures('trip').filter((f) => f.properties.type === 'route_leg').map((f) => f.properties.leg_mode))] }))()"
+   },
+   {
+    "eval": "(() => { const r = window.__outhere.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1).properties; return { modes: r.segments.map((s) => s.mode + ':' + s.reason), miles: +r.main_route_distance_mi.toFixed(2) }; })()"
+   },
+   {
+    "shot": "unrouted-utah-lines"
+   },
+   {
+    "save": [
+     "unrouted-utah.trip.geojson",
+     "window.__outhere.TripManager.buildExport()"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "routing-routed-areas-layer",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Utah unrouted"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('utah-full'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-110.7,38.0], zoom: 7.2 })"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "click": "#sidebarCollapseBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "click": "#layersBtn"
+   },
+   {
+    "wait": 400
+   },
+   {
+    "eval": "(() => { const c = [...document.querySelectorAll('.layer-toggle')].find((l) => l.textContent.includes('Routed areas')).querySelector('input'); c.click(); return c.checked; })()"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "window.__outhere.map.querySourceFeatures('routed-areas').filter((f) => f.geometry.type === 'Polygon').map((f) => f.properties.name)"
+   },
+   {
+    "shot": "unrouted-routed-areas-layer"
+   }
+  ]
  }
 ]

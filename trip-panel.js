@@ -2,7 +2,8 @@
  * OutHere Trip Planning — Trip State & Sidebar UI
  *
  * Manages the trip data model, renders it on MapLibre,
- * builds the notebook sidebar (overview + day accordion), and handles
+ * builds the notebook sidebar (sketchbook profile, overview, continuous day
+ * story; see itinerary-panel.js), and handles
  * localStorage persistence and GeoJSON download/upload.
  *
  * Data model (schema v4):
@@ -25,7 +26,12 @@ import {
   getTripDateRange,
   buildRoutingOverlay,
   prefetchRoutingGraph,
+  isDrawingRoute,
 } from "./planning.js";
+import { buildItinerary, kindOf, ruleSVG, mentionsMeal } from "./itinerary-profile.js";
+import { initItineraryPanel, updateItinerary, setItineraryCompact } from "./itinerary-panel.js";
+import { glyphIcon, glyphDefsSVG } from "./sketch.js";
+import { confirm as confirmMotion } from "./design/motion.js";
 import { TripsStore, hideTripsHome } from "./trips-home.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
 
@@ -42,8 +48,10 @@ import { getActiveRegionId } from "./region-picker.js"; // circular; only used a
 const TRIP_SCHEMA_VERSION = "1.1";
 const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1"];
 
-let activeDayId = null;       // day ID currently highlighted on map, or null
-const expandedDayIds = new Set(); // which day sections are expanded (UI state only)
+let activeDayId = null;       // day ID highlighted on the map ("Show on map"), or null
+let drawIntoDayId = null;     // "Draw route" from an empty day: new features land in that day
+let editingNotesDayId = null; // day whose notes are open in the editor
+let confirmFeatureId = null;  // feature just dropped into a day (gets the confirm shiver)
 
 export const TripManager = {
   currentTrip: null,
@@ -90,7 +98,11 @@ export const TripManager = {
     const id = crypto.randomUUID();
     properties._id = id;
     this.currentTrip.features.push({ type: "Feature", geometry, properties });
-    this.currentTrip.unassigned.push(id);
+    // Started from a day's "Draw route": the new route and its points go
+    // straight into that day instead of the unassigned tray.
+    const intoDay = isDrawingRoute && drawIntoDayId && this.currentTrip.days?.find(d => d.id === drawIntoDayId);
+    if (intoDay) (intoDay.features ||= []).push(id);
+    else this.currentTrip.unassigned.push(id);
     const idx = this.currentTrip.features.length - 1;
     this.render();
     this.save();
@@ -603,7 +615,7 @@ function renderTripTitle() {
   if (!titleEl) return;
   const name = TripManager.currentTrip?.properties?.name || "Untitled Trip";
   if (document.activeElement !== titleEl) {
-    titleEl.value = name;
+    titleEl.textContent = name;
   }
 }
 
@@ -613,17 +625,22 @@ function renderMetaChips() {
   const trip = TripManager.currentTrip;
   if (!trip || !trip.features.length) { el.innerHTML = ""; return; }
 
-  let totalMi = 0;
+  // Route miles are what the day totals add up to; round-trip day hikes are
+  // shown beside them, not folded in.
+  let totalMi = 0, dayhikeMi = 0;
   for (const f of trip.features) {
     if (f.properties.type === "route") {
-      totalMi += (f.properties.main_route_distance_mi || 0) + (f.properties.dayhike_distance_mi || 0);
+      totalMi += f.properties.main_route_distance_mi || 0;
+      dayhikeMi += f.properties.dayhike_distance_mi || 0;
     }
   }
+  const dayhikeHTML = dayhikeMi >= 0.05
+    ? `<span class="meta-chip-extra" aria-hidden="true">·</span><span class="meta-chip-extra">+<span class="meta-chip-num">${dayhikeMi.toFixed(1)}</span> day hike${dayhikeMi >= 1.05 || dayhikeMi < 0.95 ? "s" : ""}</span>` : "";
   const dayCount = trip.days?.length || 0;
 
   const chips = [];
   if (totalMi > 0) chips.push(
-    `<div class="meta-chip"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><polyline points="1,10 4,3 6,7 8,1 11,10"/></svg>${totalMi.toFixed(1)} mi</div>`
+    `<div class="meta-chip"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><polyline points="1,10 4,3 6,7 8,1 11,10"/></svg>${totalMi.toFixed(1)} mi${dayhikeHTML}</div>`
   );
   if (dayCount > 0) chips.push(
     `<div class="meta-chip"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="10" height="9" rx="1"/><line x1="1" y1="5" x2="11" y2="5"/><line x1="4" y1="1" x2="4" y2="3"/><line x1="8" y1="1" x2="8" y2="3"/></svg>${dayCount} day${dayCount !== 1 ? "s" : ""}</div>`
@@ -656,19 +673,20 @@ function renderOverview() {
 
 function renderUnassignedPool() {
   const chipsEl = document.getElementById("unassignedChips");
+  const poolEl = document.getElementById("unassignedPool");
   if (!chipsEl) return;
   chipsEl.innerHTML = "";
 
   const trip = TripManager.currentTrip;
-  if (!trip) return;
-
-  const unassignedFeatures = (trip.unassigned || [])
+  const unassignedFeatures = trip ? (trip.unassigned || [])
     .map(id => trip.features.find(f => f.properties._id === id))
-    .filter(Boolean);
+    .filter(Boolean) : [];
 
+  // The tray only takes room when it holds something (or while you drag or
+  // draw: then it's where a feature can go back to / where the new route lands).
+  poolEl?.classList.toggle("has-items", unassignedFeatures.length > 0);
   if (unassignedFeatures.length === 0) {
-    const msg = trip.features.length > 0 ? "All features assigned" : "No unassigned features";
-    chipsEl.innerHTML = `<span class="pool-empty">${msg}</span>`;
+    chipsEl.innerHTML = `<span class="pool-empty">Drop here to take it out of its day.</span>`;
     return;
   }
 
@@ -677,88 +695,35 @@ function renderUnassignedPool() {
   }
 }
 
+/** The continuous day story (direction A): one column, no accordions. */
 function renderDaySections() {
   const container = document.getElementById("daySections");
   if (!container) return;
   container.innerHTML = "";
 
   const trip = TripManager.currentTrip;
-  if (!trip || !trip.days) return;
+  if (!trip || !trip.days) {
+    updateItinerary(null, []);
+    return;
+  }
 
   // Drop the map highlight if the highlighted day no longer exists
   if (activeDayId && !trip.days.some(d => d.id === activeDayId)) {
     setActiveDayHighlight(null);
   }
 
-  trip.days.forEach((day, idx) => {
-    container.appendChild(buildDaySection(day, idx));
-  });
-}
+  const model = buildItinerary(trip);
+  const modelDays = model.mode === "days" ? model.days : [];
+  const tripIsEmpty = trip.features.length === 0;
+  const sections = trip.days.map((day, idx) => buildDaySection(day, idx, modelDays[idx], tripIsEmpty));
+  sections.forEach(s => container.appendChild(s));
+  updateItinerary(trip, sections, model);
 
-// ---------------------------------------------------------------------------
-// Sparkline — SVG elevation profile renderer
-// ---------------------------------------------------------------------------
-
-/**
- * Build an SVG elevation sparkline from a profile array (values in feet).
- * Returns an HTML string for an <svg> element.
- *
- * @param {number[]} profile  - elevation values in feet
- * @param {number}   width    - SVG pixel width
- * @param {number}   height   - SVG pixel height
- * @param {string}   cssClass - class name applied to the <svg>
- */
-function buildSparklineSVG(profile, width, height, cssClass) {
-  if (!profile || profile.length < 2) return "";
-
-  const min = Math.min(...profile);
-  const max = Math.max(...profile);
-  const range = max - min || 1;
-  const padV = 3; // vertical padding in px
-
-  const pts = profile.map((e, i) => {
-    const x = (i / (profile.length - 1)) * width;
-    const y = padV + (height - padV * 2) * (1 - (e - min) / range);
-    return [x.toFixed(2), y.toFixed(2)];
-  });
-
-  const linePoints = pts.map(p => p.join(",")).join(" ");
-
-  // Area fill path: line + drop to bottom corners
-  const areaPath = [
-    `M ${pts[0][0]},${pts[0][1]}`,
-    ...pts.slice(1).map(p => `L ${p[0]},${p[1]}`),
-    `L ${width},${height} L 0,${height} Z`,
-  ].join(" ");
-
-  const gradId = `spk-${Math.random().toString(36).slice(2, 7)}`;
-
-  return `<svg class="${escapeAttr(cssClass)}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
-    <defs>
-      <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="currentColor" stop-opacity="0.18"/>
-        <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"/>
-      </linearGradient>
-    </defs>
-    <path d="${escapeAttr(areaPath)}" fill="url(#${gradId})"/>
-    <polyline points="${escapeAttr(linePoints)}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-}
-
-/**
- * Get the combined elevation profile for a day's route features.
- * If a day has multiple routes, concatenates their profiles.
- */
-function getDayElevationProfile(dayFeatures) {
-  const profile = [];
-  for (const f of dayFeatures) {
-    const p = f.properties;
-    if (getDisplayType(p) === "route" && Array.isArray(p.elevation_profile)) {
-      if (profile.length > 0) profile.push(...p.elevation_profile.slice(1));
-      else profile.push(...p.elevation_profile);
-    }
+  if (confirmFeatureId) {
+    const row = container.querySelector(`.feature-tile[data-id="${CSS.escape(confirmFeatureId)}"]`);
+    confirmFeatureId = null;
+    if (row) confirmMotion(row);
   }
-  return profile;
 }
 
 // ---------------------------------------------------------------------------
@@ -769,10 +734,10 @@ function setActiveDayHighlight(dayId) {
   activeDayId = dayId;
 
   // Update sidebar visual state
-  document.querySelectorAll(".day-section").forEach(section => {
+  document.querySelectorAll(".itin-day").forEach(section => {
     const isActive = section.dataset.dayId === dayId;
     section.classList.toggle("day-active", isActive);
-    section.querySelector(".day-focus-btn")?.setAttribute("aria-pressed", isActive ? "true" : "false");
+    section.querySelector(".day-map-btn")?.setAttribute("aria-pressed", isActive ? "true" : "false");
   });
 
   if (!map || !map.isStyleLoaded()) return;
@@ -879,6 +844,7 @@ function buildFeatureChip(feature) {
 
   chip.addEventListener("dragstart", (e) => {
     activeDragFeatureId = props._id;
+    document.body.classList.add("is-dragging-feature");
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("application/x-feature", JSON.stringify({
       featureId: props._id,
@@ -890,6 +856,7 @@ function buildFeatureChip(feature) {
 
   chip.addEventListener("dragend", () => {
     activeDragFeatureId = null;
+    document.body.classList.remove("is-dragging-feature");
     chip.classList.remove("dragging");
     clearDragIndicator();
   });
@@ -898,166 +865,214 @@ function buildFeatureChip(feature) {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: build day section
+// Sidebar: build day section (continuous story: label, date, pencil rule,
+// totals; then the route as the day's title, notes, and the stops)
 // ---------------------------------------------------------------------------
 
-function buildDaySection(day, dayIndex) {
+/**
+ * @param {object} day      trip.days[dayIndex]
+ * @param {number} dayIndex
+ * @param {object} [mday]   the day in buildItinerary()'s model (stop miles), if routed
+ * @param {boolean} tripIsEmpty  nothing drawn yet: the profile carries the instruction
+ */
+function buildDaySection(day, dayIndex, mday, tripIsEmpty) {
   const trip = TripManager.currentTrip;
   const dayFeatures = (day.features || [])
     .map(id => trip.features.find(f => f.properties._id === id))
     .filter(Boolean);
   const stats = computeDayStats(dayFeatures);
-  const profile = getDayElevationProfile(dayFeatures);
-  const isExpanded = expandedDayIds.has(day.id);
+  const n = dayIndex + 1;
 
-  const section = document.createElement("div");
-  section.className = "day-section" + (isExpanded ? " expanded" : "") + (activeDayId === day.id ? " day-active" : "");
+  const section = document.createElement("section");
+  section.className = "itin-day" + (activeDayId === day.id ? " day-active" : "") + (dayFeatures.length ? "" : " is-empty");
   section.dataset.dayId = day.id;
+  section.dataset.dayIndex = String(dayIndex);
+  section.tabIndex = -1;
+  const labelId = `day-label-${dayIndex}`;
+  section.setAttribute("aria-labelledby", labelId);
 
-  // ── Collapsed header row ──────────────────────────────────────────────────
+  // ── Head: label, date, pencil rule, totals ────────────────────────────────
   const dateLabel = day.date ? formatDateLabel(day.date) : "";
-
-  const statParts = [];
-  if (stats.totalMiles > 0) statParts.push(`${stats.totalMiles.toFixed(1)} mi`);
-  if (stats.totalElevGain > 0) statParts.push(`+${stats.totalElevGain.toLocaleString()} ft`);
-
-  const header = document.createElement("div");
-  header.className = "day-collapsed-header";
-  header.setAttribute("tabindex", "0");
-  header.setAttribute("role", "button");
-  header.setAttribute("aria-expanded", isExpanded ? "true" : "false");
-  header.setAttribute("aria-label", `Day ${dayIndex + 1}${dateLabel ? `, ${dateLabel}` : ""}`);
-
-  header.innerHTML = `
-    <svg class="day-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <polyline points="2,3 5,7 8,3"/>
-    </svg>
-    <div class="day-header-info">
-      <span class="day-label">Day ${dayIndex + 1}</span>
-      ${dateLabel ? `<span class="day-date">${escapeHTML(dateLabel)}</span>` : ""}
-    </div>
-    <div class="day-sparkline-mini-wrap">
-      ${profile.length >= 2 ? buildSparklineSVG(profile, 72, 20, "day-sparkline-mini") : ""}
-    </div>
-    <div class="day-stats-col">
-      ${statParts.map(s => `<span class="day-stat-item">${escapeHTML(s)}</span>`).join("")}
-    </div>
-    <button class="day-focus-btn" title="Highlight this day on the map" aria-label="Highlight day ${dayIndex + 1} on the map" aria-pressed="${activeDayId === day.id ? "true" : "false"}">
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M6 1 C3.8 1 2 2.8 2 5 C2 8 6 11 6 11 C6 11 10 8 10 5 C10 2.8 8.2 1 6 1 Z"/>
-        <circle cx="6" cy="5" r="1.4"/>
-      </svg>
-    </button>
-  `;
-
-  // Map-highlight toggle (doesn't expand/collapse the section)
-  header.querySelector(".day-focus-btn").addEventListener("click", (e) => {
-    e.stopPropagation();
-    setActiveDayHighlight(activeDayId === day.id ? null : day.id);
-  });
-
-  // Toggle expand/collapse on header click
-  header.addEventListener("click", () => {
-    if (expandedDayIds.has(day.id)) {
-      expandedDayIds.delete(day.id);
-      section.classList.remove("expanded");
-      header.setAttribute("aria-expanded", "false");
-    } else {
-      expandedDayIds.add(day.id);
-      section.classList.add("expanded");
-      header.setAttribute("aria-expanded", "true");
+  // Route miles only, so the header matches the profile's day tag; day-hike
+  // spurs show their own round trip in the stop list.
+  const routeMi = dayFeatures.reduce((m, f) => m + (getDisplayType(f.properties) === "route" ? (f.properties.main_route_distance_mi || 0) : 0), 0);
+  let sum = "";
+  if (routeMi > 0) {
+    sum = `${routeMi.toFixed(1)} mi`;
+    if (stats.totalElevGain > 0 || stats.totalElevLoss > 0) {
+      sum += ` · +${stats.totalElevGain.toLocaleString("en-US")}<span class="loss"> −${stats.totalElevLoss.toLocaleString("en-US")}</span> ft`;
     }
+  }
+  section.innerHTML = `
+    <header class="itin-day-head">
+      <h3 class="itin-day-label" id="${labelId}">Day ${n}</h3>
+      ${dateLabel ? `<span class="itin-day-date">${escapeHTML(dateLabel)}</span>` : ""}
+      ${ruleSVG(dayIndex)}
+      ${sum ? `<span class="itin-day-sum">${sum}</span>` : ""}
+    </header>`;
+
+  // ── Body: the drop target. Routes first (the first one is the day's
+  // title), then the notes, then stops in walking order. ─────────────────────
+  const list = document.createElement("div");
+  list.className = "day-feature-list";
+
+  const stopMi = new Map((mday?.stops || []).map(s => [s.id, s.dayMi]));
+  const spurById = new Map((mday?.spurs || []).map(s => [s.id, s]));
+  const routes = dayFeatures.filter(f => getDisplayType(f.properties) === "route");
+  const others = dayFeatures.filter(f => getDisplayType(f.properties) !== "route");
+  const orderMi = (f) => {
+    const id = f.properties._id;
+    if (spurById.has(id)) return spurById.get(id).at - mday.startMi + 0.02;
+    if (stopMi.has(id)) return stopMi.get(id) + (getDisplayType(f.properties) === "camp" ? 0.01 : 0);
+    return Infinity;
+  };
+  if (mday && !mday.empty) others.sort((a, b) => orderMi(a) - orderMi(b));
+
+  const camp = others.find(f => getDisplayType(f.properties) === "camp" && f.properties.name);
+  routes.forEach((f, k) => {
+    list.appendChild(buildFeatureTile(f, day.id, k === 0
+      ? { variant: "title", fallbackTitle: camp ? `To ${camp.properties.name}` : "" }
+      : { variant: "stop" }));
   });
-  header.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); header.click(); }
-  });
-
-  section.appendChild(header);
-
-  // ── Expanded body ─────────────────────────────────────────────────────────
-  const body = document.createElement("div");
-  body.className = "day-body";
-
-  // Full-width sparkline
-  if (profile.length >= 2) {
-    const sparklineWrap = document.createElement("div");
-    sparklineWrap.className = "day-sparkline-full-wrap";
-    const gainLabel = stats.totalElevGain > 0 ? `+${stats.totalElevGain.toLocaleString()} ft` : "";
-    const lossLabel = stats.totalElevLoss > 0 ? `−${stats.totalElevLoss.toLocaleString()} ft` : "";
-    sparklineWrap.innerHTML = `
-      <div class="day-sparkline-labels">
-        ${gainLabel ? `<span class="sparkline-gain">${escapeHTML(gainLabel)}</span>` : ""}
-        ${lossLabel ? `<span class="sparkline-loss">${escapeHTML(lossLabel)}</span>` : ""}
-      </div>
-      ${buildSparklineSVG(profile, 460, 52, "day-sparkline-full")}
-    `;
-    body.appendChild(sparklineWrap);
+  list.appendChild(buildNotesBlock(day));
+  for (const f of others) {
+    const id = f.properties._id;
+    const sp = spurById.get(id);
+    list.appendChild(buildFeatureTile(f, day.id, {
+      variant: "stop",
+      atMi: mday && !mday.empty && stopMi.has(id) ? stopMi.get(id) : null,
+      rt: sp ? sp.rt : null,
+    }));
   }
 
-  // Auto-summary (elevated feature list)
-  const summary = buildDayAutoSummary(dayFeatures, day.id);
-  body.appendChild(summary);
+  if (dayFeatures.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "itin-day-empty";
+    empty.innerHTML = tripIsEmpty
+      ? `<p>Nothing planned yet.</p>`
+      : `<p>Nothing planned yet. Draw a route for this day, or drag a stop here.</p>
+         <button type="button" class="btn btn--quiet btn--sm" data-act="draw">Draw route</button>`;
+    list.appendChild(empty);
+  }
+  section.appendChild(list);
 
-  // Per-day notes editor
-  const notesWrap = document.createElement("div");
-  notesWrap.className = "day-notes-wrap";
-  const notesEl = document.createElement("textarea");
-  notesEl.className = "notes-editor";
-  notesEl.placeholder = "Day notes — water sources, hazards, beta, key distances…\n\nMarkdown supported.";
-  notesEl.value = day.notes || "";
-  notesEl.addEventListener("input", () => {
-    const d = TripManager.currentTrip?.days.find(dd => dd.id === day.id);
-    if (d) { d.notes = notesEl.value; TripManager.save(); }
+  // ── Edit row: appears on hover / focus (always on touch) ──────────────────
+  const hasNotes = !!day.notes?.trim();
+  const row = document.createElement("div");
+  row.className = "itin-edit-row";
+  row.innerHTML = `
+    ${editingNotesDayId === day.id ? "" : `<button type="button" class="btn btn--ghost btn--sm" data-act="notes">${hasNotes ? "Edit notes" : "Add notes"}</button>`}
+    ${dayFeatures.length ? `<button type="button" class="btn btn--ghost btn--sm day-map-btn" data-act="map" aria-pressed="${activeDayId === day.id ? "true" : "false"}">Show on map</button>` : ""}`;
+  section.appendChild(row);
+
+  section.addEventListener("click", (e) => {
+    const act = e.target.closest("[data-act]")?.dataset.act;
+    if (act === "notes") {
+      editingNotesDayId = day.id;
+      renderDaySections();
+    } else if (act === "map") {
+      const on = activeDayId !== day.id;
+      setActiveDayHighlight(on ? day.id : null);
+      if (on) fitToFeatures(dayFeatures);
+    } else if (act === "draw") {
+      drawIntoDayId = day.id;
+      startRouteDrawing();
+    }
   });
-  // Prevent drag from textarea propagating to outer drag handlers
-  notesEl.addEventListener("mousedown", e => e.stopPropagation());
-  notesWrap.appendChild(notesEl);
-  body.appendChild(notesWrap);
 
-  section.appendChild(body);
   return section;
 }
 
-// ---------------------------------------------------------------------------
-// Day auto-summary — elevated read-only feature list inside expanded day
-// ---------------------------------------------------------------------------
-
-function buildDayAutoSummary(dayFeatures, dayId) {
+/** Day notes: read as text; click (or "Edit notes") to write. */
+function buildNotesBlock(day) {
   const wrap = document.createElement("div");
-  wrap.className = "day-auto-summary";
-
-  // Feature list area (also serves as the drag-and-drop target)
-  const featureList = document.createElement("div");
-  featureList.className = "day-feature-list";
-
-  if (dayFeatures.length === 0) {
-    featureList.innerHTML = `
-      <div class="day-drop-zone">
-        <svg class="day-drop-zone-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
-          <polyline points="2,17 6,5 10,12 13,3 18,17"/>
-        </svg>
-        <span class="day-drop-zone-label">Drag waypoints here</span>
-      </div>`;
-  } else {
-    for (const f of dayFeatures) {
-      featureList.appendChild(buildFeatureTile(f, dayId));
-    }
+  wrap.className = "itin-notes";
+  if (editingNotesDayId === day.id) {
+    const ta = document.createElement("textarea");
+    ta.className = "notes-editor itin-notes-editor";
+    ta.placeholder = "Water, hazards, beta, key distances. Markdown works.";
+    ta.setAttribute("aria-label", "Day notes");
+    ta.value = day.notes || "";
+    const fit = () => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
+    ta.addEventListener("input", () => {
+      const d = TripManager.currentTrip?.days.find(dd => dd.id === day.id);
+      if (d) { d.notes = ta.value; TripManager.save(); }
+      fit();
+    });
+    ta.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); ta.blur(); } });
+    ta.addEventListener("blur", () => {
+      if (editingNotesDayId !== day.id) return;
+      editingNotesDayId = null;
+      renderDaySections();
+    });
+    ta.addEventListener("mousedown", e => e.stopPropagation());
+    wrap.appendChild(ta);
+    requestAnimationFrame(() => { fit(); ta.focus(); });
+  } else if (day.notes?.trim()) {
+    const p = document.createElement("p");
+    p.className = "itin-notes-text";
+    p.textContent = day.notes.trim();
+    p.title = "Click to edit notes";
+    p.addEventListener("click", () => { editingNotesDayId = day.id; renderDaySections(); });
+    wrap.appendChild(p);
   }
-
-  wrap.appendChild(featureList);
   return wrap;
+}
+
+/**
+ * Frame the whole trip on the map, leaving room for the trip panel on the
+ * right (it covers the map rather than shrinking it). Instant under reduced
+ * motion. Used when a trip is opened or imported.
+ */
+export function fitTripToView(trip = TripManager.currentTrip) {
+  if (!map || !trip?.features?.length) return;
+  const pts = [];
+  for (const f of trip.features) {
+    const g = f.geometry;
+    if (g?.type === "Point") pts.push(g.coordinates);
+    else if (g?.type === "LineString") pts.push(...g.coordinates);
+  }
+  if (!pts.length) return;
+  const b = pts.reduce((bb, c) => bb.extend(c), new maplibregl.LngLatBounds(pts[0], pts[0]));
+  const panel = document.getElementById("tripPanel");
+  const overlays = window.innerWidth > 640 && panel ? panel.offsetWidth : 0;
+  const pad = 56;
+  map.fitBounds(b, {
+    padding: { top: pad, bottom: pad, left: pad, right: pad + overlays },
+    maxZoom: 14,
+    duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 800,
+  });
+}
+
+function fitToFeatures(features) {
+  const coords = [];
+  for (const f of features) {
+    const g = f.geometry;
+    if (g?.type === "Point") coords.push(g.coordinates);
+    else if (g?.type === "LineString") coords.push(...g.coordinates);
+  }
+  if (!coords.length || !map) return;
+  const bounds = coords.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
+  map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 800 });
 }
 
 // ---------------------------------------------------------------------------
 // Sidebar: build feature tile (inside a day section) — inline editing
 // ---------------------------------------------------------------------------
 
-function buildFeatureTile(feature, dayId) {
+/**
+ * One feature in a day's story: the day's title (its first route) or a stop
+ * row with a hand-drawn glyph. `ctx` = { variant: "title" | "stop",
+ * fallbackTitle, atMi (miles into the day), rt (spur round trip) }.
+ */
+function buildFeatureTile(feature, dayId, ctx = {}) {
   const props = feature.properties;
   const featureId = props._id;
 
   const tile = document.createElement("div");
-  tile.className = "feature-tile";
+  tile.className = "feature-tile stop-row" + (ctx.variant === "title" ? " stop-row--title" : "");
+  tile._ctx = ctx;
+  tile.draggable = true;
   tile.dataset.id = featureId || "";
   tile.dataset.type = getDisplayType(props) || "waypoint";
   tile.setAttribute("tabindex", "0");
@@ -1113,6 +1128,7 @@ function buildFeatureTile(feature, dayId) {
     if (tile.classList.contains("editing")) { e.preventDefault(); return; }
     e.stopPropagation();
     activeDragFeatureId = featureId;
+    document.body.classList.add("is-dragging-feature");
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("application/x-feature", JSON.stringify({
       featureId,
@@ -1124,6 +1140,7 @@ function buildFeatureTile(feature, dayId) {
 
   tile.addEventListener("dragend", () => {
     activeDragFeatureId = null;
+    document.body.classList.remove("is-dragging-feature");
     tile.classList.remove("dragging");
     clearDragIndicator();
   });
@@ -1141,24 +1158,58 @@ function buildFeatureTile(feature, dayId) {
   return tile;
 }
 
+const GRIP_SVG = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="2.5" r="1.2"/><circle cx="7" cy="2.5" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="3" cy="11.5" r="1.2"/><circle cx="7" cy="11.5" r="1.2"/></svg>`;
+
+/** Glyph (sketch.js) for a feature: waypoints by subtype, spurs as day hikes. */
+function glyphKindFor(props) {
+  const k = kindOf(props);
+  if (k === "dayhike_spur") return "dayhike";
+  return ["camp", "dayhike", "rest", "water", "hazard", "scenic", "resupply", "meal", "route"].includes(k) ? k : "scenic";
+}
+
+const NAME_CLASS = { camp: "is-camp", water: "is-water", dayhike: "is-dayhike", rest: "is-rest" };
+
+const seedOf = (id) => [...String(id || "x")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 997;
+
 function setTileViewContent(tile, featureId) {
   const feature = TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
   if (!feature) return;
   const props = feature.properties;
   const type = getDisplayType(props);
-  const stats = getFeatureStats(props, type);
-  const notes = props.notes || "";
+  const ctx = tile._ctx || {};
+  const label = getFeatureLabel(props, type);
+  const tools = `<span class="stop-tools">
+      <button type="button" class="tile-edit-btn" aria-label="Edit ${escapeAttr(label)}">Edit</button>
+      <span class="tile-drag-handle" title="Drag into another day" aria-hidden="true">${GRIP_SVG}</span>
+    </span>`;
 
+  if (ctx.variant === "title") {
+    const title = props.name || ctx.fallbackTitle || "Untitled route";
+    const offMi = offTrailMeters(props) / 1609.344;
+    tile.innerHTML = `
+      <div class="stop-title-row">
+        <h4 class="itin-title${props.name ? "" : " is-placeholder"}">${escapeHTML(title)}</h4>
+        ${tools}
+      </div>
+      ${offMi >= 0.05 ? `<p class="stop-sub">Includes ${offMi.toFixed(1)} mi drawn straight, off the trail network</p>` : ""}
+      ${props.notes ? `<p class="stop-note">${escapeHTML(props.notes)}</p>` : ""}`;
+    return;
+  }
+
+  const gk = glyphKindFor(props);
+  let at = "";
+  if (ctx.rt != null) at = `${ctx.rt.toFixed(1)} mi rt`;
+  else if (type === "route" && props.main_route_distance_mi > 0) at = `${props.main_route_distance_mi.toFixed(1)} mi`;
+  else if (ctx.atMi != null) at = `${ctx.atMi.toFixed(1)} mi`;
+  let note = props.notes || "";
+  if (type === "camp" && props.water_nearby) note += `${note ? " " : ""}Water nearby${props.water_notes ? `: ${props.water_notes}` : "."}`;
+  const nameCls = NAME_CLASS[gk === "water" ? "water" : type] || "";
   tile.innerHTML = `
-    <div class="tile-header-row">
-      <span class="tile-type-icon">${buildTypeIconHTML(type)}</span>
-      <span class="tile-title">${escapeHTML(getFeatureLabel(props, type))}</span>
-      ${stats ? `<span class="tile-stat">${escapeHTML(stats)}</span>` : ""}
-      <button class="tile-edit-btn" title="Edit">&#9998;</button>
-      <div class="tile-drag-handle" aria-hidden="true"><svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="2.5" r="1.2"/><circle cx="7" cy="2.5" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="3" cy="11.5" r="1.2"/><circle cx="7" cy="11.5" r="1.2"/></svg></div>
-    </div>
-    ${notes ? `<p class="tile-description">${escapeHTML(notes)}</p>` : ""}
-  `;
+    ${glyphIcon(gk, { seed: seedOf(featureId), size: 24 })}
+    <span class="stop-name ${nameCls}">${escapeHTML(label)}</span>
+    ${at ? `<span class="stop-at">${at}</span>` : ""}
+    ${tools}
+    ${note ? `<span class="stop-note">${escapeHTML(note)}</span>` : ""}`;
 }
 
 function setTileEditContent(tile, featureId, dayId) {
@@ -1179,9 +1230,8 @@ function setTileEditContent(tile, featureId, dayId) {
 
   tile.innerHTML = `
     <div class="tile-header-row">
-      <span class="tile-type-icon">${buildTypeIconHTML(type)}</span>
-      <input class="tile-title-input" type="text" value="${escapeAttr(getFeatureLabel(props, type))}" />
-      <button class="tile-edit-btn active" title="Cancel editing">&#9998;</button>
+      <span class="tile-type-icon">${glyphIcon(glyphKindFor(props), { seed: seedOf(featureId), size: 22 })}</span>
+      <input class="tile-title-input" type="text" value="${escapeAttr(props.name || "")}" placeholder="${escapeAttr(getFeatureLabel(props, type))}" aria-label="Name" />
     </div>
     ${fieldsHTML}
     <textarea class="tile-notes-field" placeholder="Notes…">${escapeHTML(props.notes || "")}</textarea>
@@ -1268,19 +1318,20 @@ const WAYPOINT_LABELS = {
 function getFeatureLabel(props, type) {
   if (props.name) return props.name;
   switch (type) {
-    case "route": return "Untitled Route";
-    case "camp": return props.night_number ? `Camp Night ${props.night_number}` : "Camp";
-    case "dayhike": return "Day Hike";
-    case "rest": return "Rest Day";
+    case "route": return "Untitled route";
+    case "camp": return props.night_number ? `Camp, night ${props.night_number}` : "Camp";
+    case "dayhike": return "Day hike";
+    case "rest": return "Rest day";
     case "meal": return "Meal";
-    case "waypoint": return `${WAYPOINT_LABELS[props.subtype] || "Waypoint"} Point`;
+    case "waypoint": return WAYPOINT_LABELS[props.subtype] || "Waypoint";
+    case "dayhike_spur": return "Day hike spur";
     default: return POINT_TYPE_LABELS[type] || type;
   }
 }
 
-/** Meters of fallback (no route found) straight legs on a routed route. */
+/** Meters of fallback straight legs where trails don't connect (no_path); legs with no graph aren't flagged. */
 function offTrailMeters(props) {
-  return (props.segments || []).reduce((m, s) => m + (s.mode === "straight" ? (s.length_m || 0) : 0), 0);
+  return (props.segments || []).reduce((m, s) => m + (s.mode === "straight" && (s.reason || "no_path") === "no_path" ? (s.length_m || 0) : 0), 0);
 }
 
 function getFeatureStats(props, type) {
@@ -1520,8 +1571,14 @@ export function initTripPanel() {
   if (tripTitleInput) {
     tripTitleInput.addEventListener("input", () => {
       if (!TripManager.currentTrip) return;
-      TripManager.currentTrip.properties.name = tripTitleInput.value;
+      TripManager.currentTrip.properties.name = tripTitleInput.textContent.replace(/\s+/g, " ").trim();
       TripManager.save();
+    });
+    tripTitleInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); tripTitleInput.blur(); }
+    });
+    tripTitleInput.addEventListener("blur", () => {
+      if (tripTitleInput.textContent.trim() === "") renderTripTitle();
     });
   }
 
@@ -1593,6 +1650,24 @@ export function initTripPanel() {
     showOnboardingModal();
   });
 
+  // Sketchbook profile (sticky) + active day. Wired before the first render.
+  document.body.insertAdjacentHTML("beforeend", glyphDefsSVG());
+  initItineraryPanel({
+    figure: document.getElementById("itineraryProfile"),
+    scroll: document.getElementById("notebookPanel"),
+    tail: document.getElementById("itineraryTail"),
+    onDrawRoute: () => startRouteDrawing(),
+  });
+  // Drawing a route: collapse the profile to a strip so the map leads.
+  const toolbarEl = document.getElementById("planningToolbar");
+  if (toolbarEl) {
+    new MutationObserver(() => {
+      setItineraryCompact(isDrawingRoute);
+      document.body.classList.toggle("is-drawing-route", isDrawingRoute);
+      if (!isDrawingRoute) drawIntoDayId = null;
+    }).observe(toolbarEl, { attributes: true, attributeFilter: ["class"] });
+  }
+
   // Migrate the legacy single-trip localStorage entry into the multi-trip
   // store (lossless, one-time), then load the active trip if there is one.
   TripsStore.migrateLegacy();
@@ -1604,16 +1679,20 @@ export function initTripPanel() {
 
   const notebookPanel = document.getElementById("notebookPanel");
 
+  // A whole day (head, rule, notes, stops) is one drop target.
+  const dayListAt = (el) => el.closest(".itin-day")?.querySelector(".day-feature-list") || null;
+
   notebookPanel.addEventListener("dragover", (e) => {
     e.preventDefault();
-    const featureList = e.target.closest(".day-feature-list");
+    const featureList = dayListAt(e.target);
     const pool = e.target.closest(".unassigned-pool");
     if (featureList) {
       e.dataTransfer.dropEffect = "move";
       const insertBeforeId = getDragInsertBeforeId(e, featureList);
       showDragIndicator(featureList, insertBeforeId);
       featureList._dropInsertBefore = insertBeforeId;
-      featureList.classList.add("drag-over");
+      document.querySelectorAll(".itin-day.drag-over").forEach(el => { if (!el.contains(featureList)) el.classList.remove("drag-over"); });
+      featureList.closest(".itin-day").classList.add("drag-over");
     } else if (pool) {
       e.dataTransfer.dropEffect = "move";
       pool.classList.add("drag-over");
@@ -1621,10 +1700,11 @@ export function initTripPanel() {
   });
 
   notebookPanel.addEventListener("dragleave", (e) => {
-    const featureList = e.target.closest(".day-feature-list");
+    const dayEl = e.target.closest(".itin-day");
     const pool = e.target.closest(".unassigned-pool");
-    if (featureList && !featureList.contains(e.relatedTarget)) {
-      featureList.classList.remove("drag-over");
+    if (dayEl && !dayEl.contains(e.relatedTarget)) {
+      dayEl.classList.remove("drag-over");
+      clearDragIndicator();
     }
     if (pool && !pool.contains(e.relatedTarget)) {
       pool.classList.remove("drag-over");
@@ -1638,13 +1718,13 @@ export function initTripPanel() {
     clearDragIndicator();
     document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
 
-    const featureList = e.target.closest(".day-feature-list");
+    document.body.classList.remove("is-dragging-feature");
+    const featureList = dayListAt(e.target);
     const pool = e.target.closest(".unassigned-pool");
     if (featureList) {
-      const dayId = featureList.closest(".day-section")?.dataset.dayId;
+      const dayId = featureList.closest(".itin-day")?.dataset.dayId;
       if (dayId) {
-        // Auto-expand the day when something is dropped into it
-        expandedDayIds.add(dayId);
+        confirmFeatureId = data.featureId; // the confirm shiver on the row once it lands
         TripManager.moveFeature(data.featureId, "day", dayId, featureList._dropInsertBefore || null);
       }
     } else if (pool) {

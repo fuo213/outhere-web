@@ -16,6 +16,7 @@
 import { map } from "./app.js"; // circular with app.js; only used at runtime
 import {
   TripManager,
+  fitTripToView,
   migrateTrip,
   downloadTripGeoJSON,
   openSidebar,
@@ -195,6 +196,7 @@ function openTrip(id) {
   TripManager.setTrip(trip);
   hideTripsHome();
   openSidebar();
+  fitTripToView(); // after the region camera, so the trip wins
 }
 
 function duplicateTrip(id) {
@@ -401,6 +403,7 @@ export function initTripsHome() {
         syncRegionForTrip(TripManager.currentTrip);
         hideTripsHome();
         openSidebar();
+        fitTripToView();
       } catch (err) {
         alert("Could not load file: " + err.message);
       }
@@ -412,5 +415,36 @@ export function initTripsHome() {
   // Home is the default state when no trip is open.
   if (!TripManager.currentTrip) {
     showTripsHome();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dev only: ?demo=maze opens a bundled demo trip (design/fixtures/).
+// Honored on localhost and Pages branch previews, never on production.
+// ---------------------------------------------------------------------------
+
+const DEMO_TRIPS = {
+  maze: "design/fixtures/demo-maze-chocolate-drops.trip.geojson",
+};
+
+/** @param {Promise} regionsReady resolves once the region catalog is loaded */
+export async function loadDemoTripFromURL(regionsReady) {
+  const key = new URLSearchParams(location.search).get("demo");
+  const host = location.hostname;
+  const devHost = ["localhost", "127.0.0.1", "[::1]"].includes(host) || host.endsWith(".outhere-web.pages.dev");
+  if (!key || !devHost || !DEMO_TRIPS[key]) return;
+  try {
+    await regionsReady;
+    const res = await fetch(DEMO_TRIPS[key]);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Same path as Load trip. The fixture keeps a fixed trip_id, so reloading
+    // overwrites the saved copy instead of piling up duplicates.
+    TripManager.loadFromGeoJSON(await res.json());
+    syncRegionForTrip(TripManager.currentTrip);
+    hideTripsHome();
+    openSidebar();
+    fitTripToView();
+  } catch (err) {
+    console.warn(`[demo] could not load demo trip "${key}":`, err.message);
   }
 }

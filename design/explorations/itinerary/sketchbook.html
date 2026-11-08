@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booot · Itinerary A: Sketchbook profile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<link rel="stylesheet" href="../../motion.css">
+<link rel="stylesheet" href="../../components.css">
+<link rel="stylesheet" href="itin.css">
+<style>
+  /* ---- A · Sketchbook profile ------------------------------------------- */
+  .sketch { margin: var(--space-3) 0 0; padding: 0 var(--space-4); }
+  .sketch svg { display: block; width: 100%; overflow: visible; }
+  .sketch figcaption { margin: var(--space-1) var(--space-2) 0; color: var(--text-secondary); font-size: var(--text-sm); font-style: italic; }
+  .sk-label { font: var(--weight-semi) var(--text-sm) var(--font-ui); fill: var(--text); }
+  .sk-num { font: var(--weight-regular) var(--text-xs) var(--font-data); fill: var(--text-secondary); }
+  .sk-note { font: var(--weight-regular) var(--text-xs) var(--font-ui); fill: var(--text-body); }
+  .sk-note--teal { fill: var(--type-dayhike-text); font-style: italic; }
+  .sk-ann { font-style: italic; }
+  .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px; stroke-linejoin: round; }
+  .band { transition: opacity var(--dur-quick) var(--ease-out); }
+  .sketch[data-active] .band { opacity: 0.3; }
+  .sketch[data-active] .band.is-active { opacity: 1; }
+  .day-tag { transition: opacity var(--dur-quick) var(--ease-out); }
+  .sketch[data-active] .day-tag { opacity: 0.45; }
+  .sketch[data-active] .day-tag.is-active { opacity: 1; }
+
+  /* Story: one continuous column, Paper timeline anatomy */
+  .story { padding: var(--space-4) var(--space-7) var(--space-8); }
+  .day { position: relative; padding: var(--space-3) 0 var(--space-5); }
+  .day-head { display: flex; align-items: center; gap: var(--space-2); }
+  .day-label { font-weight: var(--weight-bold); font-size: var(--text-md); color: var(--text); }
+  .day-date { font-family: var(--font-data); font-size: var(--text-sm); color: var(--text-secondary); }
+  .day-rule { flex: 1; height: 6px; min-width: 24px; }
+  .day-rule path { transition: stroke-width var(--dur-quick) var(--ease-out), opacity var(--dur-quick); }
+  .day-sum { font-family: var(--font-data); font-size: var(--text-sm); color: var(--text-body); white-space: nowrap; }
+  .day-sum .loss { color: var(--text-secondary); }
+  .day-title-row { margin-top: var(--space-3); }
+  .day .edit-row { margin: var(--space-1) 0 0 calc(var(--space-8) - var(--space-3)); }
+  .stops { list-style: none; margin: var(--space-3) 0 0; padding: 0; }
+  .stop-note .osm-link { color: var(--text-body); }
+  .day.is-hover .day-rule path, .day:hover .day-rule path { stroke-width: 2.2; opacity: 1; }
+  .day-swatch { width: 14px; height: 10px; flex: none; }
+
+  @media (max-width: 760px) {
+    .sketch { padding: 0 var(--space-2); }
+    .story { padding: var(--space-3) var(--space-4) var(--space-8); }
+    .day-sum .loss { display: none; }
+  }
+</style>
+</head>
+<body data-state="default">
+<div id="bar"></div>
+<main class="stage">
+  <div class="stage-map" id="map"></div>
+  <aside class="panel" aria-label="Trip">
+    <div class="panel-scroll">
+      <div id="head"></div>
+      <figure class="sketch" id="sketch" aria-label="Elevation profile of the whole trip, divided into days"></figure>
+      <div id="tray"></div>
+      <div class="story" id="story"></div>
+    </div>
+    <div id="foot"></div>
+  </aside>
+</main>
+
+<script type="module">
+import { loadTrip, loadContours, inkStroke, wobble, chaikin, simplify, hatch, pencilDefs, glyph, esc, fmt, rng, wireStates } from "./itin.js";
+import { expBar, panelHead, panelFoot, tray, stopsHTML, editRow, emptyDayHTML, renderMapStandIn } from "./shared-page.js";
+
+const m = await loadTrip();
+document.getElementById("bar").outerHTML = expBar("sketchbook");
+document.getElementById("head").outerHTML = panelHead(m);
+document.getElementById("foot").outerHTML = panelFoot();
+document.getElementById("tray").outerHTML = tray();
+
+const tone = (i) => (i % 2 ? "var(--pencil-b)" : "var(--pencil-a)");
+
+/** Hand-drawn pencil rule for the day header (in the day's band tone). */
+const ruleSVG = (i) => {
+  const pts = wobble([[1, 3], [200, 3.2]], { amp: 0.6, seed: 40 + i });
+  return `<svg class="day-rule" viewBox="0 0 201 6" preserveAspectRatio="none" aria-hidden="true"><path d="M${pts.map((p) => p.map((v) => v.toFixed(1)).join(" ")).join("L")}" fill="none" stroke="${tone(i)}" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+};
+
+// ---------------------------------------------------------------------------
+// The figure
+// ---------------------------------------------------------------------------
+function drawFigure(W, active = null) {
+  const narrow = W < 420;
+  const H = narrow ? 222 : 262;
+  const L = 6, Rr = narrow ? 8 : 12, top = narrow ? 64 : 70, base = H - 30;
+  const loD = m.low.ft - 330, hiD = m.high.ft + 30;
+  const X = (mi) => L + (mi / m.total.miles) * (W - L - Rr);
+  const Y = (ft) => top + ((hiD - ft) / (hiD - loD)) * (base - top);
+  const prof = simplify(m.profile.map(([mi, ft]) => [X(mi), Y(ft)]), 0.35);
+  const line = chaikin(prof, 1);
+  const yAt = (mi) => Y(m.elevAt(mi));
+  const lineMinY = (x0, x1) => { let v = Infinity; for (const [x, y] of line) if (x >= x0 - 2 && x <= x1 + 2) v = Math.min(v, y); return v; };
+
+  let defs = pencilDefs("g");
+  let bands = "", tags = "";
+  // Pencil shading, one band per day, a hair out of register with the ink.
+  const fillTop = wobble(line, { amp: 0.9, seed: 9 }).map(([x, y]) => [x + 0.7, y + 1.4]);
+  const areaD = `M${fillTop[0][0]} ${base}` + fillTop.map(([x, y]) => `L${x.toFixed(1)} ${y.toFixed(1)}`).join("") + `L${fillTop.at(-1)[0]} ${base}Z`;
+  defs += `<clipPath id="area"><path d="${areaD}"/></clipPath>
+    <linearGradient id="press" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.8"/><stop offset="1" stop-color="#fff" stop-opacity="0.2"/></linearGradient>
+    <mask id="pressure" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect x="0" y="${top - 10}" width="${W}" height="${base - top + 12}" fill="url(#press)"/></mask>`;
+  for (const d of m.days) {
+    const x0 = X(d.startMi), x1 = X(d.endMi);
+    // Bands stop a hair short of each other, like two pencils that never quite meet.
+    defs += `<clipPath id="band${d.i}"><rect x="${x0 + (d.i ? 0.9 : -2)}" y="0" width="${x1 - x0 - (d.i ? 0.9 : -2) - 0.9}" height="${H}"/></clipPath>`;
+    const isA = active === d.i;
+    bands += `<g class="band${isA ? " is-active" : ""}" clip-path="url(#band${d.i})"><g clip-path="url(#area)" mask="url(#pressure)">
+      <rect x="${x0 - 2}" y="${top - 10}" width="${x1 - x0 + 4}" height="${base - top + 12}" fill="${tone(d.i)}" fill-opacity="${isA ? 0.4 : 0.26}" filter="url(#g-grain-soft)"/>
+      <g stroke="${tone(d.i)}" fill="none" stroke-linecap="round" filter="url(#g-grain)">${hatch([x0 - 2, top - 12, x1 + 2, base + 2], { spacing: isA ? 1.9 : 2.3, angle: -63 + (d.i % 2) * 6, seed: 21 + d.i, w: 1, minO: 0.55, maxO: 1 })}</g>
+    </g></g>`;
+    const cx = (x0 + x1) / 2;
+    const tw = narrow ? 34 : 40;
+    const tx = Math.max(x0 + 2 + tw / 2, Math.min(x1 - 2 - tw / 2, cx));
+    tags += `<g class="day-tag${isA ? " is-active" : ""}">
+      <text class="sk-label" x="${tx}" y="14" text-anchor="middle">Day ${d.n}</text>
+      <text class="sk-num" x="${tx}" y="28" text-anchor="middle">${narrow ? d.miles.toFixed(1) : fmt.mi(d.miles)}</text>
+    </g>`;
+  }
+
+  // Ink: the profile, split around off-network legs (drawn as dots).
+  const gaps = m.days.flatMap((d) => d.manual);
+  let ink = "";
+  const pieces = [[]];
+  for (const p of line) {
+    const mi = ((p[0] - L) / (W - L - Rr)) * m.total.miles;
+    if (gaps.some((g) => mi > g.from && mi < g.to)) { if (pieces.at(-1).length) pieces.push([]); continue; }
+    pieces.at(-1).push(p);
+  }
+  pieces.filter((pc) => pc.length > 1).forEach((pc, k) => { ink += `<path d="${inkStroke(pc, { w: 1.75, vary: 0.32, amp: 0.35, seed: 5 + k, taper: 3 })}" fill="var(--sketch-ink)"/>`; });
+  for (const g of gaps) {
+    const n = Math.max(3, Math.round((X(g.to) - X(g.from)) / 2.6));
+    for (let k = 1; k < n; k++) { const mi = g.from + ((g.to - g.from) * k) / n; ink += `<circle cx="${X(mi).toFixed(1)}" cy="${yAt(mi).toFixed(1)}" r="0.95" fill="var(--sketch-ink)"/>`; }
+  }
+
+  // Baseline (hand-ruled) with mile ticks
+  const baseLine = wobble([[L - 2, base + 0.5], [W - Rr + 2, base + 0.5]], { amp: 0.5, seed: 3 });
+  let axis = `<path d="${inkStroke(baseLine, { w: 0.9, vary: 0.2, amp: 0.2, seed: 4 })}" fill="var(--sketch-ink-soft)"/>`;
+  const step = narrow ? 5 : 2;
+  const lastTick = Math.floor(m.total.miles / step) * step;
+  for (let mi = 0; mi <= m.total.miles + 0.01; mi += step) {
+    const x = X(mi);
+    axis += `<path d="${inkStroke([[x, base + 1], [x + 0.2, base + 5]], { w: 0.8, vary: 0.1, amp: 0.05, seed: mi + 1, taper: 1 })}" fill="var(--sketch-ink-soft)"/>`;
+    axis += `<text class="sk-num" x="${x}" y="${base + 18}" text-anchor="${mi === 0 ? "start" : "middle"}">${mi}${mi === lastTick ? " mi" : ""}</text>`;
+  }
+
+  // Day dividers: pencil hairlines from the line down to the baseline
+  let dividers = "";
+  for (const d of m.days.slice(0, -1)) {
+    const x = X(d.endMi), y = yAt(d.endMi);
+    const pts = wobble([[x, y + 3], [x + 0.3, base]], { amp: 0.3, seed: 60 + d.i });
+    dividers += `<path d="M${pts.map((p) => p.map((v) => v.toFixed(1)).join(" ")).join("L")}" stroke="var(--sketch-ink-soft)" stroke-width="0.8" stroke-dasharray="1.4 2.8" fill="none"/>`;
+  }
+
+  // Glyphs on the line, then annotations placed clear of the line and of each other
+  let marks = "", notes = "";
+  const placed = [];
+  const hits = (b) => placed.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
+  const reserve = (b) => placed.push(b);
+  /** Try a label above the line at x (anchor start), shifting up until clear; returns baseline y or null. */
+  const noteAbove = (x, yStart, text, cls = "sk-note", anchor = "start", charW = 5.7) => {
+    const w = text.length * charW;
+    const bx0 = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
+    for (let y = yStart; y > 40; y -= 4) {
+      const b = [bx0 - 2, y - 10, bx0 + w + 2, y + 3];
+      if (lineMinY(b[0], b[2]) > b[3] + 2 && !hits(b)) { reserve(b); notes += `<text class="${cls} halo" x="${x}" y="${y}" text-anchor="${anchor}">${esc(text)}</text>`; return y; }
+    }
+    return null;
+  };
+  const leader = (x, y0, y1, seed) => { if (y1 - y0 < 4) return; marks += `<path d="${inkStroke(wobble([[x, y0], [x + 0.4, y1]], { amp: 0.2, seed }), { w: 0.7, vary: 0.15, amp: 0.05, seed, taper: 1.5 })}" fill="var(--sketch-ink-soft)"/>`; };
+  // reserve the day tags row
+  reserve([0, 0, W, 32]);
+
+  marks += glyph("start", X(0) + 2.5, yAt(0), { s: 0.68, seed: 2 });
+  marks += glyph("start", X(m.total.miles) - 2.5, yAt(m.total.miles), { s: 0.68, seed: 3 });
+  const camps = [];
+  for (const d of m.days) for (const s of d.stops) {
+    const x = X(s.mi), y = yAt(s.mi);
+    if (s.kind === "camp") { marks += glyph("camp", x, y + 0.5, { s: narrow ? 0.85 : 1, seed: 31 + d.i }); camps.push(s.mi); reserve([x - 11, y - 16, x + 11, y + 1]); }
+    else if (s.kind === "water") { marks += glyph("water", x, y - 5, { s: 0.78, seed: 41 + d.i }); reserve([x - 5, y - 17, x + 5, y - 4]); }
+    else if (s.kind === "scenic" && s.mi > 0.05) {
+      marks += glyph("scenic", x, y - 5, { s: 0.75, seed: 61 + Math.round(s.mi) });
+      reserve([x - 4, y - 14, x + 4, y - 5]);
+      if (/lunch/i.test(s.notes || "")) { marks += glyph("meal", x - 12, y - 4, { s: 0.62, seed: 81 }); reserve([x - 17, y - 16, x - 6, y - 4]); }
+    }
+  }
+  // spur: a teal out-and-back arrow from the camp it leaves
+  for (const d of m.days.filter((dd) => dd.spur)) {
+    const x = X(d.spur.at), y = yAt(d.spur.at) - 17;
+    const out = chaikin([[x + 3, y - 1], [x + 9, y - 14], [x + 22, y - 20], [x + 32, y - 14]], 3);
+    const back = chaikin([[x + 29, y - 8], [x + 20, y - 12], [x + 11, y - 7], [x + 6, y + 2]], 3);
+    marks += `<path d="${inkStroke(out, { w: 1.15, vary: 0.2, amp: 0.1, seed: 101, taper: 2 })}" fill="var(--type-dayhike)"/>`;
+    marks += `<path d="${inkStroke(chaikin([[x + 27.6, y - 17.8], [x + 32.4, y - 13.8], [x + 26.6, y - 11.6]], 1), { w: 1.1, vary: 0.1, amp: 0.05, seed: 102, taper: 1 })}" fill="var(--type-dayhike)"/>`;
+    marks += `<path d="${inkStroke(back, { w: 0.85, vary: 0.2, amp: 0.1, seed: 103, taper: 2 })}" fill="var(--type-dayhike)" opacity="0.75"/>`;
+    reserve([x, y - 22, x + 34, y + 2]);
+    const spurText = `${d.spur.name}, ${d.spur.rt.toFixed(1)} mi rt`;
+    const fits = x + 37 + spurText.length * 5.4 < W;
+    noteAbove(x + 37, y - 10, fits ? spurText : `${d.spur.rt.toFixed(1)} mi rt`, "sk-note sk-note--teal");
+  }
+  // high point: benchmark unless a camp already sits there
+  const hx = X(m.high.mi), hy = Y(m.high.ft);
+  const campAtHigh = camps.some((c) => Math.abs(c - m.high.mi) < 0.4);
+  if (!campAtHigh) { marks += glyph("summit", hx, hy - 6, { s: 0.75, seed: 91 }); reserve([hx - 5, hy - 14, hx + 5, hy - 5]); }
+  noteAbove(hx + (campAtHigh ? 12 : 7), hy - 8, fmt.ft(m.high.ft), "sk-num", "start", 6.6);
+  noteAbove(X(0) + 8, yAt(0) - 6, fmt.ft(m.profile[0][1]), "sk-num", "start", 6.6);
+  const lx = X(m.low.mi), ly = Y(m.low.ft);
+  notes += `<text class="sk-num halo" x="${lx}" y="${ly + 17}" text-anchor="middle">${fmt.ft(m.low.ft)}</text>`;
+  if (!narrow) {
+    // Names for camps and viewpoints, lettered beside their glyph when there's room.
+    const lineMaxY = (x0, x1) => { let v = -Infinity; for (const [x, y] of line) if (x >= x0 - 2 && x <= x1 + 2) v = Math.max(v, y); return v; };
+    const place = (x, y, text, g) => {
+      const w = text.length * 5.5;
+      const cands = [[g, -5, "start"], [-g, -5, "end"], [g, 15, "start"], [-g, 15, "end"], [0, -26, "middle", true], [0, 30, "middle", true]];
+      for (const [dx, dy, anchor, lead] of cands) {
+        const tx = x + dx, ty = y + dy;
+        const bx0 = anchor === "end" ? tx - w : anchor === "middle" ? tx - w / 2 : tx;
+        const bb = [bx0 - 2, ty - 10, bx0 + w + 2, ty + 3];
+        if (bb[0] < 0 || bb[2] > W || bb[1] < 34 || bb[3] > base - 2 || hits(bb)) continue;
+        const clear = lineMinY(bb[0], bb[2]) > bb[3] + 2 || lineMaxY(bb[0], bb[2]) < bb[1] - 2;
+        if (!clear) continue;
+        reserve(bb);
+        notes += `<text class="sk-note sk-ann halo" x="${tx}" y="${ty}" text-anchor="${anchor}">${esc(text)}</text>`;
+        if (lead) dy < 0 ? leader(x, ty + 3, y - 15, 200 + Math.round(x)) : leader(x, y + 3, ty - 11, 200 + Math.round(x));
+        return true;
+      }
+      return false;
+    };
+    for (const d of m.days) for (const s of d.stops) {
+      if (!(s.kind === "scenic" || s.kind === "camp") || s.mi < 0.05) continue;
+      const name = s.kind === "camp" ? s.name.replace(/^At-large camp /, "") : s.name;
+      place(X(s.mi), yAt(s.mi), name, s.kind === "camp" ? 13 : 7);
+    }
+  }
+  for (const g of gaps) {
+    const x = X(g.to) + 1, y = yAt(g.to);
+    notes += `<text class="sk-note halo" x="${x + 6}" y="${y + 20}">${narrow ? "gap" : "not in OSM"}</text>`;
+    leader(x + 3, y + 4, y + 11, 300);
+  }
+
+  return `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Elevation profile: ${fmt.mi(m.total.miles)} over ${m.days.length} days, high point ${fmt.ft(m.high.ft)}, low point ${fmt.ft(m.low.ft)}">
+    <defs>${defs}</defs>
+    ${bands}${dividers}${axis}${ink}${marks}${tags}${notes}
+  </svg>
+  <figcaption>Elevation, ${fmt.gain(m.total.gain)} / ${fmt.loss(m.total.loss)} ft over ${fmt.mi(m.total.miles)}. Vertical scale exaggerated.</figcaption>`;
+}
+
+const fig = document.getElementById("sketch");
+let active = null;
+const paint = () => { if (fig.clientWidth < 200) return; fig.innerHTML = drawFigure(fig.clientWidth - parseFloat(getComputedStyle(fig).paddingLeft) * 2, active); if (active != null) fig.dataset.active = active; else delete fig.dataset.active; };
+
+// ---------------------------------------------------------------------------
+// The story
+// ---------------------------------------------------------------------------
+function story(state) {
+  let html = "";
+  for (const d of m.days) {
+    const isHover = state === "hover" && d.i === 1;
+    html += `<section class="day${isHover ? " is-hover" : ""}" data-day="${d.i}" tabindex="-1">
+      <header class="day-head">
+        <span class="day-label">Day ${d.n}</span>
+        <span class="day-date">${esc(fmt.date(d.date))}</span>
+        ${ruleSVG(d.i)}
+        <span class="day-sum">${fmt.mi(d.miles)} · ${fmt.gain(d.gain)}<span class="loss"> ${fmt.loss(d.loss)}</span> ft</span>
+      </header>
+      <div class="day-title-row"><h3 class="day-title">${esc(d.title)}</h3></div>
+      <p class="day-notes">${esc(d.notes)}</p>
+      ${state === "drag" && d.i === m.days.length - 1 ? `<div class="drop-line">Drop into day ${d.n}</div><div style="margin:0 0 var(--space-2) var(--space-6)"><span class="pill is-dragging" data-type="camp">Water cache</span></div>` : ""}
+      ${stopsHTML(d)}
+      ${editRow()}
+    </section>`;
+  }
+  const e = emptyDayHTML(m);
+  html += `<section class="day empty-day" data-day="${m.days.length}">
+      <header class="day-head"><span class="day-label">Day ${e.n}</span><span class="day-date">${esc(fmt.date(e.date))}</span>${ruleSVG(m.days.length)}<span class="day-sum">0.0 mi</span></header>
+      <p class="empty-hint">Nothing planned yet. Draw a route from Maze Overlook, or drag a stop here.</p>
+      <button class="btn btn--quiet btn--sm">Draw route</button>
+    </section>
+    <button class="btn btn--ghost btn--sm" style="margin-top:var(--space-2)">Add day</button>`;
+  document.getElementById("story").innerHTML = html;
+  document.querySelectorAll(".day[data-day]").forEach((el) => {
+    el.addEventListener("mouseenter", () => { if (document.body.dataset.state !== "hover") { active = +el.dataset.day; paint(); } });
+    el.addEventListener("mouseleave", () => { if (document.body.dataset.state !== "hover") { active = null; paint(); } });
+  });
+}
+
+document.addEventListener("statechange", (e) => { active = e.detail === "hover" ? 1 : null; story(e.detail); paint(); });
+wireStates();
+new ResizeObserver(paint).observe(fig);
+
+const mapEl = document.getElementById("map");
+const contours = await loadContours();
+const drawMap = () => renderMapStandIn(mapEl, m, contours);
+new ResizeObserver(drawMap).observe(mapEl);
+document.body.dataset.ready = "1";
+</script>
+</body>
+</html>

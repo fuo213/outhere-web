@@ -39,6 +39,20 @@ change tokens or principles. Propose, then log.
 
 ## Trying
 
+- **2026-11-08 · Itinerary explorations: continuous day story + hand-drawn
+  charts** (awaiting Vincent's pick). `design/explorations/itinerary/`
+  (A sketchbook profile, B trip chart, C field journal; README has pitches
+  and build notes). Response to "the planner feels somehow old": days read
+  as one continuous story (Paper timeline anatomy: label, date, rule,
+  totals) instead of boxed accordions; edit actions appear on hover/focus.
+  Drawings are built from real data (route geometry, 3DEP profile and
+  contours) with a restrained "hand": variable-width ink outlines with
+  baked-in tremor, colored-pencil hatching masked by paper grain, one
+  family of custom glyphs. Vincent relaxed "no sketchy filters" for this,
+  on the condition that it stay disciplined (pencil grain yes, jitter no). Recommendation: A. Open
+  questions: day bands reuse sage/dust (route/rest meanings); meal stops
+  need data; whether the drawing should compact while editing.
+
 - **2026-11-07 · Phase 1b app migration calls** (seen on real screens in
   the 1b PR, awaiting Vincent's review):
   - No badge above titles: "TRIP PLANNER", "TRIP JOURNAL", "NEW TRIP" removed
@@ -81,6 +95,88 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
+- 2026-11-08 · **Trip chart on the real map** (direction B carried onto the
+  planner map): the route is a clean ink line (`--ink-900`, ~2.4 px at z13,
+  round caps/joins) on a thin `--surface-raised` casing; each day's stretch
+  gets a colored-pencil band underneath (`line-pattern` drawn on canvas at
+  runtime: light even pass, -62° hatching, ragged edges, paper tooth),
+  alternating `--sage-500` / `--dust-500` like B. Unassigned routes are ink
+  only. Geometry is exact; the hand lives in the pencil, glyphs, numerals
+  and labels. Circled day numerals in Plex Mono (numbers job) at each day's
+  start, set behind the way the day leaves. Glyphs from the sketchbook
+  family: tent (camp gold), drop (water), teal day-hike arrow + dashed teal
+  spur, ringed-dot start, target end, scenic asterisk, hazard step; minor
+  glyphs wait for z12. Camp names in italic DM Sans (map convention for
+  places), others from z12.5, with MapLibre collision. Shift legs are dashed
+  ink; real OSM gaps stay rust, dotted, with a hand-drawn rust ring pin.
+  While drawing, placed legs are inked and the live preview is a lighter
+  pencil line (`--ink-400`), so a click reads as inking it. Active day:
+  band and ink strengthen, other days mute to ~30-50%. **Same styling
+  outside planning mode** (panel closed, trips home behind the modal): the
+  chart is the trip's identity and reads calmly at every zoom, so a lighter
+  variant would only add a second look to learn · planner with `?demo=maze`,
+  `map-trip-style.js` · Vincent: B "is how we should show the actual route
+  inside of the main map". Open: sage band on the green protected-area fill
+  is quieter than dust; whether day bands should keep reusing sage/dust.
+
+- 2026-11-08 · **Direction A in the real planner, with Vincent's sticky
+  profile** · trip panel, `?demo=maze` (localhost / Pages previews) ·
+  Vincent: "the profile should scroll down with us … the day planning sort of
+  disappears behind it." Calls made while building it:
+  - **Sticky profile + active day.** The profile is `position: sticky` at
+    the top of the panel's scroll area; days scroll under it and fade out
+    behind a short paper fade (`--itin-fade`, 24 px). The fade is the one
+    gradient in the panel: it's functional (content passing under paper), not
+    decoration. The active day is the section crossing a line 12 px below the
+    profile. Its band gets a second, denser pencil pass; the other bands drop
+    to 50 % and their tags to 55 %. With few days the active tag gets a pencil
+    underline in its day tone; with many days (bands too narrow for "Day N"),
+    tags become numbers and the active day's "Day N · x mi" appears on its own
+    row with a small pencil caret, so it never collides with a neighbor.
+    Clicking a band scrolls to that day (smooth, instant under reduced motion).
+    A tail spacer lets the last day reach the line.
+  - **Compact strip while drawing.** While a route is being drawn the profile
+    collapses to a 46 px strip: bands, the ink line, tents and day numbers, no
+    lettering, no axis, no caption. The map leads while you draw; the strip
+    keeps the trip's shape in view, and the live distance stays in the tray
+    chip. It restores when drawing ends (finish or Esc). Delete mode keeps the
+    full profile.
+  - **Day bands stay sage/dust** (exploration's choice). In the real panel
+    they read as "this day / next day", not as route/rest: the bands are
+    pencil texture inside a drawing, never a pill or a fill behind text, and
+    the rest point type only appears as a dust glyph in the stop list. Revisit
+    if a rest day lands inside a dust band and the two get confused.
+  - **The day's title is its first route.** Unnamed routes read "To {camp}"
+    when the day's camp is named, else "Untitled route" in secondary ink. Edit
+    renames the route (the title). Other features are stop rows in walking
+    order (projected onto the route), not data order.
+  - **Unassigned routes:** when no route is in a day yet, the profile draws
+    them as one neutral (earth pencil) stretch with "Drag it into a day to
+    split the profile". When some are assigned, the profile shows only the
+    days and the caption counts the loose routes.
+  - **No elevation yet:** that stretch is a pencil rule being inked back and
+    forth ("Elevation loading…"); after 20 s with nothing it becomes a quiet
+    dotted line, "No elevation for this stretch". When elevation arrives the
+    ink line draws itself in once (`draw` verb).
+  - **Empty trip:** the profile area becomes a faint dotted ridge over a
+    ruled baseline with one line ("Your elevation profile draws itself here.
+    Draw a route on the map, then drag it into a day.") and a quiet Draw route
+    button; days just say "Nothing planned yet." Empty days in a trip with
+    content say "Draw a route for this day, or drag a stop here", and their
+    Draw route puts the new route straight into that day.
+  - **Meals** are still derived from notes (breakfast/lunch/dinner/snack in a
+    stop's notes draws the mug). Follow-up: a `meal` waypoint subtype in the
+    schema first.
+  - **Day totals are route miles** (match the profile's day tag); a day-hike
+    spur shows its own "x mi rt" in the stop list. The top chips (PR #12's
+    area) still include day hikes.
+  - **Unplanned days after the last route take no width** on the profile;
+    empty days between routes are rest days at the previous day's elevation.
+  - The paper fade only appears once content is scrolling under the profile
+    (at rest it would grey out the first row).
+  - The tray (Unassigned) is hidden when empty; it appears while dragging
+    ("Drop here to take it out of its day.") and while drawing.
+
 - 2026-11-07 · **Route legs on the map (trail routing)**: routed legs are
   solid `--type-route` on a 6 px `--surface-raised` casing; Shift legs dash
   [2,2]; no-path fallback legs are `--accent` dotted [1,1.5] with a gap pin
@@ -88,6 +184,20 @@ change tokens or principles. Propose, then log.
   route in Zion (`design/tools/scenes-routing.json`) · the casing keeps the
   route readable over the basemap's own colored trail lines, and the ring
   pin can't be confused with the basemap's filled POI dots.
+- 2026-11-08 · **Quiet unrouted areas**: legs drawn where there is no routing
+  graph (`no_graph`, `cross_region`) render as ordinary route lines: no gap
+  pin, no dotted rust styling, no card. Only `no_path` inside a routed area
+  keeps the flagged leg + pin + OSM-fix card. The data stays honest (exports
+  keep `mode: "straight"` + `reason`). One non-repeating hint per page load
+  on the first click outside a routed area: "Trail routing covers Zion, the
+  Maze and the Needles. Here, lines are drawn as you click." (names built
+  from the catalog). New "Routed areas" layer toggle outlines those regions
+  (dashed `--accent` outline, 7% tint, 12 px label) and is **off by default**:
+  the calmer option, since most users never need it and the hint already
+  says where routing lives. Could instead default on while drawing · planner,
+  Utah full-state view (`routing-unrouted-utah`, `routing-routed-areas-layer`
+  scenes) · most of the state will never have routing, so an absence of
+  routing should look like normal drawing, not a defect.
 - 2026-11-07 · **Ink-rule loading hint**: while a region's trail graph
   downloads, the drawing hint reads "Loading trails for routing…" and a
   1 px sage rule draws back and forth under it (static under reduced motion)
