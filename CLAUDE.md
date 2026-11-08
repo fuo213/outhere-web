@@ -1,135 +1,133 @@
-# OutHere Web — Map Viewer
+# outhere-web: Booot web map + trip planner
 
-Web-based hiking map viewer displaying OutHere vector tiles (PMTiles) via MapLibre GL JS. No build step, no framework, no backend — pure HTML/CSS/JS served from Cloudflare Pages.
+The production web app: a MapLibre topo map of Booot's own vector tiles plus a
+multi-day trip planner (draw a route, split it into days and camps, export a
+trip file for the phone). Vanilla JS ES modules, no framework, no build step,
+no backend. All state lives in the browser (localStorage).
 
-**Live**: https://outhere-web.pages.dev
-**Tiles**: Loaded from Cloudflare R2 at `pub-facc37c75f49450988b436c5307ce8dd.r2.dev`
+- **Live:** https://outhere-web.pages.dev (Cloudflare Pages, **auto-deploys
+  from `main`**; never push `main` directly, branch + PR, merge = deploy)
+- **Tiles:** https://tiles.booot.org (R2 custom domain, built by `../outhere`)
+- **Product name:** **Booot** on every user-facing surface. "OutHere" is the
+  internal repo/code name only (identifiers and `outhere_*` localStorage keys
+  stay as they are). Some visible copy (page `<title>`, meta description)
+  still says OutHere; Phase 1b of `../BOOOT_NEXT_STEPS.md` renames it.
+
+Ecosystem context (other repos, canonical formats, cross-repo rules):
+`../CLAUDE.md`.
+
+## Run locally
+
+```bash
+python3 -m http.server 8000   # then open http://localhost:8000
+```
+
+Use **port 8000**: it's in the R2 CORS allowlist for tiles.booot.org (8080 is
+not, so tiles fail to load there). No install or build; edit and reload.
+
+## Files
+
+| File | What it does |
+|---|---|
+| `index.html` | DOM shell: planning toolbar, region switcher, trips home, trip panel, onboarding modal, layer panel. CDN `<script>`s, then `app.js` as `type="module"` |
+| `app.js` | Entry. Registers the `pmtiles://` protocol, `buildStyle(region)` (inline MapLibre style), map + controls, runtime trip layers (`addTripLayers` / `restoreRuntimeLayers`), layer toggle panel, popups |
+| `config.js` | `TILE_URL` (Utah fallback PMTiles), `CATALOG_URL`, `MAP_CONFIG`, `DEFAULT_REGION`, `LAYER_GROUPS` (layer toggles + legends), `LAYER_STYLE_DEFAULTS`, `DASH_PRESETS` |
+| `region-picker.js` | Fetches `catalog.json` (localStorage cache, ~24h TTL, stale-while-revalidate), region switcher UI, `applyRegion()` swaps the PMTiles source via `map.setStyle()` |
+| `trips-home.js` | `TripsStore`: multi-trip localStorage store (`outhere_trips_index`, `outhere_trip_<id>`, `outhere_active_trip`; migrates legacy `outhere_trip`). Trips home view: open / duplicate / export / delete / import |
+| `trip-panel.js` | `TripManager` (trip data model, internal `_schema_version` 4 migrations), notebook sidebar (overview, unassigned pool, day accordion, drag-and-drop), canonical export (`buildTripExport` + `validateTripExport`), `escapeHTML` / `escapeAttr` |
+| `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = no snap, Esc cancels, double-click finishes), trail snapping, distances, elevation profiles |
+| `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
+| `styles.css` | All app styles (still raw hex; see Design system) |
+| `design/` | The Booot design system (below) |
+
+Modules import each other circularly (`app.js` exports `map`; the others
+import it). That's safe only because the imports are used at runtime, not at
+module-evaluation time. Keep it that way: don't touch `map` at a module's top
+level outside `app.js`.
+
+## Dependencies (CDN, no package.json)
+
+Classic `<script>` tags in `index.html`, used as globals from the modules:
+
+- `maplibregl`: MapLibre GL JS 4.7.1 (unpkg)
+- `pmtiles`: PMTiles 3.2.1 (unpkg)
+- `turf`: Turf 6.5.0 (jsDelivr), used by snapping and distances
+- Google Fonts: Playfair Display, DM Sans, IBM Plex Mono (+ Source Serif 4,
+  due to be dropped in Phase 1b)
+
+Runtime network calls: tiles.booot.org (catalog + PMTiles range requests),
+MapLibre demotiles for glyphs/sprite, and the free Open-Meteo elevation API
+(`fetchElevationProfile` in `planning.js`). Keep new dependencies open and
+free (see product principles in `../CLAUDE.md`); pin exact versions.
+
+## Tiles, regions and style
+
+- `catalog.json` at `https://tiles.booot.org/catalog.json` lists regions (built
+  by `outhere/catalog_generator.py`; the mobile app reads the same file). Each
+  region's `url` is a PMTiles file under `https://tiles.booot.org/{state}/`.
+  If the catalog has never loaded, the app boots on `DEFAULT_REGION` (Utah,
+  `TILE_URL`).
+- **Style:** `buildStyle()` is a hand-maintained inline copy of the canonical
+  pipeline style (`outhere/tile_generator.py` `create_style_spec()`, published
+  as `tiles.booot.org/{state}/metadata/style.json`). The app does not fetch
+  `style.json`. This is known drift: change the pipeline style first, then
+  mirror it here. Source-layer names (`trails`, `pois`, `water`, `roads`,
+  `protected_areas`, `contours`) and properties come from the pipeline.
+- **`map.setStyle()` wipes runtime sources/layers** (trip rendering, drawing
+  and snap previews). Anything added outside `buildStyle()` must be re-added
+  in `restoreRuntimeLayers()` (`applyRegion()` calls it after a region switch).
+- **Adding a map layer:** add it to `buildStyle()`, then a `LAYER_GROUPS`
+  entry in `config.js` (toggle + legend UI builds from it), and a
+  `LAYER_STYLE_DEFAULTS` entry if it should be user-stylable.
+
+## Trip format
+
+Exports must match the canonical trip format in `../outhere/trips/`
+(`trip.schema.json` + `FORMAT.md`, `schema_version: "1.0"`; read FORMAT.md's
+Drift section first). Don't invent fields: extend the schema in `outhere`
+first. `buildTripExport()` stamps `schema_version` and mirrors `readme` into
+`notes`; `validateTripExport()` is a lightweight structural self-check, not a
+full schema validator, so validate real exports against the schema after
+touching export code. The internal `_schema_version` (4) is a separate
+localStorage migration counter.
+
+## Trail snapping (being replaced)
+
+`planning.js` snaps to rendered tile geometry
+(`queryRenderedFeatures` on the `trails` layer + Turf), so results depend on
+zoom and on clipped, simplified tile geometry. It's slated to be replaced by
+routing on a per-region trail graph built by the pipeline. See `../SNAPPING_RESEARCH.md`
+before working on snapping; don't invest in the render-tile approach.
 
 ## Design system
 
-All UI work follows `design/` (tokens, principles, motion, components, taste
-log; see `design/DESIGN.md`). The `booot-design` skill loads it automatically.
-Use tokens, never raw colors; one primary action per view; screenshot visible
-changes with `node design/tools/shoot.mjs` before calling them done.
+All UI work follows `design/`:
 
-## Related Repositories
+- `DESIGN.md`: principles (each with a test), color/type rules, motion, voice
+- `decisions.md`: taste log (confirmed / trying / rejected); read before UI
+  work, append when Vincent confirms or rejects something
+- `tokens.css`: the only place raw values live; `components.css`,
+  `motion.css`, `motion.js`: reuse these
+- `specimen.html`: live reference at http://localhost:8000/design/specimen.html
+- `tools/shoot.mjs`: screenshot harness (Node 22+, system Chrome, starts its
+  own server on :8000): `node design/tools/shoot.mjs [--only planner]`
+- `skills/`: sources of the `booot-design` (applied automatically to UI work)
+  and `/design-review` skills
 
-- **outhere** — Tile generation pipeline ([../outhere](../outhere))
-  - Processes OSM + USGS data into PMTiles
-  - Generates the style.json that app.js mirrors
-  - Deploys tiles to Cloudflare R2
+The app itself is not on the tokens yet: `styles.css` still hardcodes colors
+and doesn't import `tokens.css`. Migrating it is Phase 1b. New UI should use
+the tokens; screenshot visible changes before calling them done.
 
-- **booot-landing** — Marketing site ([../booot-landing](../booot-landing))
-  - Landing page at booot.org
-  - Email signup form
+## Gotchas
 
-- **booot-signup-worker** — Email API ([../booot-signup-worker](../booot-signup-worker))
-  - Cloudflare Worker handling signup submissions
-
-- **booot-mobile**: React Native app (read-only trip viewer with offline maps)
-
-## When You're Working Here
-
-Use this repo when:
-- Changing the map viewer UI (header, layer panel, popups)
-- Modifying map styling (colors, line widths, label visibility)
-- Adding new layer toggle controls
-- Updating the tile source URL after redeployment
-
-Don't use this repo for:
-- Generating or regenerating tiles → see `outhere`
-- Landing page changes → see `booot-landing`
-- Adding new data layers to tiles → see `outhere/tile_generator.py`
-
-## Tech Stack
-
-- **MapLibre GL JS** v4.7.1 — Map rendering (CDN)
-- **PMTiles** v3.2.1 — Protocol handler for single-file vector tiles (CDN)
-- **Cloudflare Pages** — Static hosting, auto-deploy from `main`
-- **Cloudflare R2** — Tile storage (zero egress)
-
-## Project Structure
-
-```
-outhere-web/
-├── index.html      # Entry point, CDN script tags, DOM structure
-├── app.js          # Map init, style builder, layer controls, POI popups
-├── config.js       # Tile URL, map center/bounds, layer group definitions
-├── styles.css      # Full-screen layout, header, layer panel, responsive
-└── .claude/docs/   # Detailed patterns documentation
-```
-
-### Key Files
-
-- [config.js](config.js) — All configuration in one place
-  - Line 14: `TILE_URL` — R2 PMTiles URL
-  - Lines 19-32: `MAP_CONFIG` — center, zoom, bounds, attribution
-  - Lines 40-97: `LAYER_GROUPS` — toggle definitions with legend colors
-
-- [app.js](app.js) — Application logic
-  - Lines 19-20: PMTiles protocol registration
-  - Lines 29-215: `buildStyle()` — inline MapLibre style (mirrors outhere/utah_maps/output/style.json)
-  - Lines 221-247: Map initialization with controls
-  - Lines 278-355: Layer toggle panel (reads from `LAYER_GROUPS`)
-  - Lines 361-390: POI click popups
-
-- [styles.css](styles.css) — UI styling
-  - Lines 34-88: Header bar (purple gradient `#667eea` → `#764ba2`)
-  - Lines 94-179: Layer control panel (floating, toggleable)
-  - Lines 185-220: MapLibre control overrides
-  - Lines 226-260: Loading overlay with spinner
-  - Lines 291-301: Mobile responsive breakpoint (480px)
-
-- [index.html](index.html) — DOM structure
-  - Lines 12-17: CDN dependencies (MapLibre, PMTiles)
-  - Lines 25-35: Header bar with Layers button
-  - Lines 41-46: Layer panel container (populated by app.js)
-  - Lines 49-55: Loading overlay and error banner
-
-## Build & Deploy Commands
-
-```bash
-# Local development (no build step)
-python3 -m http.server 8080
-
-# Deploy to Cloudflare Pages (auto on push)
-git push origin main
-
-# Manual deploy via Wrangler
-npx wrangler pages deploy . --project-name outhere-web
-
-# Test with local PMTiles file (no R2 needed)
-ln -s ../outhere/utah_maps/output/utah_hiking.pmtiles .
-# Then set TILE_URL = "utah_hiking.pmtiles" in config.js
-```
-
-## Data Flow
-
-```
-R2 (utah_hiking.pmtiles) → PMTiles protocol → MapLibre GL JS → Canvas
-config.js (LAYER_GROUPS) → app.js (buildLayerControls) → DOM checkboxes
-checkbox change → setLayoutProperty("visibility") → MapLibre layer toggle
-```
-
-## Additional Documentation
-
-**Before making changes:**
-- [.claude/docs/architectural_patterns.md](.claude/docs/architectural_patterns.md) — Style sync with tile pipeline, layer system, PMTiles protocol
-
-**When modifying map styling:**
-- The style in `buildStyle()` must stay in sync with `outhere/tile_generator.py:327-520`
-- Source layer names (`trails`, `pois`, `water`, `roads`, `protected_areas`, `contours`) come from tippecanoe layer names
-
-**When adding a new layer:**
-1. Add layer definition(s) to `buildStyle()` in [app.js:45-213](app.js#L45-L213)
-2. Add a `LAYER_GROUPS` entry in [config.js:40-97](config.js#L40-L97) with layer IDs and legend colors
-3. The toggle UI builds automatically from the config
-
-**When debugging tile loading:**
-- Check browser console for PMTiles fetch errors
-- Verify CORS is enabled on the R2 bucket (Cloudflare dashboard)
-- Error banner in [app.js:260-271](app.js#L260-L271) surfaces `pmtiles` errors to the UI
-
-**When updating tile URL:**
-- Edit `TILE_URL` in [config.js:14](config.js#L14)
-- URL format: `https://pub-{account-id}.r2.dev/{state}/{state}_hiking.pmtiles`
+- **XSS:** `escapeHTML` escapes `& < >` but **not quotes**. Use `escapeAttr`
+  for anything interpolated into an HTML attribute.
+- **Headless verification:** a hidden or background browser tab freezes
+  `requestAnimationFrame`, so MapLibre never fires `load`. Use the rAF shim
+  from gotcha #5 in `../BOOOT_NEXT_STEPS.md` (and remove it before
+  committing), or real headless Chrome as `shoot.mjs` does.
+- **Caching checks:** test Cloudflare caching with a ranged GET, not HEAD.
+- **CORS / cache rules** on tiles.booot.org are Cloudflare-dashboard settings
+  Vincent changes; they're not in any repo.
+- `window.__outhere = { map, TripManager }` is exposed for console debugging
+  only.
