@@ -40,6 +40,7 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = straight leg, Esc cancels, double-click finishes), live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
 | `map-trip-style.js` | How the trip is drawn on the map (itinerary direction B, "Trip chart"): inked route on a paper casing, colored-pencil `line-pattern` band per day, glyphs (tent, drop, day-hike arrow, start/end rings, gap pin), circled day numerals, italic labels, all rasterized at runtime with `map.addImage`. Drawing/preview leg styles. Active-day highlight (feature-state) + the `booot:active-day` event |
 | `gpx-core.js` / `gpx-import.js` | GPX import. Core is pure (parse via DOMParser, 1.5 m simplification, recorded-elevation profile and gain/loss with a 3 m hysteresis, route feature with `segments: [{mode:"imported"}]` + `source`). Import wires the trip panel: Import GPX (multi-select), drop files on the panel, "Assign by date". Client-side only; recorded elevation beats Open-Meteo for imported routes |
+| `gpx-match.js` / `route-names.js` | Pure. `matchTrack(graph, coords)` map-matches a recording to the routing graph (resample ~17 m, nearest way within 25 m, sticky to the previous way, junction/GPS-gap noise merged) and returns name runs + OSM way ids + a loop flag. `route-names.js` holds the auto-name rules (`deriveNameFromRuns`, `deriveImportedName` with loop names, `isGenericRouteName`), shared by planning.js and GPX import. Test: `FLATBUSH_DIR=<dir with node_modules/flatbush> [ZION_GRAPH=<graph json>] node design/tools/test-gpx-match.mjs` |
 | `routing.js` | Trail routing: loads the region's `booot-trail-graph`, flatbush snapping (meters), A* |
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
@@ -144,7 +145,19 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   exported). If it ends on a different named trail (at least 0.1 mi or 5%),
   the name is "Dominant to Destination" ("West Rim Trail to Angels Landing"). It sets `name_auto: true` (the schema allows extra route
   properties); the panel's save drops that flag when the user types a
-  different name. Re-derive only while `name_auto` is true.
+  different name. Re-derive only while `name_auto` is true. The destination
+  must be the trail the route *ends* on (the trailing run, unnamed bits
+  allowed), not one it merely crossed earlier. The rules live in
+  `route-names.js`.
+- **Imported routes** (`applyTrailMatch` in gpx-import.js): when the region has
+  a routing graph, a GPX recording is map-matched to it (`gpx-match.js`); the
+  matched OSM way ids go on its imported segment (`osm_way_ids`), and a
+  made-up or device name ("May 3 · 1.3 mi", "Wayne County Hiking") becomes
+  "Dominant to Destination" with `name_auto: true`. A distinctive GPX name is
+  kept. A loop (ends within 150 m of the start, or straight-line start-to-end
+  under 20% of the distance walked) is named "Out to Place" when the farthest
+  point is on a place-like trail other than the dominant one, else
+  "Dominant loop". No graph or under half the track matched: left as is.
 - **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
   maps a region id to a local graph file (keep `dev-graphs/` out of git).
 - **Demo trip:** "See a demo trip" (trips home and the new-trip dialog) or `?demo=spanish-bottom` opens `design/fixtures/spanish-bottom-2026.trip.geojson` as a throwaway copy (`TripManager.openDemo`: never saved; banner with "Make it your own" / Close). `?demo=maze` stays dev only. Never commit `.gpx` files or `design/fixtures/local/` (git-ignored).

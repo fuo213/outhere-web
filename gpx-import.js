@@ -8,6 +8,10 @@ import { map } from "./app.js"; // circular; only used at runtime
 import { fetchElevationProfile } from "./planning.js"; // fallback for files without <ele>
 import { confirm as confirmMotion } from "./design/motion.js";
 import { parseGPX, buildRouteFeature, routeLabel, localDateISO } from "./gpx-core.js";
+import { getActiveRegion, getCatalogRegions } from "./region-picker.js"; // circular; runtime only
+import { loadGraph, pickGraphRegion } from "./routing.js";
+import { matchTrack } from "./gpx-match.js";
+import { deriveImportedName, isGenericRouteName } from "./route-names.js";
 
 // ---------------------------------------------------------------------------
 // Panel wiring
@@ -35,6 +39,33 @@ const readText = (file) => new Promise((resolve, reject) => {
   r.onerror = () => reject(new Error("could not read the file"));
   r.readAsText(file);
 });
+
+/**
+ * Map-match a freshly built recording to the region's routing graph (if the
+ * region has one): store the OSM way ids on its imported segment and, when the
+ * name is only a made-up label ("May 3 · 1.3 mi", a device name), replace it
+ * with "Dominant to Destination" from the trails it follows, flagged
+ * `name_auto` like a planned route. A distinctive GPX name is kept. Best
+ * effort: no graph, no match or any failure leaves the route as built.
+ */
+export async function applyTrailMatch(f) {
+  try {
+    const coords = f.geometry.coordinates;
+    const pick = pickGraphRegion(getActiveRegion(), getCatalogRegions(), coords[0]);
+    if (!pick?.info) return false;
+    const m = matchTrack(await loadGraph(pick.info), coords);
+    if (!(m.totalM > 0) || m.matchedM < m.totalM * 0.5) return false;
+    if (m.wayIds.length) f.properties.segments[0].osm_way_ids = m.wayIds;
+    if (isGenericRouteName(f.properties.name)) {
+      const name = deriveImportedName(m.runs, m);
+      if (name) { f.properties.name = name; f.properties.name_auto = true; }
+    }
+    return true;
+  } catch (err) {
+    console.warn("[gpx] trail match skipped:", err.message);
+    return false;
+  }
+}
 
 /** Import GPX files into the open trip. Returns { added, skipped } for callers and tests. */
 export async function importGpxFiles(files) {
@@ -70,6 +101,7 @@ export async function importGpxFiles(files) {
   const added = [];
   for (const f of built) {
     f.properties.name = routeLabel(f, usedNames);
+    await applyTrailMatch(f);
     const idx = TM.addFeature(f.geometry, f.properties);
     added.push(TM.currentTrip.features[idx]);
   }
