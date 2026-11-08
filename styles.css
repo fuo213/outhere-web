@@ -2387,3 +2387,27 @@ body.panel-open .route-instructions {
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+
+.onboarding-demo { margin-top: var(--space-2); }
+
+/* Demo trip notice: a calm strip above the trip title while the bundled demo is open. */
+.demo-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-7);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+}
+.demo-banner[hidden] { display: none; }
+.demo-banner-text {
+  flex: 1 1 220px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-body);
+}
+.demo-banner-text strong { color: var(--text); font-weight: var(--weight-semi); }
+.demo-banner-actions { display: flex; gap: var(--space-1); }

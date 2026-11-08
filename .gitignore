@@ -38,7 +38,7 @@ Thumbs.db
 *~
 
 # ======================
-# Personal trip data (real GPS history): never commit
+# Raw GPS recordings and private fixtures: never commit
 # ======================
 design/fixtures/local/
 *.gpx

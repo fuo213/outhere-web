@@ -7,7 +7,7 @@
  * An imported route follows the trip format (schema 1.1):
  *   segments: [{ mode: "imported", ... }]   one leg covering the geometry
  *   source:   { type: "gpx", name, recorded_at, recorded_end }
- * Geometry is lightly simplified (DP, 2.5 m) so a day-long recording stays a
+ * Geometry is lightly simplified (DP, 1.5 m; 2.5 m shaved up to 15% off a switchbacked climb) so a day-long recording stays a
  * sane size; timing is not stored per point. Elevation comes from the file's
  * own <ele> (imported GPX > our DEM > Open-Meteo): a profile sampled by
  * distance like the planner's (<=100 points) and gain/loss with a 3 m
@@ -19,7 +19,7 @@ const FT = 3.28084;
 const R = 6371008.8;
 const RAD = Math.PI / 180;
 
-export const SIMPLIFY_TOLERANCE_M = 2.5;
+export const SIMPLIFY_TOLERANCE_M = 1.5;
 export const HYSTERESIS_M = 3;
 const MAX_PROFILE_POINTS = 100;
 const MIN_SPACING_M = 25;
