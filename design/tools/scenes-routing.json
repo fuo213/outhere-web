@@ -1305,7 +1305,7 @@
     "shot": "routing-preview"
    },
    {
-    "eval": "(() => { const s = window.__outhere.routing.stats; const q = (a, p) => { const b = [...a].sort((x, y) => x - y); return +(b[Math.min(b.length - 1, Math.floor(p * b.length))] || 0).toFixed(2); }; return { frames: s.frames, memoHits: s.memoHits, aborted: s.aborted, route_ms: { p50: q(s.routeMs, 0.5), p95: q(s.routeMs, 0.95), max: q(s.routeMs, 1) }, frame_ms: { p50: q(s.frameMs, 0.5), p95: q(s.frameMs, 0.95), max: q(s.frameMs, 1) } }; })()"
+    "eval": "(() => { const s = window.__outhere.routing.stats; const q = (a, p) => { const b = [...a].sort((x, y) => x - y); return +(b[Math.min(b.length - 1, Math.floor(p * b.length))] || 0).toFixed(2); }; return { frames: s.frames, memoHits: s.memoHits, aborted: s.aborted, over4ms: s.frameMs.map((x, i) => [i, +x.toFixed(1)]).filter((x) => x[1] > 4), route_ms: { p50: q(s.routeMs, 0.5), p95: q(s.routeMs, 0.95), max: q(s.routeMs, 1) }, frame_ms: { p50: q(s.frameMs, 0.5), p95: q(s.frameMs, 0.95), max: q(s.frameMs, 1) } }; })()"
    }
   ]
  },
@@ -2420,7 +2420,7 @@
     "shot": "routing-preview-long"
    },
    {
-    "eval": "(() => { const s = window.__outhere.routing.stats; const q = (a, p) => { const b = [...a].sort((x, y) => x - y); return +(b[Math.min(b.length - 1, Math.floor(p * b.length))] || 0).toFixed(2); }; return { frames: s.frames, memoHits: s.memoHits, aborted: s.aborted, route_ms: { p50: q(s.routeMs, 0.5), p95: q(s.routeMs, 0.95), max: q(s.routeMs, 1) }, frame_ms: { p50: q(s.frameMs, 0.5), p95: q(s.frameMs, 0.95), max: q(s.frameMs, 1) } }; })()"
+    "eval": "(() => { const s = window.__outhere.routing.stats; const q = (a, p) => { const b = [...a].sort((x, y) => x - y); return +(b[Math.min(b.length - 1, Math.floor(p * b.length))] || 0).toFixed(2); }; return { frames: s.frames, memoHits: s.memoHits, aborted: s.aborted, over4ms: s.frameMs.map((x, i) => [i, +x.toFixed(1)]).filter((x) => x[1] > 4), route_ms: { p50: q(s.routeMs, 0.5), p95: q(s.routeMs, 0.95), max: q(s.routeMs, 1) }, frame_ms: { p50: q(s.frameMs, 0.5), p95: q(s.frameMs, 0.95), max: q(s.frameMs, 1) } }; })()"
    }
   ]
  }

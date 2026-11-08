@@ -117,8 +117,11 @@ with per-leg `segments` + `routing`.
 - **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
   maps a region id to a local graph file (keep `dev-graphs/` out of git).
 - **Verify:** `node design/tools/shoot.mjs --scenes design/tools/scenes-routing.json`
-  draws Angels Landing / West Rim / Hop Valley (expect 2.11 / 14.57 / 6.54 mi),
-  a no-path gap, interactions and preview timing.
+  (add `--base https://<branch>.outhere-web.pages.dev` for a Pages preview)
+  draws Angels Landing / West Rim / Hop Valley, a no-path gap, interactions
+  and preview timing. On the 2026-11-07 OSM graph (zion d9883fc4) expect
+  2.18 / 14.64 / 6.54 mi; distances move with OSM edits (the Feb-2026 graph
+  gave 2.11 / 14.57 / 6.54 before Walter's Wiggles was re-mapped in more detail).
 
 ## Data Flow
 
