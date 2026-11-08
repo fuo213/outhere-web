@@ -137,17 +137,22 @@ export function matchTrack(graph, coords, { stepM = MATCH_STEP_M, radiusM = MATC
 
   // 5. Loop test and the way at the farthest point from the start. A track
   //    that ends within 150 m of where it began is a loop; so is a day hike
-  //    that ends much nearer its start than its length (straight-line
-  //    start-to-end under 20% of the distance walked: out-and-backs and
-  //    lollipops, where the recording was started a few hundred meters from camp).
+  //    that turns around (a quarter of the distance is walked after the
+  //    farthest point, and it ends nearer the start than that point) and
+  //    ends under 20% of the distance walked from where it began: out-and-backs
+  //    and lollipops recorded from a few hundred meters off camp. A one-way
+  //    climb with switchbacks also ends near its start as the crow flies, but
+  //    its farthest point is its end, so it is not a loop.
   const start = samples[0].c;
   let far = 0, farM = -1;
   samples.forEach((s, k) => { const d = hav(start, s.c); if (d > farM) { farM = d; far = k; } });
   const endM = hav(start, samples[samples.length - 1].c);
-  const loop = totalM > 2 * LOOP_M && (endM <= LOOP_M || endM <= LOOP_FRAC * totalM);
+  const afterFarM = samples.slice(far + 1).reduce((a, p) => a + p.m, 0);
+  const comesBack = afterFarM >= 0.25 * totalM && endM <= 0.9 * farM; // turns around after its farthest point
+  const loop = totalM > 2 * LOOP_M && (endM <= LOOP_M || (endM <= LOOP_FRAC * totalM && comesBack));
   let farthest = null;
   const fp = picks[far] || picks.slice(Math.max(0, far - 3), far + 4).find(Boolean);
   if (fp) farthest = { name: fp.name, highway: fp.highway };
 
-  return { runs, wayIds, loop, farthest, totalM, matchedM, endM, farM };
+  return { runs, wayIds, loop, farthest, totalM, matchedM, endM, farM, afterFarM };
 }

@@ -114,6 +114,21 @@ test("out-and-back is a loop; farthest point names it", () => {
   assert.equal(m.farthest.name, "Beta Route");
   assert.equal(deriveImportedName(m.runs, m), "Alpha Trail loop");
 });
+test("one-way climb with switchbacks is not a loop", () => {
+  // 3 km of walking that ends 400 m from where it began, farthest point at the end
+  const pts = [];
+  for (let k = 0; k < 10; k++) pts.push(...line([k % 2 ? 0 : 300, k * 40], [k % 2 ? 300 : 0, k * 40 + 40]));
+  const m = matchTrack(g, track(pts));
+  assert.ok(m.totalM > 2500 && m.endM < 0.2 * m.totalM);
+  assert.ok(!m.loop);
+});
+test("lollipop recorded from 600 m off camp is a loop", () => {
+  const out = line([0, 600], [0, 0]), way = [...line([0, 0], [1500, 0]).slice(1), ...line([1500, 0], [1500, 600]).slice(1), ...line([1500, 600], [1500, 0]).slice(1), ...line([1500, 0], [0, 0]).slice(1)];
+  const m = matchTrack(g, track([...out, ...way]));
+  assert.ok(m.endM > 500 && m.loop);
+  const m2 = matchTrack(g, track([...line([600, 0], [2000, 0]), ...line([2000, 0], [2000, 700]).slice(1), ...line([2000, 700], [2000, 0]).slice(1), ...line([2000, 0], [700, 0]).slice(1)]));
+  assert.ok(m2.endM > 90 && m2.loop);
+});
 test("outside the graph", () => {
   const far = [[-110.0, 38.0], [-110.0, 38.01], [-110.0, 38.02]];
   const m = matchTrack(g, far);
@@ -135,6 +150,7 @@ if (process.env.ZION_GRAPH && existsSync(process.env.ZION_GRAPH)) {
     console.log("      Zion matched:", name, m.runs.map((r) => `${r.name || "-"} ${Math.round(r.m)}m`).join("; "));
     assert.ok(/Angels Landing|West Rim/.test(name), name);
     assert.ok(m.matchedM / m.totalM > 0.9);
+    assert.ok(!m.loop, "a one-way switchback climb is not a loop");
   });
 }
 console.log(`${n} tests passed`);

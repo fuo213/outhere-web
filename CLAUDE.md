@@ -154,8 +154,9 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   matched OSM way ids go on its imported segment (`osm_way_ids`), and a
   made-up or device name ("May 3 · 1.3 mi", "Wayne County Hiking") becomes
   "Dominant to Destination" with `name_auto: true`. A distinctive GPX name is
-  kept. A loop (ends within 150 m of the start, or straight-line start-to-end
-  under 20% of the distance walked) is named "Out to Place" when the farthest
+  kept. A loop (ends within 150 m of the start, or turns around after its farthest
+  point and ends under 20% of the distance walked from its start; a one-way
+  switchback climb is not a loop) is named "Out to Place" when the farthest
   point is on a place-like trail other than the dominant one, else
   "Dominant loop". No graph or under half the track matched: left as is.
 - **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
