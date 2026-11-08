@@ -340,9 +340,11 @@ export class TrailGraph {
     if (bestNode === -1) return null;
 
     let coords, edges;
+    const lens = []; // meters travelled on each edge, parallel to `edges`
     if (bestNode === -3) {
       coords = this._slice(a.e, a.along, b.along);
       edges = [a.e];
+      lens.push(Math.abs(a.along - b.along));
     } else {
       const chain = [];
       let n = bestNode;
@@ -355,15 +357,18 @@ export class TrailGraph {
       chain.reverse();
       coords = this._slice(a.e, a.along, seedAlong.get(n));
       edges = [a.e];
+      lens.push(Math.abs(seedAlong.get(n) - a.along));
       for (const [e, from] of chain) {
         const pts = this._slice(e, 0, eLen[e]);
         if (from !== eA[e]) pts.reverse();
         for (let i = 1; i < pts.length; i++) coords.push(pts[i]);
         edges.push(e);
+        lens.push(eLen[e]);
       }
       const tail = this._slice(b.e, bestEndAlong, b.along);
       for (let i = 1; i < tail.length; i++) coords.push(tail[i]);
       edges.push(b.e);
+      lens.push(Math.abs(b.along - bestEndAlong));
     }
 
     // Drop consecutive duplicates (zero-length slices at nodes).
@@ -379,7 +384,16 @@ export class TrailGraph {
       const id = this.edgeOsmId(e);
       if (id != null && wayIds[wayIds.length - 1] !== id && !wayIds.includes(id)) wayIds.push(id);
     }
-    return { coords: clean, length_m: lineLength(clean), wayIds, mode: "trail" };
+    // Name runs along the path (consecutive edges with the same name/highway
+    // merged), used to pre-fill route names. Not exported.
+    const runs = [];
+    edges.forEach((e, i) => {
+      const name = this.edgeName(e), highway = this.edgeHighway(e);
+      const last = runs[runs.length - 1];
+      if (last && last.name === name && last.highway === highway) last.m += lens[i];
+      else runs.push({ name, highway, m: lens[i] });
+    });
+    return { coords: clean, length_m: lineLength(clean), wayIds, runs, mode: "trail" };
   }
 
   /**

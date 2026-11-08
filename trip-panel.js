@@ -1098,7 +1098,12 @@ function buildFeatureTile(feature, dayId, ctx = {}) {
       const type = tile.dataset.type;
       const updates = collectTileFormValues(tile, type);
       const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === featureId);
-      if (idx !== -1) TripManager.updateFeature(idx, updates);
+      if (idx !== -1) {
+        // Typing a different name takes the name away from auto-naming.
+        const cur = TripManager.currentTrip.features[idx].properties;
+        if (cur.name_auto && updates.name !== cur.name) updates.name_auto = false;
+        TripManager.updateFeature(idx, updates);
+      }
       return;
     }
     // Delete button
