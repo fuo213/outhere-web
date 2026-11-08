@@ -384,6 +384,7 @@ function finishRouteDrawing() {
 
 const ROAD_HIGHWAYS = new Set(["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "service", "living_street"]);
 const MAX_NAME = 40;
+const PLACE_WORDS = /\b(Landing|Arch|Overlook|Spring|Springs|Point|Peak|Lake|Falls|Pass|Summit|Rim|Narrows|Bridge|Canyon|Drops)\b/i;
 const GENERIC_TAIL = /\s+(Trail|Route|Path|Trailhead)$/i;
 
 /**
@@ -415,6 +416,17 @@ export function deriveRouteName(legs) {
   }
   const [a, b] = trails;
   if (!a || a.m < total * 0.2) return "";
+  // Name it for where it goes: a different named trail at the very end.
+  const dest = [...runs].reverse().find((r) => r.name && !ROAD_HIGHWAYS.has(r.highway));
+  const destM = dest ? runs.filter((r) => r.name === dest.name && !ROAD_HIGHWAYS.has(r.highway)).reduce((s, r) => s + r.m, 0) : 0;
+  if (dest && dest.name !== a.name && (destM >= 161 || destM >= total * 0.05)) {
+    const place = PLACE_WORDS.test(dest.name);
+    const full = `${a.name} to ${dest.name}`;
+    const placeShort = place ? `${a.name} to ${dest.name.replace(GENERIC_TAIL, "")}` : full;
+    if (placeShort.length <= MAX_NAME) return placeShort;
+    const trimmed = `${a.name.replace(GENERIC_TAIL, "")} to ${dest.name.replace(GENERIC_TAIL, "")}`;
+    if (trimmed.length <= MAX_NAME) return trimmed;
+  }
   if (b && a.m >= total * 0.25 && b.m >= total * 0.25 && a.m + b.m >= total * 0.7) {
     const [x, y] = a.first < b.first ? [a, b] : [b, a];
     let name = `${x.name} to ${y.name}`;

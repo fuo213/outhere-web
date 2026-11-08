@@ -140,7 +140,8 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
 - **Auto names:** when a route or spur is finished with no name,
   `deriveRouteName()` (planning.js) names it from the OSM trail names it
   follows, weighted by length (`route()` returns per-name `runs`; not
-  exported). It sets `name_auto: true` (the schema allows extra route
+  exported). If it ends on a different named trail (at least 0.1 mi or 5%),
+  the name is "Dominant to Destination" ("West Rim Trail to Angels Landing"). It sets `name_auto: true` (the schema allows extra route
   properties); the panel's save drops that flag when the user types a
   different name. Re-derive only while `name_auto` is true.
 - **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
