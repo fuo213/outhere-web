@@ -269,6 +269,32 @@ export class TrailGraph {
     return best;
   }
 
+  /**
+   * Every way within radiusM of a point, nearest edge of each way (for
+   * map-matching a recording, which wants to pick among nearby ways rather
+   * than take the single nearest). Unnamed edges with no way key by edge.
+   * @returns {Array<{key, e, d, w, name, highway, osmId}>}
+   */
+  candidates(lon, lat, radiusM) {
+    const kx = Math.cos(lat * RAD) * 111320, ky = 110574;
+    const dLon = radiusM / kx, dLat = radiusM / ky;
+    const { xy, segE, segI } = this;
+    const byKey = new Map();
+    for (const s of this.index.search(lon - dLon, lat - dLat, lon + dLon, lat + dLat)) {
+      const p = segI[s];
+      const ax = (xy[2 * p] - lon) * kx, ay = (xy[2 * p + 1] - lat) * ky;
+      const bx = (xy[2 * p + 2] - lon) * kx, by = (xy[2 * p + 3] - lat) * ky;
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+      const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+      const d = Math.hypot(ax + t * dx, ay + t * dy);
+      if (d > radiusM) continue;
+      const e = segE[s], w = this.eW[e], key = w >= 0 ? `w${w}` : `e${e}`;
+      const cur = byKey.get(key);
+      if (!cur || d < cur.d) byKey.set(key, { key, e, d, w, name: this.edgeName(e), highway: this.edgeHighway(e), osmId: this.edgeOsmId(e) });
+    }
+    return [...byKey.values()];
+  }
+
   /** Point at `along` meters from node A on edge e. */
   _pointAt(e, along) {
     const { cum, xy } = this;
