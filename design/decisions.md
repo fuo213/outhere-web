@@ -143,6 +143,13 @@ change tokens or principles. Propose, then log.
   - **Meals** are still derived from notes (breakfast/lunch/dinner/snack in a
     stop's notes draws the mug). Follow-up: a `meal` waypoint subtype in the
     schema first.
+  - **Day totals are route miles** (match the profile's day tag); a day-hike
+    spur shows its own "x mi rt" in the stop list. The top chips (PR #12's
+    area) still include day hikes.
+  - **Unplanned days after the last route take no width** on the profile;
+    empty days between routes are rest days at the previous day's elevation.
+  - The paper fade only appears once content is scrolling under the profile
+    (at rest it would grey out the first row).
   - The tray (Unassigned) is hidden when empty; it appears while dragging
     ("Drop here to take it out of its day.") and while drawing.
 
