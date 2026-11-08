@@ -1,0 +1,152 @@
+/* ==========================================================================
+   Itinerary explorations: shared page chrome + trip panel shell.
+   EXPLORATION (2026-11-08). Tokens only; the few new values are in the
+   EXPLORATION block at the bottom and would become tokens if a direction
+   is confirmed.
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Exploration bar (not product UI) ------------------------------------ */
+.exp-bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.exp-bar strong { color: var(--text); font-weight: var(--weight-semi); }
+.exp-bar nav, .exp-states { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
+.exp-bar a { color: var(--text-secondary); text-decoration: none; padding: 2px var(--space-2); border-radius: var(--radius-sm); }
+.exp-bar a[aria-current="page"] { color: var(--text); background: var(--surface-sunken); }
+.exp-bar a:hover { color: var(--text); }
+.exp-states { margin-left: auto; }
+.exp-states button {
+  font: inherit; font-size: var(--text-sm); color: var(--text-secondary);
+  background: none; border: 1px solid transparent; border-radius: var(--radius-pill);
+  padding: 2px var(--space-3); cursor: pointer;
+}
+.exp-states button[aria-pressed="true"] { border-color: var(--border-strong); color: var(--text); background: var(--surface); }
+
+/* ---- Stage: map placeholder + panel at its real size (520px) -------------- */
+.stage { display: flex; height: calc(100vh - 41px); }
+.is-tall .stage { height: auto; }
+.is-tall .panel-scroll { overflow: visible; }
+.stage-map {
+  flex: 1; position: relative; overflow: hidden;
+  background: var(--surface-sunken);
+}
+.stage-map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage-map-label {
+  position: absolute; left: var(--space-4); bottom: var(--space-4);
+  font-size: var(--text-sm); color: var(--text-secondary);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill);
+  padding: 2px var(--space-3);
+}
+.panel {
+  width: 520px; flex: none;
+  background: var(--surface);
+  box-shadow: var(--shadow-4);
+  display: flex; flex-direction: column;
+  position: relative;
+}
+.panel-scroll { flex: 1; overflow-y: auto; }
+
+/* Header: same anatomy as the live planner (title + close, meta chips) */
+.panel-head { padding: var(--space-6) var(--space-7) var(--space-3); }
+.panel-head-top { display: flex; align-items: flex-start; gap: var(--space-3); }
+.trip-title {
+  flex: 1; margin: 0;
+  font-family: var(--font-display); font-weight: var(--weight-bold);
+  font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: -0.02em;
+  color: var(--text);
+}
+.close-btn {
+  width: 28px; height: 28px; border-radius: var(--radius-sm); border: none; background: none;
+  color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; flex: none;
+}
+.close-btn:hover { background: var(--surface-sunken); color: var(--text); }
+.trip-sub { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--text-md); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.chip { font-family: var(--font-data); }
+
+/* Footer: the one primary + ghost row (as in Phase 1b) */
+.panel-foot {
+  border-top: 1px solid var(--border);
+  padding: var(--space-3) var(--space-7) var(--space-4);
+  background: var(--surface);
+}
+.panel-foot .row { display: flex; gap: var(--space-1); justify-content: center; margin-top: var(--space-2); }
+
+/* Numbers */
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* ---- Story typography shared by all three directions ---------------------- */
+.day-title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semi); line-height: var(--leading-tight); color: var(--text); }
+.day-notes { margin: var(--space-2) 0 0; color: var(--text-body); font-size: var(--text-base); line-height: 1.55; }
+.stop { display: grid; grid-template-columns: 24px 1fr auto; gap: var(--space-1) var(--space-2); align-items: start; padding: var(--space-1) 0; }
+.stop-glyph { display: block; margin-top: -2px; }
+.stop-name { font-weight: var(--weight-medium); color: var(--text); }
+.stop-name.is-camp { color: var(--type-camp-text); font-weight: var(--weight-semi); }
+.stop-name.is-water { color: var(--type-water-text); }
+.stop-name.is-dayhike { color: var(--type-dayhike-text); }
+.stop-note { grid-column: 2 / 4; margin-top: -2px; color: var(--text-secondary); font-size: var(--text-md); }
+.stop-at { font-family: var(--font-data); font-size: var(--text-sm); color: var(--text-secondary); white-space: nowrap; }
+
+/* Editing affordances: present for keyboard + hover, quiet otherwise */
+.edit-row { display: flex; gap: var(--space-1); opacity: 0; transition: opacity var(--dur-quick) var(--ease-out); }
+.day:hover .edit-row, .day:focus-within .edit-row, .day.is-hover .edit-row { opacity: 1; }
+.grip {
+  width: 12px; height: 18px; color: var(--ink-300); opacity: 0; cursor: grab;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+.day:hover .grip, .day.is-hover .grip { opacity: 1; }
+
+/* Unassigned tray (shown in the drag state) */
+.tray { display: none; padding: var(--space-3) var(--space-7) var(--space-2); }
+body[data-state="drag"] .tray { display: block; }
+.tray-row { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+.pill.is-dragging { box-shadow: var(--shadow-3); transform: rotate(-2deg) translateY(-2px); }
+.pill.is-ghost { opacity: 0.35; }
+.drop-line {
+  display: none; align-items: center; gap: var(--space-2);
+  color: var(--accent); font-size: var(--text-sm); margin: var(--space-2) 0;
+}
+.drop-line::before, .drop-line::after { content: ""; height: 2px; flex: 1; background: var(--accent); border-radius: 1px; }
+body[data-state="drag"] .drop-line { display: flex; }
+
+.empty-day { display: none; }
+body[data-state="empty"] .empty-day { display: block; }
+.empty-day .empty-hint { margin: var(--space-2) 0 var(--space-3); color: var(--text-secondary); font-size: var(--text-base); }
+
+/* Phone: panel is the whole screen (as in the app) */
+@media (max-width: 760px) {
+  .stage-map { display: none; }
+  .panel { width: 100%; box-shadow: none; }
+  .panel-head { padding: var(--space-5) var(--space-4) var(--space-2); }
+  .panel-foot { padding: var(--space-3) var(--space-4); }
+  .tray { padding: var(--space-3) var(--space-4) var(--space-2); }
+  .exp-bar { gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+  .exp-states { margin-left: 0; }
+  .edit-row { opacity: 1; }
+}
+
+/* EXPLORATION: one-off values for the drawings (would become tokens) */
+:root {
+  --sketch-ink: var(--ink-900);          /* fineliner */
+  --sketch-ink-soft: var(--ink-500);     /* annotation leaders, baseline */
+  --sketch-rule: var(--ink-300);         /* day dividers (decorative) */
+  --pencil-a: var(--sage-500);           /* odd days */
+  --pencil-b: var(--dust-500);           /* even days */
+}

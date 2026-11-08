@@ -1,0 +1,208 @@
+{
+ "name": "Maze: Chocolate Drops and Chimney Rock",
+ "location": "Maze District, Canyonlands NP, UT",
+ "start": "2027-04-16",
+ "readme": "## Plan\nFour days in the Maze, starting and ending at Maze Overlook. Down the overlook route into the South Fork, past the Harvest Scene, up to the Chocolate Drops, across the Land of Standing Rocks, back down The Plug to Chimney Rock, then over Pete's Mesa and out the way we came in.\n\n## Water\nNo reliable water anywhere. Carry it all and treat any pothole water as a bonus. Plan on 1.5 gal per person per day in April.\n\n## Permits and access\nBackcountry permit from the Hans Flat ranger station. High-clearance 4WD to the overlook. A short handline helps lower packs on the overlook descent.\n\n## Map note\nThe Chocolate Drops trail doesn't meet the canyon trails in OpenStreetMap, so day 2 has a hand-drawn leg from the Harvest Scene up to the Drops. Worth fixing upstream after the trip.",
+ "days": [
+  {
+   "route_name": "Down into the Maze",
+   "clicks": [
+    [
+     -110.0011,
+     38.2347,
+     "route"
+    ],
+    [
+     -109.98856,
+     38.223929,
+     "camp"
+    ]
+   ],
+   "points": {
+    "1": {
+     "name": "At-large camp below Pete's Mesa",
+     "notes": "Sandy bench above the wash. Stay off the cryptobiotic crust.",
+     "water_nearby": true,
+     "water_notes": "Potholes 0.3 mi back up canyon, if it rained recently."
+    }
+   },
+   "waypoints": [
+    {
+     "coord": [
+      -110.0011,
+      38.2347
+     ],
+     "subtype": "scenic",
+     "name": "Maze Overlook",
+     "notes": "Trailhead and vehicle camp on the rim. Park here.",
+     "elevation": 1572
+    },
+    {
+     "on": [
+      1538,
+      0.55
+     ],
+     "subtype": "hazard",
+     "name": "Second pour-off",
+     "notes": "About 15 ft. Lower packs on a rope; moki steps on the left.",
+     "elevation": 1510
+    },
+    {
+     "on": [
+      1275,
+      0.5
+     ],
+     "subtype": "water",
+     "name": "South Fork potholes",
+     "notes": "Seasonal. Dry by June most years.",
+     "elevation": 1460
+    }
+   ],
+   "notes": "Short on miles, slow on time. The overlook route has two pour-offs with moki steps; lower packs on a rope at the second one. Reach the wash by early afternoon and walk the last mile slowly."
+  },
+  {
+   "route_name": "Harvest Scene to the Chocolate Drops",
+   "clicks": [
+    [
+     -109.98856,
+     38.223929,
+     "route"
+    ],
+    [
+     -109.991314,
+     38.219659,
+     "route"
+    ],
+    [
+     -109.9974,
+     38.2198,
+     "route",
+     {
+      "shift": true
+     }
+    ],
+    [
+     -109.997557,
+     38.219934,
+     "route"
+    ],
+    [
+     -110.014438,
+     38.171598,
+     "route"
+    ],
+    [
+     -110.000272,
+     38.169658,
+     "camp"
+    ]
+   ],
+   "points": {
+    "5": {
+     "name": "The Wall",
+     "notes": "Vehicle camp on the Standing Rocks road. Ask for it on the permit; it's the closest to the Drops trailhead.",
+     "water_nearby": false
+    }
+   },
+   "notes": "Harvest Scene panel first thing, in the morning light. Then scramble up out of the fork to the Chocolate Drops trail (no trail in OSM for this bit; follow the cairns). Lunch in the shade of the Drops. The afternoon is a dull road walk to camp.",
+   "waypoints": [
+    {
+     "on": [
+      1274,
+      0.62
+     ],
+     "subtype": "scenic",
+     "name": "Harvest Scene",
+     "notes": "Barrier Canyon style panel on the east wall. Look, don't touch.",
+     "elevation": 1380
+    },
+    {
+     "on": [
+      1370,
+      0.8
+     ],
+     "subtype": "scenic",
+     "name": "Chocolate Drops",
+     "notes": "Lunch in the shade on the north side.",
+     "elevation": 1680
+    }
+   ]
+  },
+  {
+   "route_name": "The Plug and Chimney Rock",
+   "clicks": [
+    [
+     -110.000272,
+     38.169658,
+     "route"
+    ],
+    [
+     -110.001331,
+     38.190788,
+     "route"
+    ],
+    [
+     -109.98516,
+     38.198567,
+     "route"
+    ],
+    [
+     -109.9744,
+     38.1866,
+     "camp"
+    ],
+    [
+     -109.963724,
+     38.191916,
+     "dayhike"
+    ]
+   ],
+   "spur_name": "Shot Canyon spur",
+   "points": {
+    "3": {
+     "name": "Chimney Rock",
+     "notes": "Vehicle camp at the four-way junction. Good wind shelter behind the fin.",
+     "water_nearby": false
+    },
+    "4": {
+     "name": "Shot Canyon rim",
+     "notes": "Drop packs at camp and walk out to where the route breaks over the rim. Turn around there."
+    }
+   },
+   "waypoints": [
+    {
+     "on": [
+      1226,
+      0.55
+     ],
+     "subtype": "water",
+     "name": "Chimney Rock fork potholes",
+     "notes": "Usually holds water into May. Deep, silty, filter twice.",
+     "elevation": 1430
+    }
+   ],
+   "notes": "Down The Plug route back into the canyons, then up the Chimney Rock fork. Camp by mid-afternoon and walk out to the Shot Canyon rim without packs before dinner."
+  },
+  {
+   "route_name": "Pete's Mesa and out",
+   "clicks": [
+    [
+     -109.9744,
+     38.1866,
+     "route"
+    ],
+    [
+     -109.975987,
+     38.202912,
+     "route"
+    ],
+    [
+     -110.0011,
+     38.2347,
+     "route"
+    ]
+   ],
+   "notes": "Up onto Pete's Mesa early, before the slickrock heats up. Long views of the Chocolate Drops from the top. Back down to the South Fork and up the overlook route; haul packs at the same pour-off."
+  }
+ ]
+}

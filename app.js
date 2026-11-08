@@ -21,7 +21,7 @@ import {
 import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
 import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
 import { graphInfoForRegion } from "./routing.js";
-import { initTripsHome } from "./trips-home.js";
+import { initTripsHome, loadDemoTripFromURL } from "./trips-home.js";
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -668,8 +668,9 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   // Region picker (async catalog fetch) + trips home view
   // -------------------------------------------------------------------
-  initRegionPicker();
+  const regionsReady = initRegionPicker();
   initTripsHome();
+  loadDemoTripFromURL(regionsReady); // dev only: ?demo=maze
 
   // -------------------------------------------------------------------
   // Click handlers for route drawing + trip features

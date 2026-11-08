@@ -39,6 +39,20 @@ change tokens or principles. Propose, then log.
 
 ## Trying
 
+- **2026-11-08 · Itinerary explorations: continuous day story + hand-drawn
+  charts** (awaiting Vincent's pick). `design/explorations/itinerary/`
+  (A sketchbook profile, B trip chart, C field journal; README has pitches
+  and build notes). Response to "the planner feels somehow old": days read
+  as one continuous story (Paper timeline anatomy: label, date, rule,
+  totals) instead of boxed accordions; edit actions appear on hover/focus.
+  Drawings are built from real data (route geometry, 3DEP profile and
+  contours) with a restrained "hand": variable-width ink outlines with
+  baked-in tremor, colored-pencil hatching masked by paper grain, one
+  family of custom glyphs. Vincent relaxed "no sketchy filters" for this,
+  on the condition that it stay disciplined (pencil grain yes, jitter no). Recommendation: A. Open
+  questions: day bands reuse sage/dust (route/rest meanings); meal stops
+  need data; whether the drawing should compact while editing.
+
 - **2026-11-07 · Phase 1b app migration calls** (seen on real screens in
   the 1b PR, awaiting Vincent's review):
   - No badge above titles: "TRIP PLANNER", "TRIP JOURNAL", "NEW TRIP" removed
