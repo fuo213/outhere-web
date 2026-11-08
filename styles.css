@@ -1270,19 +1270,28 @@ body.panel-open .route-instructions {
   color: var(--text);
 }
 
-/* The trip title: the one Playfair line in the planner */
+/* The trip title: the one Playfair line in the planner. Editable heading,
+   wraps to two balanced lines, ellipsis only beyond two (full text while editing). */
 .trip-title-input {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
   flex: 1;
   min-width: 0;
+  margin: 0;
   font: var(--weight-bold) var(--text-2xl)/var(--leading-tight) var(--font-display);
   color: var(--text);
   letter-spacing: -0.02em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
   background: transparent;
   border: none;
   border-bottom: 1.5px solid transparent;
   outline: none;
   padding: 0 0 2px;
+  cursor: text;
   transition: border-color var(--dur-quick) var(--ease-out);
 }
 
@@ -1291,10 +1300,13 @@ body.panel-open .route-instructions {
 }
 
 .trip-title-input:focus {
+  display: block;
+  overflow: visible;
   border-bottom-color: var(--dust-500);
 }
 
-.trip-title-input::placeholder {
+.trip-title-input:empty::before {
+  content: attr(data-placeholder);
   color: var(--text-muted);
 }
 
@@ -2314,4 +2326,10 @@ body.panel-open .route-instructions {
   .onboarding-modal {
     padding: var(--space-6);
   }
+}
+
+/* Day-hike miles beside the route total in the header chip: quieter. */
+.meta-chip-extra {
+  color: var(--text-muted);
+  margin-left: 2px;
 }

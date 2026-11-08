@@ -925,17 +925,6 @@ export function initTripChart() {
     for (const id of drawnEarly) if (map.hasImage(id)) { map.removeImage(id); onImageMissing({ id }); }
     drawnEarly.clear();
   });
-  // Bridge for the current trip panel's "focus day" button until the panel
-  // dispatches booot:active-day itself (remove then).
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest?.(".day-focus-btn");
-    if (!btn) return;
-    setTimeout(() => {
-      const id = btn.closest(".day-section")?.dataset.dayId;
-      const on = btn.getAttribute("aria-pressed") === "true";
-      window.dispatchEvent(new CustomEvent("booot:active-day", { detail: { dayIndex: null, dayId: on ? id : null, source: "panel" } }));
-    }, 0);
-  });
 }
 
 /** Debug handle (window.__outhere.tripChart). */

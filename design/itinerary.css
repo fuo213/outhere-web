@@ -1,0 +1,337 @@
+/* ==========================================================================
+   Itinerary: sticky sketchbook profile + continuous day story (trip panel).
+   Direction A from design/explorations/itinerary/, built into the planner
+   (2026-11-08). Loaded after styles.css. Tokens only, except the one
+   EXPLORATION block below (the drawing's pens and pencils).
+   Drawing: itinerary-profile.js + sketch.js. Behavior: itinerary-panel.js.
+   ========================================================================== */
+
+/* EXPLORATION: the drawing's pens and pencils (would become tokens if A is
+   confirmed). Day bands alternate sage and dust, as in the exploration. */
+:root {
+  --sketch-ink: var(--ink-900);        /* fineliner */
+  --sketch-ink-soft: var(--ink-500);   /* baseline, leaders, ticks */
+  --sketch-rule: var(--ink-300);       /* decorative only: skeleton rule, ghost ridge */
+  --pencil-a: var(--sage-500);         /* days 1, 3, 5... */
+  --pencil-b: var(--dust-500);         /* days 2, 4, 6... */
+  --pencil-loose: var(--earth-500);    /* a route not in a day yet */
+  --itin-fade: var(--space-8);         /* paper fade under the sticky profile */
+}
+
+/* Shared <defs> for list glyphs (paper grain). Out of layout. */
+.sketch-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ---- The sticky profile ---------------------------------------------------- */
+
+.notebook-panel { border-top: none; }
+
+.itin-profile {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex-shrink: 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+/* Day content "disappears behind" the profile: a short paper fade. */
+.itin-profile::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: var(--itin-fade);
+  background: linear-gradient(to bottom, var(--surface) 30%, color-mix(in srgb, var(--surface) 0%, transparent));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+.itin-profile.is-stuck::after { opacity: 1; }
+
+.itin-profile svg { display: block; overflow: visible; }
+.itin-profile-art { position: relative; }
+
+.itin-caption {
+  margin: 0 var(--space-2);
+  font: italic var(--weight-regular) var(--text-sm)/1.35 var(--font-ui);
+  color: var(--text-secondary);
+}
+
+/* Lettering in the drawing */
+.sk-label { font: var(--weight-semi) var(--text-sm) var(--font-ui); fill: var(--text); }
+.sk-num   { font: var(--weight-regular) var(--text-xs) var(--font-data); fill: var(--text-secondary); }
+.sk-note  { font: var(--weight-regular) var(--text-xs) var(--font-ui); fill: var(--text-body); }
+.sk-ann   { font-style: italic; }
+.sk-note--teal { fill: var(--type-dayhike-text); font-style: italic; }
+.halo { paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px; stroke-linejoin: round; }
+
+/* Active day: its band gets a second pencil pass; the others step back. */
+.band { transition: opacity var(--dur-base) var(--ease-out); }
+.band-boost { opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
+.band.is-active .band-boost { opacity: 1; }
+.itin-profile[data-active] .band:not(.is-active) { opacity: 0.38; }
+
+.day-tag { transition: opacity var(--dur-quick) var(--ease-out); }
+.itin-profile[data-active] .day-tag:not(.is-active) { opacity: 0.55; }
+.day-tag .day-mark { opacity: 0; transition: opacity var(--dur-quick) var(--ease-out); }
+.day-tag.is-active .day-mark { opacity: 1; }
+.day-tag.is-active .sk-label,
+.day-tag.is-active.sk-num { fill: var(--text); font-weight: var(--weight-semi); }
+.day-marker { opacity: 0; transition: opacity var(--dur-quick) var(--ease-out); }
+.day-marker.is-active { opacity: 1; }
+
+.day-hit { cursor: pointer; }
+.day-hit:focus-visible { outline: none; }
+
+/* Elevation loading: the skeleton rule is inked back and forth (the same
+   idiom as the routing hint). It only runs while elevation is on its way. */
+.sk-inking {
+  stroke-dasharray: 0.3 0.7;
+  animation: sk-inking calc(var(--dur-draw) * 2) var(--ease-in-out) infinite alternate;
+}
+@keyframes sk-inking { from { stroke-dashoffset: 0.3; } to { stroke-dashoffset: -0.7; } }
+
+/* Elevation just arrived: the ink line draws itself in, once. */
+.sk-reveal { animation: sk-reveal var(--dur-draw) var(--ease-in-out) both; }
+@keyframes sk-reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-inking { animation: none; display: none; }
+  .sk-reveal { animation: none; }
+}
+
+/* Compact strip while a route is being drawn: the map leads. */
+.itin-profile.is-compact { padding-top: var(--space-1); padding-bottom: 0; }
+
+/* Empty trip: calm, one instruction, the action right there. */
+.itin-profile[data-mode="empty"] { position: static; }
+.itin-profile[data-mode="empty"]::after { display: none; }
+.itin-empty { padding: var(--space-2) var(--space-3) var(--space-4); }
+.itin-empty-title {
+  margin: var(--space-2) 0 0;
+  font: var(--weight-semi) var(--text-base)/1.4 var(--font-ui);
+  color: var(--text);
+}
+.itin-empty-hint {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+
+/* ---- Overview + tray around the story --------------------------------------- */
+
+.notebook-overview { border-bottom: 1px solid var(--border); }
+.overview-header { padding: var(--space-3) var(--space-7); }
+.notebook-overview .notes-editor { padding: var(--space-4) var(--space-7); }
+
+/* The tray takes room only when it holds something, while you drag, or while
+   a route is being drawn (the live preview lands there). */
+.unassigned-pool {
+  display: none;
+  padding: var(--space-3) var(--space-7);
+  border-bottom: 1px solid var(--border);
+}
+.unassigned-pool.has-items,
+.unassigned-pool:has(.drawing-preview-chip),
+body.is-dragging-feature .unassigned-pool { display: block; }
+.unassigned-pool .pool-empty { display: none; }
+body.is-dragging-feature .unassigned-pool:not(.has-items) .pool-empty { display: inline; }
+
+/* ---- The story: one continuous column ------------------------------------- */
+
+.itin-story { padding: var(--space-2) var(--space-7) 0; }
+
+.itin-day {
+  position: relative;
+  padding: var(--space-4) 0 var(--space-2);
+  border-radius: var(--radius-md);
+  transition: background-color var(--dur-quick) var(--ease-out);
+}
+/* Sections take focus only programmatically (band click, map); no ring. */
+.itin-day:focus { outline: none; }
+
+.itin-day-head { display: flex; align-items: center; gap: var(--space-2); }
+.itin-day-label {
+  margin: 0;
+  font: var(--weight-bold) var(--text-md)/1.2 var(--font-ui);
+  color: var(--text);
+  white-space: nowrap;
+}
+.itin-day-date {
+  font: var(--weight-regular) var(--text-sm)/1.2 var(--font-data);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.itin-rule { flex: 1; height: 6px; min-width: var(--space-6); }
+.itin-rule path {
+  opacity: 0.75;
+  transition: stroke-width var(--dur-quick) var(--ease-out), opacity var(--dur-quick) var(--ease-out);
+}
+.itin-day.is-active .itin-rule path,
+.itin-day:hover .itin-rule path { stroke-width: 2.6; opacity: 1; }
+.itin-day-sum {
+  font: var(--weight-regular) var(--text-sm)/1.2 var(--font-data);
+  color: var(--text-body);
+  white-space: nowrap;
+}
+.itin-day-sum .loss { color: var(--text-secondary); }
+
+/* The day's body is the drop target */
+.itin-day .day-feature-list {
+  padding: 0;
+  gap: 0;
+  margin-top: var(--space-2);
+  background: none;
+}
+.itin-day.drag-over { background: var(--surface-sunken); }
+
+/* Stop rows: glyph, name, mile, then the note. Not cards. */
+.itin-day .stop-row:not(.editing) {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto;
+  gap: 0 var(--space-2);
+  align-items: start;
+  padding: var(--space-1) 0;
+  background: none;
+  box-shadow: none;
+  border-radius: var(--radius-sm);
+  overflow: visible;
+  color: var(--text-body);
+}
+.itin-day .stop-row:not(.editing):hover,
+.itin-day .stop-row:not(.editing):active { transform: none; box-shadow: none; }
+.itin-day .stop-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.itin-day .stop-row.editing { margin: var(--space-2) 0; }
+
+.stop-glyph { display: block; margin-top: -2px; }
+.stop-name {
+  font: var(--weight-medium) var(--text-base)/1.35 var(--font-ui);
+  color: var(--text);
+  min-width: 0;
+}
+.stop-name.is-camp { color: var(--type-camp-text); font-weight: var(--weight-semi); }
+.stop-name.is-water { color: var(--type-water-text); }
+.stop-name.is-dayhike { color: var(--type-dayhike-text); }
+.stop-name.is-rest { color: var(--type-rest-text); }
+.stop-at {
+  font: var(--weight-regular) var(--text-sm)/1.6 var(--font-data);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.stop-note {
+  grid-column: 2 / -1;
+  margin: 0;
+  font: var(--weight-regular) var(--text-md)/1.45 var(--font-ui);
+  color: var(--text-secondary);
+}
+
+/* The day's title is its first route */
+.itin-day .stop-row--title:not(.editing) { display: block; padding: var(--space-2) 0 0; }
+.stop-title-row { display: flex; align-items: flex-start; gap: var(--space-2); }
+.itin-title {
+  flex: 1;
+  margin: 0;
+  font: var(--weight-semi) var(--text-lg)/var(--leading-tight) var(--font-ui);
+  color: var(--text);
+}
+.itin-title.is-placeholder { color: var(--text-secondary); font-weight: var(--weight-medium); }
+.stop-sub { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--text-secondary); }
+.stop-row--title .stop-note { margin-top: var(--space-1); }
+
+/* Editing affordances: on hover and keyboard focus; always on touch */
+.stop-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+.stop-row:hover .stop-tools,
+.stop-row:focus-within .stop-tools,
+.stop-row:focus-visible .stop-tools { opacity: 1; }
+.itin-day .tile-edit-btn {
+  opacity: 1;
+  padding: 2px var(--space-2);
+  font: var(--weight-semi) var(--text-sm)/1.3 var(--font-ui);
+  color: var(--text-secondary);
+}
+.itin-day .tile-edit-btn:hover { background: var(--surface-sunken); color: var(--text); }
+.itin-day .tile-drag-handle { color: var(--text-secondary); opacity: 0.6; }
+
+/* Notes */
+.itin-notes:empty { display: none; }
+.itin-notes-text {
+  margin: var(--space-2) 0 var(--space-2);
+  font: var(--weight-regular) var(--text-base)/1.55 var(--font-ui);
+  color: var(--text-body);
+  white-space: pre-line;
+  cursor: text;
+}
+.itin-notes-editor {
+  margin: var(--space-2) 0;
+  min-height: 96px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: none;
+  overflow: hidden;
+}
+.itin-notes-editor:focus { border-color: var(--dust-500); box-shadow: none; }
+
+/* Edit row under each day */
+.itin-edit-row {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  margin-left: calc(-1 * var(--space-3));
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+.itin-day:hover .itin-edit-row,
+.itin-day:focus-within .itin-edit-row { opacity: 1; }
+.day-map-btn[aria-pressed="true"] { background: var(--surface-sunken); color: var(--text); }
+.itin-day.day-active .itin-day-label { color: var(--text); text-decoration: underline; text-decoration-color: var(--dust-500); text-underline-offset: 3px; }
+
+/* Empty day */
+.itin-day-empty p {
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+.itin-day.is-empty .itin-day-empty p:only-child { margin-bottom: 0; }
+body.is-dragging-feature .itin-day-empty {
+  border: 1.5px dashed var(--border-dashed);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+}
+
+.add-day-row { padding: var(--space-1) var(--space-7) var(--space-6); }
+.add-day-row .btn { margin-left: calc(-1 * var(--space-3)); }
+
+/* Tail: room under the last day so it can scroll up to the profile. */
+.itin-tail { flex-shrink: 0; }
+
+/* Touch: no hover, so the affordances stay visible */
+@media (hover: none) {
+  .stop-tools, .itin-edit-row { opacity: 1; }
+}
+
+/* Phone: the panel is the whole screen */
+@media (max-width: 640px) {
+  .itin-profile { padding: var(--space-2) var(--space-2) var(--space-1); }
+  .itin-story { padding: var(--space-2) var(--space-4) 0; }
+  .overview-header,
+  .notebook-overview .notes-editor,
+  .unassigned-pool,
+  .add-day-row { padding-left: var(--space-4); padding-right: var(--space-4); }
+  .itin-day-sum .loss { display: none; }
+  .stop-tools, .itin-edit-row { opacity: 1; }
+}
+
+@media print {
+  .itin-profile { position: static; }
+  .itin-profile::after, .itin-edit-row, .stop-tools, .itin-tail { display: none; }
+}

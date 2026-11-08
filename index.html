@@ -29,6 +29,7 @@
   <link rel="stylesheet" href="design/motion.css">
   <link rel="stylesheet" href="design/components.css">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="design/itinerary.css">
 </head>
 <body>
 
@@ -112,14 +113,17 @@
     <!-- Modal header: trip title + close button, metadata chips -->
     <div class="modal-header">
       <div class="modal-header-top">
-        <input class="trip-title-input" id="tripTitle" type="text" value="Untitled Trip" placeholder="Trip name" />
+        <h1 class="trip-title-input" id="tripTitle" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="Trip name" data-placeholder="Trip name">Untitled Trip</h1>
         <button class="modal-close-btn" id="sidebarCollapseBtn" aria-label="Close planning panel">&#10005;</button>
       </div>
       <div class="trip-meta-chips" id="tripMetaChips"></div>
     </div>
 
-    <!-- Unified notebook panel (no tabs — days are collapsible accordion sections) -->
+    <!-- Notebook: one scroll area. The sketchbook profile sticks to its top
+         and the days scroll underneath it (itinerary-panel.js). -->
     <div class="notebook-panel" id="notebookPanel">
+
+      <figure class="itin-profile" id="itineraryProfile" aria-label="Elevation profile of the trip, divided into days"></figure>
 
       <!-- Overview section (collapsible, replaces top-level readme) -->
       <div class="notebook-overview" id="overviewSection">
@@ -145,15 +149,16 @@
         </div>
       </div>
 
-      <!-- Day accordion sections -->
-      <div id="daySections">
+      <!-- Days: one continuous story -->
+      <div class="itin-story" id="daySections">
         <!-- Populated by trip-panel.js -->
       </div>
 
       <!-- Add Day button -->
       <div class="add-day-row">
-        <button class="add-day-btn" id="addDayBtn">+ Add day</button>
+        <button class="btn btn--ghost btn--sm" id="addDayBtn">Add day</button>
       </div>
+      <div class="itin-tail" id="itineraryTail" aria-hidden="true"></div>
 
     </div>
 
