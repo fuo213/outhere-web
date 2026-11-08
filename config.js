@@ -119,6 +119,15 @@ export const LAYER_GROUPS = [
     legend: [],
   },
   {
+    // Runtime overlay (app.js addRoutedAreasLayers), not part of the tile style.
+    id: "routed-areas",
+    label: "Routed areas",
+    layers: ["routed-areas-fill", "routed-areas-line", "routed-areas-label"],
+    styleLayers: [],
+    defaultVisible: false,
+    legend: [{ color: "#B8431A", label: "Trails snap to real paths" }],
+  },
+  {
     id: "protected-areas",
     label: "Protected Areas",
     layers: ["protected-areas-fill"],

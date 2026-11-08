@@ -88,6 +88,20 @@ change tokens or principles. Propose, then log.
   route in Zion (`design/tools/scenes-routing.json`) · the casing keeps the
   route readable over the basemap's own colored trail lines, and the ring
   pin can't be confused with the basemap's filled POI dots.
+- 2026-11-08 · **Quiet unrouted areas**: legs drawn where there is no routing
+  graph (`no_graph`, `cross_region`) render as ordinary route lines: no gap
+  pin, no dotted rust styling, no card. Only `no_path` inside a routed area
+  keeps the flagged leg + pin + OSM-fix card. The data stays honest (exports
+  keep `mode: "straight"` + `reason`). One non-repeating hint per page load
+  on the first click outside a routed area: "Trail routing covers Zion, the
+  Maze and the Needles. Here, lines are drawn as you click." (names built
+  from the catalog). New "Routed areas" layer toggle outlines those regions
+  (dashed `--accent` outline, 7% tint, 12 px label) and is **off by default**:
+  the calmer option, since most users never need it and the hint already
+  says where routing lives. Could instead default on while drawing · planner,
+  Utah full-state view (`routing-unrouted-utah`, `routing-routed-areas-layer`
+  scenes) · most of the state will never have routing, so an absence of
+  routing should look like normal drawing, not a defect.
 - 2026-11-07 · **Ink-rule loading hint**: while a region's trail graph
   downloads, the drawing hint reads "Loading trails for routing…" and a
   1 px sage rule draws back and forth under it (static under reduced motion)

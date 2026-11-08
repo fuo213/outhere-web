@@ -19,7 +19,8 @@ import {
   routingDebug,
 } from "./planning.js";
 import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
-import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById } from "./region-picker.js";
+import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
+import { graphInfoForRegion } from "./routing.js";
 import { initTripsHome } from "./trips-home.js";
 
 // ---------------------------------------------------------------------------
@@ -506,7 +507,54 @@ function addTripLayers() {
       "circle-opacity": 0.9,
     },
   });
+
+  addRoutedAreasLayers(C);
 }
+
+/**
+ * "Routed areas": catalog regions that publish a routing graph, outlined and
+ * lightly tinted with --accent, named in small type. Hidden until the Layers
+ * panel switches it on. Added under the trip layers so it never covers a route.
+ */
+function addRoutedAreasLayers(C) {
+  if (map.getSource("routed-areas")) return;
+  map.addSource("routed-areas", { type: "geojson", data: routedAreasData() });
+  const hidden = { visibility: "none" };
+  const before = "trip-routes";
+  map.addLayer({
+    id: "routed-areas-fill", type: "fill", source: "routed-areas", layout: hidden,
+    filter: ["==", ["geometry-type"], "Polygon"],
+    paint: { "fill-color": C.accent, "fill-opacity": 0.07 },
+  }, before);
+  map.addLayer({
+    id: "routed-areas-line", type: "line", source: "routed-areas",
+    filter: ["==", ["geometry-type"], "Polygon"],
+    layout: { ...hidden, "line-join": "round" },
+    paint: { "line-color": C.accent, "line-width": 1.5, "line-opacity": 0.7, "line-dasharray": [4, 2] },
+  }, before);
+  map.addLayer({
+    id: "routed-areas-label", type: "symbol", source: "routed-areas",
+    filter: ["==", ["geometry-type"], "Point"],
+    layout: { ...hidden, "text-field": ["get", "name"], "text-size": 12, "text-anchor": "top-left", "text-offset": [0.4, 0.4], "text-allow-overlap": true },
+    paint: { "text-color": C.accent, "text-halo-color": C.surfaceRaised, "text-halo-width": 1.5 },
+  }, before);
+}
+
+function routedAreasData() {
+  const features = [];
+  for (const r of getCatalogRegions()) {
+    if (!r.bounds || !graphInfoForRegion(r)) continue;
+    const { west: w, south: s, east: e, north: n } = r.bounds;
+    features.push(
+      { type: "Feature", geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }, properties: { name: r.name } },
+      // Label hangs from the top-left corner (Maze and Needles overlap, so not the center).
+      { type: "Feature", geometry: { type: "Point", coordinates: [w, n] }, properties: { name: r.name } },
+    );
+  }
+  return { type: "FeatureCollection", features };
+}
+
+document.addEventListener("outhere:catalog", () => map.getSource("routed-areas")?.setData(routedAreasData()));
 
 /** Resolve the design tokens the map needs into concrete colors. */
 function resolveTokenColors() {
@@ -709,6 +757,8 @@ function applyLayerToggleState() {
     const checkbox = layerGroupCheckboxes.get(group.id);
     if (checkbox && !checkbox.checked) {
       setLayerGroupVisibility(group, false);
+    } else if (checkbox && group.id === "routed-areas") {
+      setLayerGroupVisibility(group, true); // runtime layers start hidden
     }
   }
 }

@@ -141,6 +141,7 @@ async function fetchCatalog() {
 function setCatalog(cat, { store = false } = {}) {
   catalog = cat;
   if (store) writeCatalogCache(cat);
+  document.dispatchEvent(new CustomEvent("outhere:catalog")); // routed-areas overlay listens
 
   // Refresh the persisted active-region record from the live catalog so URL /
   // bounds updates in the pipeline are picked up on the next reload.

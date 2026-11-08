@@ -1278,9 +1278,9 @@ function getFeatureLabel(props, type) {
   }
 }
 
-/** Meters of fallback (no route found) straight legs on a routed route. */
+/** Meters of fallback straight legs where trails don't connect (no_path); legs with no graph aren't flagged. */
 function offTrailMeters(props) {
-  return (props.segments || []).reduce((m, s) => m + (s.mode === "straight" ? (s.length_m || 0) : 0), 0);
+  return (props.segments || []).reduce((m, s) => m + (s.mode === "straight" && (s.reason || "no_path") === "no_path" ? (s.length_m || 0) : 0), 0);
 }
 
 function getFeatureStats(props, type) {

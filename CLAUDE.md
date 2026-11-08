@@ -98,8 +98,13 @@ Routes follow real trails using the per-region routing graph the pipeline
 publishes (`routing_graph` in catalog.json, format `booot-trail-graph` v1;
 design in `../SNAPPING_DESIGN.md`). The graph loads lazily per region (draw
 start, trip open) and one throwaway route warms A* up right after it loads.
-Where no graph exists, legs are drawn straight with "Routing isn't available
-here yet." Exports write `schema_version` "1.1" with per-leg `segments` +
+Where no graph exists (`no_graph`, `cross_region`), legs are drawn as plain
+route lines: no pin, no flagged styling; one quiet hint per page load names
+the routed areas (from the catalog). The export still records `mode:
+"straight"` + `reason`. Only a real OSM gap (`no_path` inside a routed area)
+gets the dotted leg, gap pin and "fix it in OpenStreetMap" card. The Layers
+panel has a "Routed areas" toggle (default off) outlining catalog regions
+with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segments` +
 `routing`.
 
 - **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
