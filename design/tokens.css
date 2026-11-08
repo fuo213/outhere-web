@@ -1,0 +1,169 @@
+/* ==========================================================================
+   Booot design tokens: the single source of truth for color, type, space,
+   shape, depth and motion. Every other stylesheet (app, landing page, and the
+   generated mobile theme) reads from these names.
+
+   Rules
+   - Components use semantic tokens (--surface, --text-muted, --accent),
+     not the raw palette. The palette exists so semantics can be re-pointed.
+   - No raw hex/rgba outside this file. If you need a value that isn't here,
+     either it's a one-off exploration (mark it, see design/decisions.md) or
+     it's a new token (add it here with a comment).
+   - Contrast notes are WCAG ratios against --surface (#F2EDE3).
+   See design/DESIGN.md for the why.
+   ========================================================================== */
+
+:root {
+  /* ---- Palette: earth (surfaces) ---------------------------------------- */
+  --earth-50:  #FBF8F1;  /* raised: inputs, cards on paper */
+  --earth-100: #F2EDE3;  /* paper: panels, modals */
+  --earth-200: #EDE7DA;  /* sunken: hover fills, wells */
+  --earth-300: #E2D9CA;  /* pressed / tray */
+  --earth-400: #D5CBBA;  /* hairline borders */
+  --earth-500: #C9BFB0;  /* strong dividers */
+  --earth-600: #C0B098;  /* dashed / drop-zone borders */
+
+  /* ---- Palette: ink (text) ---------------------------------------------- */
+  --ink-900: #1E1A14;    /* 14.8:1 headings, primary */
+  --ink-700: #3D3529;    /* 10.4:1 body */
+  --ink-500: #6B5E4C;    /*  5.4:1 secondary: smallest allowed text color */
+  --ink-400: #8A7B68;    /*  3.5:1 muted: >=14px or non-essential only */
+  --ink-300: #A89880;    /*  2.4:1 decorative only: icons, rules. Never text */
+
+  /* ---- Palette: accents ------------------------------------------------- */
+  --rust-500: #B8431A;   /* brand / primary action. 4.7:1 as text */
+  --rust-600: #9E3915;   /* hover/pressed primary */
+  --teal-500: #4A7C8A;   /* dayhike, info */
+  --teal-700: #3F6B77;   /* teal as text (5.0:1) */
+  --sage-500: #7D9168;   /* route */
+  --sage-700: #5E7350;   /* sage as text (4.5:1) */
+  --dust-500: #C09A6B;   /* rest, focus ring */
+  --dust-700: #8C6A3F;   /* dust as text (4.2:1, >=13px) */
+  --gold-500: #D4A853;   /* camp */
+  --gold-700: #8F6F22;   /* gold as text (4.0:1, >=13px semibold) */
+  --water-500: #5A8FA8;  /* water stops */
+  --water-700: #3E6E85;  /* water as text (4.9:1 on its tint) */
+  --red-700:  #991B1B;   /* destructive */
+  --red-50:   #FEE2E2;
+
+  /* ---- Semantic: surfaces ---------------------------------------------- */
+  --surface:          var(--earth-100);
+  --surface-raised:   var(--earth-50);
+  --surface-sunken:   var(--earth-200);
+  --surface-pressed:  var(--earth-300);
+  --border:           var(--earth-400);
+  --border-strong:    var(--earth-500);
+  --border-dashed:    var(--earth-600);
+  --scrim:            rgba(30, 26, 20, 0.55);
+
+  /* ---- Semantic: text --------------------------------------------------- */
+  --text:             var(--ink-900);
+  --text-body:        var(--ink-700);
+  --text-secondary:   var(--ink-500);
+  --text-muted:       var(--ink-400);
+  --text-on-accent:   var(--earth-50);
+
+  /* ---- Semantic: action ------------------------------------------------- */
+  --accent:           var(--rust-500);
+  --accent-hover:     var(--rust-600);
+  --accent-tint:      rgba(184, 67, 26, 0.08);
+  --danger:           var(--red-700);
+  --danger-tint:      var(--red-50);
+  --focus-ring:       0 0 0 2px var(--surface), 0 0 0 4px var(--dust-500);
+
+  /* ---- Semantic: trip point types (fill / tint / border / text) --------- */
+  --type-route:         var(--sage-500);
+  --type-route-tint:    #EFF4EB;
+  --type-route-border:  #A8C098;
+  --type-route-text:    var(--sage-700);
+  --type-camp:          var(--gold-500);
+  --type-camp-tint:     #FDF7E8;
+  --type-camp-border:   #E0C870;
+  --type-camp-text:     var(--gold-700);
+  --type-dayhike:       var(--teal-500);
+  --type-dayhike-tint:  #EAF3F5;
+  --type-dayhike-border:#90B8C4;
+  --type-dayhike-text:  var(--teal-700);
+  --type-rest:          var(--dust-500);
+  --type-rest-tint:     #F8F2EA;
+  --type-rest-border:   #C8A870;
+  --type-rest-text:     var(--dust-700);
+  --type-water:         var(--water-500);
+  --type-water-tint:    #EBF2F6;
+  --type-water-border:  #88B0C8;
+  --type-water-text:    var(--water-700);
+
+  /* ---- Type ------------------------------------------------------------- */
+  --font-display: 'Playfair Display', Georgia, serif;     /* trip titles, page heroes. Nothing else */
+  --font-ui:      'DM Sans', system-ui, sans-serif;       /* all interface text */
+  --font-data:    'IBM Plex Mono', ui-monospace, monospace; /* numbers only: miles, ft, dates, coords */
+
+  --text-xs:   11px;   /* floor. Nothing smaller, ever */
+  --text-sm:   12px;   /* labels, chips, meta */
+  --text-md:   13px;   /* default UI */
+  --text-base: 14px;   /* body, inputs */
+  --text-lg:   17px;   /* section titles */
+  --text-xl:   22px;   /* modal titles */
+  --text-2xl:  28px;   /* trip title */
+  --text-hero: clamp(36px, 6vw, 64px); /* landing only */
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semi:    600;
+  --weight-bold:    700;
+  --leading-tight:  1.15;
+  --leading-normal: 1.45;
+  --tracking-label: 0.06em; /* the ONLY tracked style: --text-xs section labels */
+
+  /* ---- Space (4px base) ------------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---- Shape ------------------------------------------------------------ */
+  --radius-sm:   4px;   /* inline controls, inputs */
+  --radius-md:   8px;   /* buttons, cards, toolbar */
+  --radius-lg:   12px;  /* modals, sheets */
+  --radius-pill: 999px; /* chips, point-type pills */
+
+  /* ---- Depth ------------------------------------------------------------ */
+  --shadow-1: 0 1px 3px rgba(30, 26, 20, 0.07);   /* resting cards */
+  --shadow-2: 0 2px 8px rgba(30, 26, 20, 0.16);   /* floating controls, hover lift */
+  --shadow-3: 0 4px 20px rgba(30, 26, 20, 0.22);  /* popovers */
+  --shadow-4: 0 8px 40px rgba(30, 26, 20, 0.30);  /* modals, side panel */
+  --shadow-accent: 0 2px 8px rgba(184, 67, 26, 0.35); /* active primary tool */
+  --shadow-press: 0 0 0 rgba(30, 26, 20, 0);      /* shadow collapses on press */
+
+  /* ---- Motion ----------------------------------------------------------- */
+  /* One vocabulary: press, lift, confirm, flip, draw, count. See DESIGN.md */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);   /* "momentum": fast start, soft landing */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* tiny overshoot, release from press */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);    /* route draw, page-level */
+  --dur-instant: 90ms;   /* press down */
+  --dur-quick:   160ms;  /* hover, color */
+  --dur-base:    260ms;  /* panels, flips, release */
+  --dur-slow:    420ms;  /* confirm shiver, count-up */
+  --dur-draw:    900ms;  /* route line draw-in */
+  --press-scale: 0.97;
+  --lift-y:      -1px;
+}
+
+/* Users who ask for less motion get state changes without movement. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms;
+    --dur-quick:   0ms;
+    --dur-base:    0ms;
+    --dur-slow:    0ms;
+    --dur-draw:    0ms;
+    --press-scale: 1;
+    --lift-y:      0px;
+  }
+}

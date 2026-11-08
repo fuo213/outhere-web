@@ -16,6 +16,7 @@
 import { map } from "./app.js"; // circular with app.js; only used at runtime
 import {
   TripManager,
+  fitTripToView,
   migrateTrip,
   downloadTripGeoJSON,
   openSidebar,
@@ -195,6 +196,7 @@ function openTrip(id) {
   TripManager.setTrip(trip);
   hideTripsHome();
   openSidebar();
+  fitTripToView(); // after the region camera, so the trip wins
 }
 
 function duplicateTrip(id) {
@@ -315,8 +317,8 @@ export function renderTripsHome() {
   if (trips.length === 0) {
     grid.innerHTML = `
       <div class="trips-empty">
-        <p>No trips yet.</p>
-        <p class="trips-empty-sub">Start a new trip or import a saved .geojson file.</p>
+        <p>No trips yet</p>
+        <p class="trips-empty-sub">Start a new trip to draw your route on the map, or import a .geojson you exported earlier.</p>
       </div>`;
     return;
   }
@@ -384,6 +386,10 @@ export function initTripsHome() {
     }
   });
 
+  // See a demo trip (also offered in the onboarding modal)
+  document.getElementById("tripsHomeDemoBtn")?.addEventListener("click", openDemoTrip);
+  document.getElementById("onboardingDemoBtn")?.addEventListener("click", openDemoTrip);
+
   // New trip → existing onboarding modal (TripManager.create hides home)
   document.getElementById("tripsHomeNewBtn")?.addEventListener("click", () => {
     showOnboardingModal();
@@ -401,6 +407,7 @@ export function initTripsHome() {
         syncRegionForTrip(TripManager.currentTrip);
         hideTripsHome();
         openSidebar();
+        fitTripToView();
       } catch (err) {
         alert("Could not load file: " + err.message);
       }
@@ -412,5 +419,71 @@ export function initTripsHome() {
   // Home is the default state when no trip is open.
   if (!TripManager.currentTrip) {
     showTripsHome();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Demo trips (design/fixtures/). ?demo=spanish-bottom works everywhere; the
+// older ?demo=maze is dev only (localhost and Pages previews, never production).
+// ---------------------------------------------------------------------------
+
+// Public demo: Vincent's real May 2026 Maze trip (built with the GPX importer).
+// Opens as a throwaway copy (TripManager.openDemo), in production too.
+const DEMO_URL = "design/fixtures/spanish-bottom-2026.trip.geojson";
+const PUBLIC_DEMOS = { "spanish-bottom": DEMO_URL };
+// Dev only: its notes are invented.
+const DEV_DEMOS = { maze: "design/fixtures/demo-maze-chocolate-drops.trip.geojson" };
+
+/** A quiet one-line note that fades out on its own (demo loader status). */
+function demoNote(text) {
+  const el = document.createElement("p");
+  el.className = "demo-note";
+  el.setAttribute("role", "status");
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 8000);
+}
+
+/** Open the bundled demo trip (button on trips home / onboarding, or ?demo=spanish-bottom). */
+export async function openDemoTrip() {
+  try {
+    const res = await fetch(DEMO_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    TripManager.openDemo(await res.json());
+    syncRegionForTrip(TripManager.currentTrip);
+    hideTripsHome();
+    document.getElementById("onboardingOverlay")?.setAttribute("hidden", "");
+    openSidebar();
+    fitTripToView();
+  } catch (err) {
+    console.warn("[demo] could not open the demo trip:", err.message);
+    demoNote("Couldn't open the demo trip. Check your connection and try again.");
+  }
+}
+
+/** @param {Promise} regionsReady resolves once the region catalog is loaded */
+export async function loadDemoTripFromURL(regionsReady) {
+  const key = new URLSearchParams(location.search).get("demo");
+  if (!key) return;
+  if (PUBLIC_DEMOS[key]) {
+    await regionsReady;
+    return openDemoTrip();
+  }
+  const host = location.hostname;
+  const devHost = ["localhost", "127.0.0.1", "[::1]"].includes(host) || host.endsWith(".outhere-web.pages.dev");
+  if (!devHost || !DEV_DEMOS[key]) return;
+  try {
+    await regionsReady;
+    const res = await fetch(DEV_DEMOS[key]);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Same path as Load trip. The fixture keeps a fixed trip_id, so reloading
+    // overwrites the saved copy instead of piling up duplicates.
+    TripManager.loadFromGeoJSON(await res.json());
+    syncRegionForTrip(TripManager.currentTrip);
+    hideTripsHome();
+    openSidebar();
+    fitTripToView();
+  } catch (err) {
+    console.warn(`[demo] could not load demo trip "${key}":`, err.message);
   }
 }

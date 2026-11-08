@@ -14,7 +14,7 @@
 import { DEFAULT_REGION, CATALOG_URL, MAP_CONFIG } from "./config.js";
 import { map, buildStyle, restoreRuntimeLayers } from "./app.js"; // circular with app.js; only used at runtime
 import { TripManager, escapeHTML } from "./trip-panel.js"; // circular; only used at runtime
-import { cancelDrawing } from "./planning.js"; // only used at runtime
+import { cancelDrawing, prefetchRoutingGraph } from "./planning.js"; // only used at runtime
 
 const CATALOG_CACHE_KEY = "outhere_catalog_cache";   // { fetchedAt, catalog }
 const ACTIVE_REGION_KEY = "outhere_active_region";   // full region record
@@ -34,6 +34,11 @@ export function getInitialRegion() {
 
 export function getActiveRegion() {
   return activeRegion;
+}
+
+/** Catalog regions (empty until the catalog loads). */
+export function getCatalogRegions() {
+  return catalog?.regions || [];
 }
 
 export function getActiveRegionId() {
@@ -136,6 +141,7 @@ async function fetchCatalog() {
 function setCatalog(cat, { store = false } = {}) {
   catalog = cat;
   if (store) writeCatalogCache(cat);
+  document.dispatchEvent(new CustomEvent("outhere:catalog")); // routed-areas overlay listens
 
   // Refresh the persisted active-region record from the live catalog so URL /
   // bounds updates in the pipeline are picked up on the next reload.
@@ -176,18 +182,21 @@ export function applyRegion(region, { fly = true } = {}) {
   persistActiveRegion();
   updateRegionButton();
   renderRegionList();
-  document.title = `OutHere — ${region.name}`;
+  document.title = `Booot — ${region.name}`;
 
   // Release the old region's camera constraints before moving.
   map.setMaxBounds(null);
 
   // Swap tile source. diff:false forces a full style rebuild, so ALL runtime
-  // sources/layers (trip, route-drawing, snap-preview) are wiped — re-add
+  // sources/layers (trip, route-drawing, route-preview) are wiped — re-add
   // them as soon as the new style is ready.
   map.setStyle(buildStyle(region), { diff: false });
   map.once("style.load", () => {
     restoreRuntimeLayers();
   });
+
+  // Planning in this region will route on its trail graph: fetch it while idle.
+  if (TripManager.currentTrip) prefetchRoutingGraph();
 
   const bounds = regionMaxBounds(region);
   const camera = { center: region.center || MAP_CONFIG.center, zoom: region.zoom ?? MAP_CONFIG.zoom };
@@ -351,7 +360,7 @@ export async function initRegionPicker() {
   });
 
   updateRegionButton();
-  document.title = `OutHere — ${activeRegion.name}`;
+  document.title = `Booot — ${activeRegion.name}`;
   renderRegionList(); // fallback list until the catalog arrives
 
   const cached = readCatalogCache();

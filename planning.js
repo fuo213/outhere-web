@@ -1,54 +1,201 @@
 /**
- * OutHere Trip Planning — Drawing Tools
+ * Booot trip planning: drawing tools.
  *
- * Unified route drawing with switchable point types (route/camp/dayhike/rest).
- * Uses a custom click-based system with trail snapping via turf.js
- * nearestPointOnLine. A live preview marker follows the cursor and snaps
- * to trails in real time.
+ * Route drawing with switchable point types (route/camp/dayhike/rest; keys
+ * 1-4). Clicks snap to the region's routing graph and every leg is routed
+ * along real trails by routing.js (A* over the pipeline-built OSM graph,
+ * SNAPPING_DESIGN.md Part 2). A live routed preview follows the cursor.
  *
- * Hotkeys 1-4 switch point type during drawing.
- *
- * CDN global: turf (via turf.min.js classic script).
+ * Legs that can't be routed are drawn straight and say why:
+ *   manual        Shift-click (or a point placed away from any trail)
+ *   straight      no_path: the trails don't connect in OpenStreetMap
+ *                 no_graph: no routing graph for this place yet
+ *                 cross_region: the leg leaves the route's map region
+ * Backspace / Ctrl-Z undoes the last point, Esc cancels, double-click
+ * finishes.
  */
 
 import { map } from "./app.js"; // circular with app.js; only used at runtime
-import { TripManager, updateDrawingPreview, alignPlanningToolbar } from "./trip-panel.js";
-
-// Set to true to re-enable verbose [snap] diagnostics in the console.
-const SNAP_DEBUG = false;
+import { TripManager, updateDrawingPreview, alignPlanningToolbar, escapeHTML, escapeAttr } from "./trip-panel.js";
+import { getActiveRegion, getCatalogRegions, findRegionById } from "./region-picker.js"; // circular; runtime only
+import {
+  loadGraph, peekGraph, pickGraphRegion, graphInfoForRegion,
+  metersPerPixel, lineLength, haversine,
+} from "./routing.js";
+import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
 export let isDrawingRoute = false;
 export let isDeleteMode = false;
-let routeCoords = [];
-let routeSnapped = [];      // parallel array: true if vertex was snapped
-let routeVertexTypes = [];   // parallel array: "route" | "camp" | "dayhike" | "rest"
-let routeTrailRefs = [];     // parallel array: { trailCoords, trailId, trailName, indexOnLine } or null
-let routeSegments = [];      // per-edge: { coords, isTrailSnapped }
-let routeDayhikeSegments = []; // dayhike spurs: { fromVertexIndex, coords, distance }
+
+/** Placed points: { coord: [lon, lat], snapped, type, snap } (snap = routing.js snap result or null). */
+let verts = [];
+/** legs[i] ends at verts[i] (legs[0] is unused). See computeLeg(). */
+let legs = [];
 let currentPointType = "route";
 
-const SNAP_PIXEL_RADIUS = 30; // pixel radius for trail query + snap threshold
+/**
+ * Routing context for the route being drawn: one graph per route.
+ * { region, info, graph, status: "loading" | "ready" | "none" | "error", promise }
+ */
+let ctx = null;
+let session = 0;                  // bumps on every start/reset; stale async work checks it
+let queue = Promise.resolve();    // clicks, undo and finish run in order (graph may still be loading)
+
+// Snapping (SNAPPING_DESIGN.md §2.4)
+const SNAP_PX = 24;
+const SNAP_MIN_M = 10;
+const SNAP_MAX_M = 200;
+const SNAP_MIN_ZOOM = 11;
+
+// Live preview (§2.5)
+const PREVIEW_BUDGET_MS = 3; // of the 4 ms/frame budget; the rest is for setData of the preview line
+let pendingMove = null;
+let rafId = 0;
+let previewLeg = null;            // leg-shaped object for the cursor, or null
+let previewMemo = new Map();      // `${from}|${edge}|${along/5m}` → route result
+const previewStats = { frames: 0, routeMs: [], frameMs: [], aborted: 0, memoHits: 0 };
 
 // Bound handler references so we can add/remove listeners
 let _routeMouseMoveHandler = null;
 let _routeKeyHandler = null;
+let gapPopup = null;
+
+const MI = 1609.344;
 
 // ---------------------------------------------------------------------------
-// Route drawing — custom click-based with trail snapping
+// Routing context (which graph, loaded lazily per region)
+// ---------------------------------------------------------------------------
+
+function makeContext(pick) {
+  const c = { region: pick?.region || null, info: pick?.info || null, graph: null, status: "none", promise: null };
+  if (!c.info) return c;
+  const cached = peekGraph(c.info);
+  c.status = "loading";
+  c.promise = (cached || loadGraph(c.info))
+    .then((g) => { c.graph = g; c.status = "ready"; if (c.region) decoded.set(c.region.id, g); })
+    .catch((err) => { console.warn("[routing] graph load failed:", err.message); c.status = "error"; })
+    .finally(() => { if (ctx === c) { previewMemo.clear(); updateDrawingHint(); schedulePreview(); } });
+  return c;
+}
+
+/** Pick (on the first click, for full-state regions) and await the route's graph. */
+async function ensureContext(lngLat) {
+  if (!ctx) ctx = makeContext(pickGraphRegion(getActiveRegion(), getCatalogRegions(), lngLat));
+  updateDrawingHint();
+  if (ctx.promise) await ctx.promise;
+}
+
+/** Start loading the active area region's graph early (draw start, trip open). */
+export function prefetchRoutingGraph() {
+  const region = getActiveRegion();
+  if (region?.type !== "area") return null;
+  const info = graphInfoForRegion(region);
+  if (!info) return null;
+  const run = () => loadGraph(info)
+    .then((g) => {
+      decoded.set(region.id, g);
+      // Saved straight legs can now place their gap pins precisely.
+      const hasGaps = TripManager.currentTrip?.features?.some((f) => f.properties?.segments?.some((s) => s.mode === "straight"));
+      if (hasGaps) TripManager.render();
+      return g;
+    })
+    .catch(() => null);
+  if ("requestIdleCallback" in window) return new Promise((r) => requestIdleCallback(() => r(run()), { timeout: 2000 }));
+  return run();
+}
+
+function snapRadius(lat, zoom) {
+  return Math.min(SNAP_MAX_M, Math.max(SNAP_MIN_M, SNAP_PX * metersPerPixel(lat, zoom)));
+}
+
+/** Snap a cursor/click position to the route's graph, or null. */
+function snapPoint(lngLat, zoom) {
+  const g = ctx?.graph;
+  if (!g || zoom < SNAP_MIN_ZOOM || !g.contains(lngLat[0], lngLat[1])) return null;
+  return g.snap(lngLat[0], lngLat[1], snapRadius(lngLat[1], zoom));
+}
+
+// ---------------------------------------------------------------------------
+// Legs
+// ---------------------------------------------------------------------------
+
+function lastMainIndex(upTo) {
+  for (let i = upTo; i >= 0; i--) if (verts[i].type !== "dayhike") return i;
+  return 0;
+}
+
+function straightLeg(from, to, A, B, kind, mode, reason, { preview = false } = {}) {
+  const coords = [A.coord, B.coord];
+  const leg = { from, to, kind, mode, coords, length_m: lineLength(coords), wayIds: [] };
+  if (reason) leg.reason = reason;
+  // Only a real OSM gap (no_path inside a routed area) gets a pin. Legs where
+  // there is no graph (no_graph, cross_region) stay plain lines.
+  if (mode === "straight" && reason === "no_path") {
+    // Previews skip the gap search: it can cost a few ms and the pin is only
+    // shown for placed legs.
+    const gap = ctx?.graph && !preview
+      ? ctx.graph.gapFor(A.coord, B.coord, A.snap, B.snap)
+      : { lon: (A.coord[0] + B.coord[0]) / 2, lat: (A.coord[1] + B.coord[1]) / 2 };
+    leg.gap = [gap.lon, gap.lat];
+  }
+  return leg;
+}
+
+/** Why a leg from A to B can't use the route's graph, or null if it can. */
+function unroutableReason(A, B) {
+  const g = ctx?.graph;
+  if (!g) {
+    // Another region's graph covers B → the route crossed a boundary;
+    // otherwise (no graph here, or ours failed to load) routing is unavailable.
+    const other = pickGraphRegion(getActiveRegion(), getCatalogRegions(), B.coord);
+    return other?.info && other.info.url !== ctx?.info?.url ? "cross_region" : "no_graph";
+  }
+  if (!g.contains(...A.coord) || !g.contains(...B.coord)) return "cross_region";
+  return null;
+}
+
+/**
+ * Route one leg between two placed (or preview) points.
+ * @returns leg {from, to, kind: "main"|"spur", mode, reason?, coords, length_m, wayIds, gap?}
+ *          or {aborted: true} when a preview query blows its budget
+ */
+function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, preview = false } = {}) {
+  const kind = B.type === "dayhike" ? "spur" : "main";
+  if (shift) return straightLeg(from, to, A, B, kind, "manual");
+  // Graph still downloading (preview only; clicks wait for it): neutral straight.
+  if (ctx?.status === "loading") return straightLeg(from, to, A, B, kind, "manual");
+  const reason = unroutableReason(A, B);
+  if (reason) return straightLeg(from, to, A, B, kind, "straight", reason, { preview });
+  // A point placed away from every trail is a deliberate off-trail leg.
+  if (!A.snap || !B.snap) return straightLeg(from, to, A, B, kind, "manual");
+  const r = ctx.graph.route(A.snap, B.snap, { budgetMs });
+  if (r?.aborted) return r;
+  if (!r) return straightLeg(from, to, A, B, kind, "straight", "no_path", { preview });
+  return { from, to, kind, mode: "trail", coords: r.coords, length_m: r.length_m, wayIds: r.wayIds, runs: r.runs };
+}
+
+// ---------------------------------------------------------------------------
+// Drawing lifecycle
 // ---------------------------------------------------------------------------
 
 export function startRouteDrawing() {
   if (isDrawingRoute) return;       // already drawing — ignore repeat clicks
   if (isDeleteMode) exitDeleteMode(); // drawing and delete mode are exclusive
   isDrawingRoute = true;
-  routeCoords = [];
-  routeSnapped = [];
-  routeVertexTypes = [];
-  routeTrailRefs = [];
-  routeSegments = [];
-  routeDayhikeSegments = [];
+  session++;
+  verts = [];
+  legs = [];
+  previewLeg = null;
+  previewMemo = new Map();
+  queue = Promise.resolve();
   currentPointType = "route";
+
+  // Area regions know their graph up front: start loading it now. For a
+  // full-state region the first click decides (smallest area containing it).
+  const active = getActiveRegion();
+  ctx = active?.type === "area" ? makeContext({ region: active, info: graphInfoForRegion(active) }) : null;
+
   setActiveToolBtn("addRouteBtn");
   document.getElementById("planningToolbar")?.classList.add("active");
   alignPlanningToolbar();
@@ -56,900 +203,627 @@ export function startRouteDrawing() {
   setActivePointType("route");
   showRouteModal();
   map.doubleClickZoom.disable();
-  // Box zoom swallows shift+mousedown, which would eat the documented
-  // shift-click "straight segment, no snapping" gesture — disable while drawing.
+  // Box zoom swallows shift+mousedown, which would eat the shift-click
+  // "straight leg" gesture, so disable it while drawing.
   map.boxZoom.disable();
   map.getCanvas().style.cursor = "crosshair";
   updateRouteDrawing();
-  updateSnapPreview(null);
+  updatePreviewSource();
+  updateDrawingHint();
 
-  // Wire up mousemove for live snap preview
   _routeMouseMoveHandler = handleMouseMoveForRoute;
   map.on("mousemove", _routeMouseMoveHandler);
+  map.on("zoomend", updateDrawingHint);
 
-  // Wire up keyboard hotkeys for point type switching
   _routeKeyHandler = handleRouteKeyDown;
   document.addEventListener("keydown", _routeKeyHandler);
 }
 
+/** Run drawing work in click order, dropping it if drawing was reset meanwhile. */
+function enqueue(fn) {
+  const s = session;
+  queue = queue.then(() => (s === session && isDrawingRoute ? fn() : undefined))
+    .catch((err) => console.error("[routing]", err));
+  return queue;
+}
+
 export function handleMapClickForRoute(e) {
   if (!isDrawingRoute) return;
+  // A click on a gap pin explains that leg instead of placing a point.
+  const pinLeg = gapLegAt(e.point);
+  if (pinLeg) { showGapCard(pinLeg); return; }
+  const lngLat = [e.lngLat.lng, e.lngLat.lat];
+  const shift = e.originalEvent.shiftKey;
+  const zoom = map.getZoom();
+  const type = currentPointType;
+  enqueue(() => addVertex(lngLat, { shift, zoom, type }));
+}
 
-  const coord = [e.lngLat.lng, e.lngLat.lat];
-  const result = e.originalEvent.shiftKey
-    ? { coordinates: coord, snapped: false, trailFeature: null, indexOnLine: null }
-    : snapToTrail(coord);
+async function addVertex(lngLat, { shift, zoom, type }) {
+  await ensureContext(lngLat);
+  const snap = shift ? null : snapPoint(lngLat, zoom);
+  const v = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, type, snap };
 
-  if (e.originalEvent.shiftKey) {
-    SNAP_DEBUG && console.log("[snap] shift-bypass: straight line");
+  // The two clicks of a finishing double-click land on the same spot: keep one.
+  const last = verts[verts.length - 1];
+  if (last && last.type === type && haversine(...last.coord, ...v.coord) < 1) return;
+
+  verts.push(v);
+  const i = verts.length - 1;
+  if (i >= 1) {
+    const from = lastMainIndex(i - 1);
+    legs[i] = computeLeg(from, i, verts[from], v, { shift });
+    // Say why once, without covering the map where the user keeps clicking.
+    if (legs[i].reason === "no_path") flashDrawingHint("These trails don\u2019t connect in OpenStreetMap. Click the rust pin to fix it.");
   }
-
-  routeCoords.push(result.coordinates);
-  routeSnapped.push(result.snapped);
-  routeVertexTypes.push(currentPointType);
-  routeTrailRefs.push(result.snapped ? {
-    trailCoords: result.trailFeature.geometry.coordinates,
-    trailId: result.trailFeature.id ?? result.trailFeature.properties?.osm_id ?? null,
-    trailName: result.trailFeature.properties?.name ?? null,
-    indexOnLine: result.indexOnLine,
-  } : null);
-
-  // Compute segment from previous vertex
-  if (routeCoords.length >= 2) {
-    const currIdx = routeCoords.length - 1;
-    const prevIdx = currIdx - 1;
-
-    if (currentPointType === "dayhike") {
-      // Dayhike spur: branch from last main-route vertex
-      const lastMainIdx = findLastMainRouteVertexIndex(prevIdx);
-      const segment = getTrailSegmentBetween(
-        routeTrailRefs[lastMainIdx], routeTrailRefs[currIdx],
-        routeCoords[lastMainIdx], routeCoords[currIdx]
-      );
-      const dist = segment.coords.length >= 2
-        ? turf.length(turf.lineString(segment.coords), { units: "miles" })
-        : 0;
-      routeDayhikeSegments.push({
-        fromVertexIndex: lastMainIdx,
-        coords: segment.coords,
-        distance: dist,
-      });
-    } else {
-      // Main route vertex: connect from last main-route vertex (skip dayhikes)
-      const lastMainIdx = findLastMainRouteVertexIndex(prevIdx);
-      const fromIdx = (routeVertexTypes[prevIdx] === "dayhike") ? lastMainIdx : prevIdx;
-      const segment = getTrailSegmentBetween(
-        routeTrailRefs[fromIdx], routeTrailRefs[currIdx],
-        routeCoords[fromIdx], routeCoords[currIdx]
-      );
-      routeSegments.push(segment);
-      SNAP_DEBUG && console.log("[snap] segment added:", JSON.stringify({
-        segmentIndex: routeSegments.length - 1,
-        fromIdx,
-        currIdx,
-        isTrailSnapped: segment.isTrailSnapped,
-        segmentCoordCount: segment.coords.length,
-        segmentStart: segment.coords[0],
-        segmentEnd: segment.coords[segment.coords.length - 1],
-        vertexStart: routeCoords[fromIdx],
-        vertexEnd: routeCoords[currIdx],
-      }));
-    }
-  }
-
-  // Log full state after each click
-  SNAP_DEBUG && console.log("[snap] state:", JSON.stringify({
-    totalVertices: routeCoords.length,
-    totalSegments: routeSegments.length,
-    totalDayhikeSpurs: routeDayhikeSegments.length,
-    vertices: routeCoords,
-    vertexTypes: routeVertexTypes,
-    trailRefs: routeTrailRefs.map((ref, i) => ref ? {
-      idx: i,
-      indexOnLine: ref.indexOnLine,
-      trailName: ref.trailName,
-      trailCoordsLen: ref.trailCoords.length,
-      trailFirst: ref.trailCoords[0],
-      trailLast: ref.trailCoords[ref.trailCoords.length - 1],
-    } : { idx: i, ref: null }),
-    segments: routeSegments.map((seg, i) => ({
-      idx: i,
-      isTrailSnapped: seg.isTrailSnapped,
-      coordCount: seg.coords.length,
-      start: seg.coords[0],
-      end: seg.coords[seg.coords.length - 1],
-    })),
-  }));
-
+  previewLeg = null;
+  previewMemo.clear();
   updateRouteDrawing();
+  updatePreviewSource();
   notifyDrawingProgress();
+}
 
-  // Log the final display coords after this click
-  const displayCoords = buildMainRouteDisplayCoords();
-  SNAP_DEBUG && console.log("[snap] display line after click:", JSON.stringify({
-    displayCoordCount: displayCoords.length,
-    displayFirst: displayCoords[0],
-    displayLast: displayCoords[displayCoords.length - 1],
-    matchesLastVertex: routeCoords.length > 0 &&
-      displayCoords.length > 0 &&
-      displayCoords[displayCoords.length - 1][0] === routeCoords[routeCoords.length - 1][0] &&
-      displayCoords[displayCoords.length - 1][1] === routeCoords[routeCoords.length - 1][1],
-  }));
+function undoLastVertex() {
+  if (!verts.length) return;
+  verts.pop();
+  legs.length = verts.length;
+  previewLeg = null;
+  previewMemo.clear();
+  gapPopup?.remove();
+  updateRouteDrawing();
+  schedulePreview();
+  notifyDrawingProgress();
 }
 
 export function handleMapDblClickForRoute(e) {
   if (!isDrawingRoute) return;
   e.preventDefault();
-  finishRouteDrawing();
-}
-
-function handleMouseMoveForRoute(e) {
-  if (!isDrawingRoute) return;
-
-  const coord = [e.lngLat.lng, e.lngLat.lat];
-  const result = e.originalEvent.shiftKey
-    ? { coordinates: coord, snapped: false }
-    : snapToTrail(coord);
-  updateSnapPreview(result);
-
-  // Also update the in-progress line to extend to the preview point
-  updateRouteDrawing(result.coordinates);
+  enqueue(() => finishRouteDrawing());
 }
 
 function finishRouteDrawing() {
-  if (routeCoords.length < 2) {
-    // Not enough points — cancel instead
+  const mainLegs = legs.filter((l) => l && l.kind === "main");
+  if (verts.length < 2 || !mainLegs.length) {
     resetRouteDrawing();
     cancelDrawing();
     return;
   }
 
-  // 1. Create the route LineString with trail-following display coords
-  const mainDisplayCoords = buildMainRouteDisplayCoords();
-  // Ensure we have at least 2 coords for a valid LineString
-  const geometry = {
-    type: "LineString",
-    coordinates: mainDisplayCoords.length >= 2 ? mainDisplayCoords : [...routeCoords],
-  };
+  // 1. Main route: legs concatenated at graph precision (6 dp), duplicate
+  //    joints removed, with per-leg provenance (schema 1.1 `segments`).
+  const geometryCoords = [];
+  const segments = [];
+  for (const leg of mainLegs) {
+    const pts = leg.coords.map(round6);
+    let start = geometryCoords.length - 1;
+    if (start < 0 || !samePos(geometryCoords[start], pts[0])) {
+      start = geometryCoords.length;
+      geometryCoords.push(pts[0]);
+    }
+    for (let k = 1; k < pts.length; k++) geometryCoords.push(pts[k]);
+    segments.push(segmentRecord(leg, [start, geometryCoords.length - 1]));
+  }
+  if (geometryCoords.length < 2) geometryCoords.push([...geometryCoords[0]]);
+  const routing = routingInfo();
+
+  const spurLegs = legs.filter((l) => l && l.kind === "spur");
+  const autoName = deriveRouteName(mainLegs);
   const properties = {
     type: "route",
-    name: "",
+    name: autoName,
     planned: true,
     notes: "",
-    vertex_types: [...routeVertexTypes],
-    vertex_snapped: [...routeSnapped],
-    vertex_coords: [...routeCoords],
-    main_route_distance_mi: computeMainRouteDistance(),
-    dayhike_distance_mi: computeDayhikeDistance(),
+    vertex_types: verts.map((v) => v.type),
+    vertex_snapped: verts.map((v) => v.snapped),
+    vertex_coords: verts.map((v) => round6(v.coord)),
+    main_route_distance_mi: lineLength(geometryCoords) / MI,
+    dayhike_distance_mi: spurLegs.reduce((s, l) => s + (2 * lineLength(l.coords.map(round6))) / MI, 0),
+    segments,
   };
+  if (autoName) properties.name_auto = true;
+  if (routing) properties.routing = routing;
+  const geometry = { type: "LineString", coordinates: geometryCoords };
   const routeIdx = TripManager.addFeature(geometry, properties);
 
-  // 1b. Fetch elevation profile async (patches the feature when resolved)
-  const addedFeature = TripManager.currentTrip?.features[routeIdx];
-  if (addedFeature && mainDisplayCoords.length >= 2) {
-    fetchElevationProfile(mainDisplayCoords, addedFeature.properties._id);
+  // Remember computed gap pins so the saved route shows them in the same place.
+  const routeFeature = TripManager.currentTrip?.features[routeIdx];
+  if (routeFeature) {
+    mainLegs.forEach((leg, k) => leg.gap && gapMemo.set(`${routeFeature.properties._id}:${k}`, leg.gap));
+    fetchElevationProfile(geometryCoords, routeFeature.properties._id);
   }
 
-  // 2. Create dayhike spur LineString features
-  for (const spur of routeDayhikeSegments) {
-    if (spur.coords.length >= 2) {
-      TripManager.addFeature(
-        { type: "LineString", coordinates: spur.coords },
-        { type: "dayhike_spur", route_index: routeIdx, name: "" }
-      );
-    }
+  // 2. Day-hike spurs: one direction, branch point → spur end.
+  for (const leg of spurLegs) {
+    const coords = leg.coords.map(round6);
+    const spurName = deriveRouteName([leg]);
+    const props = {
+      type: "dayhike_spur",
+      route_index: routeIdx,
+      name: spurName,
+      segments: [segmentRecord(leg, [0, coords.length - 1])],
+    };
+    if (spurName) props.name_auto = true;
+    if (routing) props.routing = routing;
+    const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
+    if (leg.gap) gapMemo.set(`${TripManager.currentTrip.features[idx].properties._id}:0`, leg.gap);
   }
 
-  // 3. Create Point features for special points (camp/dayhike/rest)
+  // 3. Point features for special points (camp/dayhike/rest)
   const tripDates = getTripDateRange();
   let dateIndex = 0;
-
-  for (let i = 0; i < routeCoords.length; i++) {
-    const vtype = routeVertexTypes[i];
-    if (vtype === "route") continue;
-
-    const pointGeom = { type: "Point", coordinates: routeCoords[i] };
-    const pointDate = tripDates[dateIndex] || "";
-
+  verts.forEach((v, i) => {
+    if (v.type === "route") return;
     const pointProps = {
-      type: vtype,
-      point_type: vtype,
+      type: v.type,
+      point_type: v.type,
       route_index: routeIdx,
       route_vertex_index: i,
-      date: pointDate,
+      date: tripDates[dateIndex] || "",
       name: "",
       notes: "",
     };
-
-    if (vtype === "camp") {
+    if (v.type === "camp") {
       pointProps.water_nearby = false;
       pointProps.water_notes = "";
       dateIndex++; // camp advances to next day
-    } else if (vtype === "rest") {
+    } else if (v.type === "rest") {
       dateIndex++; // rest day consumes a day
     }
     // dayhike does NOT advance the date (same-day activity)
+    TripManager.addFeature({ type: "Point", coordinates: round6(v.coord) }, pointProps);
+  });
 
-    TripManager.addFeature(pointGeom, pointProps);
-  }
-
+  TripManager.render(); // picks up the gap pins memoized above
   resetRouteDrawing();
   cancelDrawing();
 }
 
+// ---------------------------------------------------------------------------
+// Auto names: "Angels Landing Trail", "A to B", "via Kolob Terrace Road"
+// ---------------------------------------------------------------------------
+
+const ROAD_HIGHWAYS = new Set(["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "service", "living_street"]);
+const MAX_NAME = 40;
+const PLACE_WORDS = /\b(Landing|Arch|Overlook|Spring|Springs|Point|Peak|Lake|Falls|Pass|Summit|Rim|Narrows|Bridge|Canyon|Drops)\b/i;
+const GENERIC_TAIL = /\s+(Trail|Route|Path|Trailhead)$/i;
+
+/**
+ * Name for a route from the OSM names of the trail it follows, weighted by
+ * length. Longest named trail; "A to B" when two names cover most of it, in
+ * the order they're walked; "via X" when it's mostly road. "" when nothing
+ * useful is named (the panel's fallbacks then apply). Pure.
+ * @param {Array} legs routed legs carrying `runs` ({name, highway, m})
+ */
+export function deriveRouteName(legs) {
+  const runs = legs.filter((l) => l && l.mode === "trail" && l.runs).flatMap((l) => l.runs);
+  const total = runs.reduce((s, r) => s + r.m, 0);
+  if (!(total > 0)) return "";
+  const sum = (isRoad) => {
+    const m = new Map(); // name → { m, first }
+    runs.forEach((r, i) => {
+      if (!r.name || ROAD_HIGHWAYS.has(r.highway) !== isRoad) return;
+      const e = m.get(r.name) || { name: r.name, m: 0, first: i };
+      e.m += r.m;
+      m.set(r.name, e);
+    });
+    return [...m.values()].sort((a, b) => b.m - a.m);
+  };
+  const roadM = runs.filter((r) => ROAD_HIGHWAYS.has(r.highway)).reduce((s, r) => s + r.m, 0);
+  const trails = sum(false);
+  if (roadM > total / 2) {
+    const road = sum(true)[0];
+    return road && road.m >= total * 0.25 ? clip(`via ${road.name}`) : "";
+  }
+  const [a, b] = trails;
+  if (!a || a.m < total * 0.2) return "";
+  // Name it for where it goes: a different named trail at the very end.
+  const dest = [...runs].reverse().find((r) => r.name && !ROAD_HIGHWAYS.has(r.highway));
+  const destM = dest ? runs.filter((r) => r.name === dest.name && !ROAD_HIGHWAYS.has(r.highway)).reduce((s, r) => s + r.m, 0) : 0;
+  if (dest && dest.name !== a.name && (destM >= 161 || destM >= total * 0.05)) {
+    const place = PLACE_WORDS.test(dest.name);
+    const full = `${a.name} to ${dest.name}`;
+    const placeShort = place ? `${a.name} to ${dest.name.replace(GENERIC_TAIL, "")}` : full;
+    if (placeShort.length <= MAX_NAME) return placeShort;
+    const trimmed = `${a.name.replace(GENERIC_TAIL, "")} to ${dest.name.replace(GENERIC_TAIL, "")}`;
+    if (trimmed.length <= MAX_NAME) return trimmed;
+  }
+  if (b && a.m >= total * 0.25 && b.m >= total * 0.25 && a.m + b.m >= total * 0.7) {
+    const [x, y] = a.first < b.first ? [a, b] : [b, a];
+    let name = `${x.name} to ${y.name}`;
+    if (name.length > MAX_NAME) name = `${x.name.replace(GENERIC_TAIL, "")} to ${y.name.replace(GENERIC_TAIL, "")}`;
+    if (name.length <= MAX_NAME) return name;
+  }
+  return clip(a.name);
+}
+
+function clip(name) {
+  if (name.length <= MAX_NAME) return name;
+  const cut = name.slice(0, MAX_NAME - 1).replace(/\s+\S*$/, "");
+  return `${cut || name.slice(0, MAX_NAME - 1)}…`;
+}
+
+const round6 = (c) => [Math.round(c[0] * 1e6) / 1e6, Math.round(c[1] * 1e6) / 1e6];
+const samePos = (a, b) => a[0] === b[0] && a[1] === b[1];
+
+/** schema 1.1 routingSegment for a leg. */
+function segmentRecord(leg, coordRange) {
+  const seg = {
+    mode: leg.mode,
+    from_vertex: leg.from,
+    to_vertex: leg.to,
+    coord_range: coordRange,
+    length_m: Math.round(leg.length_m * 10) / 10,
+  };
+  if (leg.mode === "straight") seg.reason = leg.reason;
+  if (leg.mode === "trail") seg.osm_way_ids = leg.wayIds;
+  return seg;
+}
+
+/** schema 1.1 routingInfo for the route's graph, or null when none was used. */
+function routingInfo() {
+  const g = ctx?.graph;
+  if (!g) return null;
+  const info = { engine: "booot-graph", graph: `${g.state || ctx.region?.state || ""}/${g.region || ctx.region?.id || ""}` };
+  if (g.version) info.graph_version = g.version;
+  if (g.osmTimestamp) info.osm_timestamp = g.osmTimestamp;
+  return info;
+}
+
 function resetRouteDrawing() {
   isDrawingRoute = false;
-  routeCoords = [];
-  routeSnapped = [];
-  routeVertexTypes = [];
-  routeTrailRefs = [];
-  routeSegments = [];
-  routeDayhikeSegments = [];
+  session++;
+  verts = [];
+  legs = [];
+  ctx = null;
+  previewLeg = null;
+  pendingMove = null;
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
   currentPointType = "route";
   map.doubleClickZoom.enable();
   map.boxZoom.enable();
   map.getCanvas().style.cursor = "";
   updateRouteDrawing();
-  updateSnapPreview(null);
+  updatePreviewSource();
+  hideSnapTooltip();
+  gapPopup?.remove();
+  flashUntil = 0;
+  clearTimeout(flashTimer);
   hideRouteModal();
   hidePointTypeSelector();
-
-  // Clear sidebar drawing preview
   updateDrawingPreview(null);
 
-  // Remove mousemove handler
   if (_routeMouseMoveHandler) {
     map.off("mousemove", _routeMouseMoveHandler);
     _routeMouseMoveHandler = null;
   }
-
-  // Remove keyboard handler
+  map.off("zoomend", updateDrawingHint);
   if (_routeKeyHandler) {
     document.removeEventListener("keydown", _routeKeyHandler);
     _routeKeyHandler = null;
   }
 }
 
+// ---------------------------------------------------------------------------
+// Live routed preview (one query per animation frame, §2.5)
+// ---------------------------------------------------------------------------
+
+function handleMouseMoveForRoute(e) {
+  if (!isDrawingRoute) return;
+  pendingMove = { lngLat: [e.lngLat.lng, e.lngLat.lat], shift: e.originalEvent.shiftKey, point: e.point };
+  schedulePreview();
+}
+
+function schedulePreview() {
+  if (!rafId && pendingMove && isDrawingRoute) rafId = requestAnimationFrame(runPreview);
+}
+
+function runPreview() {
+  rafId = 0;
+  if (!isDrawingRoute || !pendingMove) return;
+  const t0 = performance.now();
+  const { lngLat, shift, point } = pendingMove;
+  const zoom = map.getZoom();
+  const snap = shift ? null : snapPoint(lngLat, zoom);
+  const cursor = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, type: currentPointType, snap };
+
+  previewLeg = null;
+  let routeMs = 0;
+  if (verts.length) {
+    const from = lastMainIndex(verts.length - 1);
+    const A = verts[from];
+    const key = snap && !shift ? `${from}|${snap.e}|${Math.round(snap.along / 5)}|${cursor.type === "dayhike"}` : null;
+    if (key && previewMemo.has(key)) {
+      previewLeg = previewMemo.get(key);
+      previewStats.memoHits++;
+    } else {
+      const r0 = performance.now();
+      const leg = computeLeg(from, verts.length, A, cursor, { shift, budgetMs: PREVIEW_BUDGET_MS, preview: true });
+      routeMs = performance.now() - r0;
+      if (leg.aborted) {
+        // Too slow for a frame: preview straight; the click routes it properly.
+        previewStats.aborted++;
+        previewLeg = straightLeg(from, verts.length, A, cursor, cursor.type === "dayhike" ? "spur" : "main", "manual");
+      } else {
+        previewLeg = leg;
+        if (key) {
+          if (previewMemo.size > 500) previewMemo.clear();
+          previewMemo.set(key, leg);
+        }
+      }
+    }
+  }
+  updatePreviewSource(cursor);
+  updateSnapTooltip(snap, point);
+
+  const frameMs = performance.now() - t0;
+  previewStats.frames++;
+  pushStat(previewStats.routeMs, routeMs);
+  pushStat(previewStats.frameMs, frameMs);
+}
+
+function pushStat(arr, v) { arr.push(v); if (arr.length > 2000) arr.shift(); }
+
+/** Debug/verification handle (window.__outhere.routing). */
+export const routingDebug = {
+  stats: previewStats,
+  resetStats() { previewStats.frames = 0; previewStats.routeMs.length = 0; previewStats.frameMs.length = 0; previewStats.aborted = 0; previewStats.memoHits = 0; },
+  /** Milliseconds the current graph's post-load warm-up route took. */
+  get warmUpMs() { return ctx?.graph?.warmUpMs ?? null; },
+  /** Resolves once the current drawing's graph has loaded (or failed). */
+  ready: () => (ctx?.promise || Promise.resolve()).then(() => ctx?.status || "none"),
+  /** Resolves once queued clicks have been processed. */
+  idle: () => queue,
+};
+
+// ---------------------------------------------------------------------------
+// Map sources
+// ---------------------------------------------------------------------------
+
 /**
- * Update the route-drawing source with current in-progress line + vertices.
- * Uses trail-following display coords for the main route line, and separate
- * features for dayhike spurs.
- * @param {[number, number]|null} previewCoord - optional cursor position to extend line to
+ * How a leg is drawn. A straight leg with no graph behind it (no_graph,
+ * cross_region) is not a mapping problem, so it renders as a normal route
+ * line; the data keeps mode "straight" + reason. Only no_path is flagged.
  */
-function updateRouteDrawing(previewCoord) {
+// Imported recordings are drawn like trail legs (the trip-chart ink), not flagged.
+const drawMode = (mode, reason) => ((mode === "straight" && reason !== "no_path") || mode === "imported" ? "trail" : mode);
+
+function legFeature(leg, extra = {}) {
+  return {
+    type: "Feature",
+    geometry: { type: "LineString", coordinates: leg.coords },
+    properties: { leg_mode: drawMode(leg.mode, leg.reason), kind: leg.kind, ...extra },
+  };
+}
+
+function gapFeature(leg, extra = {}) {
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: leg.gap },
+    properties: { gap: true, reason: leg.reason, ...extra },
+  };
+}
+
+/** Placed legs, gap pins and vertices (changes per click, not per frame). */
+function updateRouteDrawing() {
   const source = map.getSource("route-drawing");
   if (!source) return;
-
   const features = [];
-
-  // 1. Main route line from trail-snapped segments
-  const mainCoords = buildMainRouteDisplayCoords();
-  if (previewCoord && currentPointType !== "dayhike") {
-    // Extend main route to cursor (straight line preview — no trail interpolation on mousemove)
-    if (mainCoords.length >= 1) {
-      mainCoords.push(previewCoord);
-    }
-  }
-  if (mainCoords.length >= 2) {
-    features.push({
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: mainCoords },
-      properties: { segment_type: "main" },
-    });
-  }
-
-  // 2. Dayhike spur lines
-  for (const spur of routeDayhikeSegments) {
-    if (spur.coords.length >= 2) {
-      features.push({
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: spur.coords },
-        properties: { segment_type: "dayhike" },
-      });
-    }
-  }
-
-  // 3. Preview spur when in dayhike mode
-  if (previewCoord && currentPointType === "dayhike" && routeCoords.length >= 1) {
-    const lastMainIdx = findLastMainRouteVertexIndex(routeCoords.length - 1);
-    features.push({
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: [routeCoords[lastMainIdx], previewCoord] },
-      properties: { segment_type: "dayhike" },
-    });
-  }
-
-  // 4. Vertex markers (placed points only, not preview)
-  routeCoords.forEach((coord, i) => {
-    features.push({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: coord },
-      properties: {
-        snapped: routeSnapped[i] || false,
-        vertex: true,
-        point_type: routeVertexTypes[i] || "route",
-      },
-    });
-  });
-
+  for (const leg of legs) if (leg) features.push(legFeature(leg));
+  for (const leg of legs) if (leg?.gap) features.push(gapFeature(leg));
+  verts.forEach((v, i) => features.push({
+    type: "Feature",
+    geometry: { type: "Point", coordinates: v.coord },
+    properties: { vertex: true, snapped: v.snapped, point_type: v.type, index: i },
+  }));
   source.setData({ type: "FeatureCollection", features });
 }
 
-/**
- * Update the snap-preview source to show where the next click would land.
- * @param {{ coordinates: [number, number], snapped: boolean }|null} result
- */
-function updateSnapPreview(result) {
-  const source = map.getSource("snap-preview");
+/** Cursor marker + preview leg (changes per frame). */
+function updatePreviewSource(cursor = null) {
+  const source = map.getSource("route-preview");
   if (!source) return;
-
-  if (!result) {
-    source.setData({ type: "FeatureCollection", features: [] });
-    return;
-  }
-
-  source.setData({
-    type: "FeatureCollection",
-    features: [{
+  const features = [];
+  if (previewLeg) features.push(legFeature(previewLeg, { preview: true }));
+  if (cursor) {
+    features.push({
       type: "Feature",
-      geometry: { type: "Point", coordinates: result.coordinates },
-      properties: { snapped: result.snapped },
-    }],
-  });
+      geometry: { type: "Point", coordinates: cursor.coord },
+      properties: { cursor: true, snapped: cursor.snapped },
+    });
+  }
+  source.setData({ type: "FeatureCollection", features });
 }
 
 // ---------------------------------------------------------------------------
-// Trail snapping via turf.js (pixel-based threshold)
+// Saved routes: per-leg overlay for the trip source
 // ---------------------------------------------------------------------------
 
-/**
- * Snap a coordinate to the nearest trail if within SNAP_PIXEL_RADIUS pixels.
- * @param {[number, number]} coord - [lng, lat]
- * @returns {{ coordinates: [number, number], snapped: boolean }}
- */
-function snapToTrail(coord) {
-  if (typeof turf === "undefined") {
-    return { coordinates: coord, snapped: false, trailFeature: null, indexOnLine: null };
-  }
-
-  // Project to pixels and create a bounding box for querying
-  const pixel = map.project(coord);
-  const bbox = [
-    [pixel.x - SNAP_PIXEL_RADIUS, pixel.y - SNAP_PIXEL_RADIUS],
-    [pixel.x + SNAP_PIXEL_RADIUS, pixel.y + SNAP_PIXEL_RADIUS],
-  ];
-
-  const trails = map.queryRenderedFeatures(bbox, { layers: ["trails"] });
-  if (trails.length === 0) {
-    return { coordinates: coord, snapped: false, trailFeature: null, indexOnLine: null };
-  }
-
-  const clickPoint = turf.point(coord);
-  let bestPoint = null;
-  let bestPixelDist = Infinity;
-  let bestTrail = null;
-
-  for (const trail of trails) {
-    if (trail.geometry.type !== "LineString") continue;
-    if (trail.geometry.coordinates.length < 2) continue;
-
-    const line = turf.lineString(trail.geometry.coordinates);
-    const nearest = turf.nearestPointOnLine(line, clickPoint, { units: "meters" });
-
-    // Convert the snapped point back to pixels and measure screen distance
-    const snappedPixel = map.project(nearest.geometry.coordinates);
-    const dx = snappedPixel.x - pixel.x;
-    const dy = snappedPixel.y - pixel.y;
-    const pixelDist = Math.sqrt(dx * dx + dy * dy);
-
-    if (pixelDist < bestPixelDist) {
-      bestPixelDist = pixelDist;
-      bestPoint = nearest;
-      bestTrail = trail;
-    }
-  }
-
-  if (bestPoint && bestPixelDist <= SNAP_PIXEL_RADIUS) {
-    SNAP_DEBUG && console.log("[snap] snapped to trail:", JSON.stringify({
-      originalClick: coord,
-      snappedTo: bestPoint.geometry.coordinates,
-      pixelDist: Math.round(bestPixelDist * 10) / 10,
-      indexOnLine: bestPoint.properties.index,
-      trailName: bestTrail.properties?.name || null,
-      trailId: bestTrail.id ?? bestTrail.properties?.osm_id ?? null,
-      trailCoordsLength: bestTrail.geometry.coordinates.length,
-      trailFirstCoord: bestTrail.geometry.coordinates[0],
-      trailLastCoord: bestTrail.geometry.coordinates[bestTrail.geometry.coordinates.length - 1],
-    }));
-    return {
-      coordinates: bestPoint.geometry.coordinates,
-      snapped: true,
-      trailFeature: bestTrail,
-      indexOnLine: bestPoint.properties.index,
-    };
-  }
-
-  SNAP_DEBUG && console.log("[snap] no trail in range, unsnapped:", coord);
-  return { coordinates: coord, snapped: false, trailFeature: null, indexOnLine: null };
-}
-
-// ---------------------------------------------------------------------------
-// Trail segment extraction — follow trail geometry between snapped points
-// ---------------------------------------------------------------------------
+const gapMemo = new Map(); // `${featureId}:${segmentIndex}` → [lon, lat]
 
 /**
- * Check if two trail refs represent the same trail geometry.
- * Returns "same" if identical coordinates, "related" if same trail id/name
- * but different geometry (tile-boundary split), or false if unrelated.
- *
- * NOTE: queryRenderedFeatures returns new JS objects every call, so we
- * compare by stored coordinates/id/name rather than object identity.
+ * Extra features for the "trip" map source: each saved route/spur with
+ * `segments` is split into `route_leg` lines (styled per mode) plus
+ * `route_gap` pins on straight legs. Legacy routes (no segments) render
+ * as before. "imported" (GPX) legs render as trail.
  */
-function trailsMatch(refA, refB) {
-  if (!refA || !refB) {
-    SNAP_DEBUG && console.log("[snap] trailsMatch: null ref", { refA: !!refA, refB: !!refB });
-    return false;
-  }
-
-  // Same coordinates array content = same trail geometry
-  // (fast check: compare length + first/last coords)
-  const ac = refA.trailCoords;
-  const bc = refB.trailCoords;
-  const lengthMatch = ac.length === bc.length;
-  const firstMatch = ac.length > 0 && bc.length > 0 && ac[0][0] === bc[0][0] && ac[0][1] === bc[0][1];
-  const lastMatch = ac.length > 0 && bc.length > 0 &&
-    ac[ac.length - 1][0] === bc[bc.length - 1][0] &&
-    ac[ac.length - 1][1] === bc[bc.length - 1][1];
-
-  SNAP_DEBUG && console.log("[snap] trailsMatch check:", JSON.stringify({
-    aLen: ac.length, bLen: bc.length,
-    lengthMatch, firstMatch, lastMatch,
-    aFirst: ac[0], bFirst: bc[0],
-    aLast: ac[ac.length - 1], bLast: bc[bc.length - 1],
-    aName: refA.trailName, bName: refB.trailName,
-    aId: refA.trailId, bId: refB.trailId,
-    aIndex: refA.indexOnLine, bIndex: refB.indexOnLine,
-  }));
-
-  if (lengthMatch && firstMatch && lastMatch) {
-    SNAP_DEBUG && console.log("[snap] trailsMatch → same");
-    return "same";
-  }
-
-  // Same trail id or name but different geometry = tile-boundary fragments
-  if (refA.trailId && refB.trailId && refA.trailId === refB.trailId) {
-    SNAP_DEBUG && console.log("[snap] trailsMatch → related (by id)");
-    return "related";
-  }
-  if (refA.trailName && refB.trailName && refA.trailName === refB.trailName) {
-    SNAP_DEBUG && console.log("[snap] trailsMatch → related (by name)");
-    return "related";
-  }
-  SNAP_DEBUG && console.log("[snap] trailsMatch → false (no match)");
-  return false;
-}
-
-/**
- * Extract trail coordinates between two known segment indices.
- * Uses the stored indexOnLine from nearestPointOnLine to avoid
- * the re-projection ambiguity that turf.lineSlice causes on curvy trails.
- *
- * @param {number[][]} trailCoords - full trail coordinate array
- * @param {[number,number]} startCoord - snapped start point
- * @param {number} startIdx - segment index where start was snapped
- * @param {[number,number]} endCoord - snapped end point
- * @param {number} endIdx - segment index where end was snapped
- * @returns {number[][]} coordinates from start to end along the trail
- */
-function extractTrailSlice(trailCoords, startCoord, startIdx, endCoord, endIdx) {
-  // Determine direction: forward or backward along the trail
-  const forward = startIdx <= endIdx;
-  const coords = [];
-
-  SNAP_DEBUG && console.log("[snap] extractTrailSlice input:", JSON.stringify({
-    trailCoordsLength: trailCoords.length,
-    startCoord, startIdx,
-    endCoord, endIdx,
-    forward,
-    // Show the trail vertices around the start and end indices
-    trailAtStartIdx: trailCoords[startIdx],
-    trailAtStartIdx1: trailCoords[startIdx + 1],
-    trailAtEndIdx: trailCoords[endIdx],
-    trailAtEndIdx1: trailCoords[endIdx + 1],
-  }));
-
-  if (forward) {
-    // Start with the snapped start point
-    coords.push(startCoord);
-    // Add all trail vertices between the two segments
-    for (let i = startIdx + 1; i <= endIdx; i++) {
-      coords.push(trailCoords[i]);
-    }
-    // End with the snapped end point
-    coords.push(endCoord);
-  } else {
-    // Walking backward along the trail
-    coords.push(startCoord);
-    for (let i = startIdx; i > endIdx; i--) {
-      coords.push(trailCoords[i]);
-    }
-    coords.push(endCoord);
-  }
-
-  SNAP_DEBUG && console.log("[snap] extractTrailSlice output:", JSON.stringify({
-    resultLength: coords.length,
-    first: coords[0],
-    last: coords[coords.length - 1],
-    all: coords,
-  }));
-
-  return coords;
-}
-
-/**
- * Get the trail segment between two vertices.
- * Uses index-based extraction when both points are on the same trail geometry
- * to avoid turf.lineSlice re-projection issues on curvy/switchback trails.
- * Falls back to a straight line otherwise.
- */
-function getTrailSegmentBetween(prevRef, currRef, prevCoord, currCoord) {
-  // Either endpoint unsnapped → straight line
-  if (!prevRef || !currRef) {
-    SNAP_DEBUG && console.log("[snap] unsnapped-endpoint fallback");
-    return { coords: [prevCoord, currCoord], isTrailSnapped: false };
-  }
-
-  const match = trailsMatch(prevRef, currRef);
-
-  if (match === "same") {
-    // Same trail geometry — use index-based extraction (no re-projection)
-    // This path already uses prevCoord/currCoord as endpoints, so no pinning needed
-    try {
-      const slicedCoords = extractTrailSlice(
-        prevRef.trailCoords,
-        prevCoord, prevRef.indexOnLine,
-        currCoord, currRef.indexOnLine
-      );
-      if (slicedCoords.length >= 2) {
-        const trailName = prevRef.trailName || "unnamed";
-        SNAP_DEBUG && console.log("[snap] same-trail index-slice:", trailName, slicedCoords.length, "coords, idx", prevRef.indexOnLine, "→", currRef.indexOnLine);
-        return { coords: slicedCoords, isTrailSnapped: true };
+export function buildRoutingOverlay(trip) {
+  const out = [];
+  for (const f of trip?.features || []) {
+    const p = f.properties || {};
+    if ((p.type !== "route" && p.type !== "dayhike_spur") || !Array.isArray(p.segments) || f.geometry?.type !== "LineString") continue;
+    const coords = f.geometry.coordinates;
+    const kind = p.type === "route" ? "main" : "spur";
+    p.segments.forEach((seg, k) => {
+      const [s, e] = Array.isArray(seg.coord_range) ? seg.coord_range : [0, coords.length - 1];
+      const legCoords = coords.slice(Math.max(0, s), Math.min(coords.length, e + 1));
+      if (legCoords.length < 2) return;
+      out.push({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: legCoords },
+        properties: { type: "route_leg", _id: p._id, leg_mode: drawMode(seg.mode, seg.reason || "no_path"), kind },
+      });
+      if (seg.mode === "straight" && (seg.reason || "no_path") === "no_path") {
+        const gap = savedGap(p, k, legCoords);
+        out.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: gap },
+          properties: { type: "route_gap", _id: p._id, reason: seg.reason || "no_path", length_m: seg.length_m ?? lineLength(legCoords) },
+        });
       }
-    } catch (err) {
-      console.warn("[snap] index-slice error, falling back to straight line:", err.message);
-    }
-    return { coords: [prevCoord, currCoord], isTrailSnapped: false };
+    });
   }
-
-  // For "related" and corridor-connect paths, we use prevCoord/currCoord
-  // (the stored routeCoords) as the canonical segment endpoints, replacing any
-  // re-projected coordinates that turf.lineSlice or nearestPointOnLine produces.
-  // This eliminates visual gaps between vertex dots and rendered lines at the source.
-  let result = null;
-
-  if (match === "related") {
-    // Tile-boundary: same trail id/name but different geometry fragments
-    try {
-      const merged = mergeTrailFragments(
-        { geometry: { coordinates: prevRef.trailCoords } },
-        { geometry: { coordinates: currRef.trailCoords } }
-      );
-      if (merged) {
-        SNAP_DEBUG && console.log("[snap] tile-boundary merge:", 2, "fragments");
-        const sliced = turf.lineSlice(
-          turf.point(prevCoord),
-          turf.point(currCoord),
-          merged
-        );
-        const sc = sliced.geometry.coordinates;
-        if (sc.length >= 2) {
-          // Replace re-projected endpoints with canonical vertex coords
-          sc[0] = prevCoord;
-          sc[sc.length - 1] = currCoord;
-          result = { coords: sc, isTrailSnapped: true };
-        }
-      } else {
-        SNAP_DEBUG && console.log("[snap] tile-boundary merge failed, straight line fallback");
-      }
-    } catch (err) {
-      console.warn("[snap] tile-boundary slice error, falling back to straight line:", err.message);
-    }
-  }
-
-  if (!result) {
-    // Different trails → try wider query to find connecting geometry
-    result = tryConnectTrails(prevRef, currRef, prevCoord, currCoord);
-  }
-
-  if (!result) {
-    const name1 = prevRef.trailName || "unnamed";
-    const name2 = currRef.trailName || "unnamed";
-    SNAP_DEBUG && console.log("[snap] different-trails fallback:", name1, name2);
-    return { coords: [prevCoord, currCoord], isTrailSnapped: false };
-  }
-
-  return { coords: result.coords, isTrailSnapped: result.isTrailSnapped };
+  return tripChartOverlay(trip, out); // + day info, glyphs, labels, numerals (map-trip-style.js)
 }
 
-/**
- * Merge two trail feature fragments that are part of the same logical trail
- * (split across tile boundaries). Returns a turf lineString or null.
- */
-const MERGE_GAP_TOLERANCE_METERS = 20; // max gap between trail fragment endpoints for merge
-
-function mergeTrailFragments(featA, featB) {
-  const coordsA = featA.geometry.coordinates;
-  const coordsB = featB.geometry.coordinates;
-  if (!coordsA.length || !coordsB.length) return null;
-
-  // Check which ends are closest to determine merge order
-  const aEnd = coordsA[coordsA.length - 1];
-  const bStart = coordsB[0];
-  const bEnd = coordsB[coordsB.length - 1];
-  const aStart = coordsA[0];
-
-  // Use turf.distance (meters) instead of degree-based threshold which varies with latitude
-  const distMeters = (a, b) => turf.distance(turf.point(a), turf.point(b), { units: "meters" });
-
-  // Try A→B
-  const dAEndBStart = distMeters(aEnd, bStart);
-  if (dAEndBStart <= MERGE_GAP_TOLERANCE_METERS) {
-    return turf.lineString([...coordsA, ...coordsB.slice(1)]);
+function savedGap(props, k, legCoords) {
+  const key = `${props._id}:${k}`;
+  if (gapMemo.has(key)) return gapMemo.get(key);
+  const A = legCoords[0], B = legCoords[legCoords.length - 1];
+  let gap = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+  // With the route's graph already decoded, place the pin like the drawing did.
+  const regionId = (props.routing?.graph || "").split("/")[1];
+  const g = props.segments[k].reason === "no_path" && regionId ? peekDecoded(regionId) : null;
+  if (g) {
+    const sa = g.snap(A[0], A[1], 15), sb = g.snap(B[0], B[1], 15);
+    const p = g.gapFor(A, B, sa, sb);
+    gap = [p.lon, p.lat];
+    gapMemo.set(key, gap);
   }
-  // Try A→B(reversed)
-  const dAEndBEnd = distMeters(aEnd, bEnd);
-  if (dAEndBEnd <= MERGE_GAP_TOLERANCE_METERS) {
-    return turf.lineString([...coordsA, ...[...coordsB].reverse().slice(1)]);
-  }
-  // Try B→A
-  const dBEndAStart = distMeters(bEnd, aStart);
-  if (dBEndAStart <= MERGE_GAP_TOLERANCE_METERS) {
-    return turf.lineString([...coordsB, ...coordsA.slice(1)]);
-  }
-  // Try B(reversed)→A
-  const dBStartAStart = distMeters(bStart, aStart);
-  if (dBStartAStart <= MERGE_GAP_TOLERANCE_METERS) {
-    return turf.lineString([...[...coordsB].reverse(), ...coordsA.slice(1)]);
-  }
+  return gap;
+}
 
-  const minGap = Math.min(dAEndBStart, dAEndBEnd, dBEndAStart, dBStartAStart);
-  SNAP_DEBUG && console.log("[snap] mergeTrailFragments failed: closest gap", Math.round(minGap), "m exceeds", MERGE_GAP_TOLERANCE_METERS, "m tolerance");
+const decoded = new Map(); // regionId → TrailGraph (filled as graphs load)
+function peekDecoded(regionId) {
+  if (decoded.has(regionId)) return decoded.get(regionId);
+  const info = graphInfoForRegion(findRegionById(regionId));
+  const p = peekGraph(info);
+  p?.then((g) => decoded.set(regionId, g)).catch(() => {});
   return null;
 }
 
-/**
- * Try to connect two points on different trails by querying
- * the corridor between them for shared trail geometry.
- * Returns { coords, isTrailSnapped } or null.
- */
-function tryConnectTrails(prevRef, currRef, prevCoord, currCoord) {
-  // Query all trails in the bounding box between the two points
-  const p1 = map.project(prevCoord);
-  const p2 = map.project(currCoord);
-  const minX = Math.min(p1.x, p2.x) - SNAP_PIXEL_RADIUS;
-  const minY = Math.min(p1.y, p2.y) - SNAP_PIXEL_RADIUS;
-  const maxX = Math.max(p1.x, p2.x) + SNAP_PIXEL_RADIUS;
-  const maxY = Math.max(p1.y, p2.y) + SNAP_PIXEL_RADIUS;
+// ---------------------------------------------------------------------------
+// Gap card ("fix it in OpenStreetMap") and snap tooltip (§2.6)
+// ---------------------------------------------------------------------------
 
-  const corridorTrails = map.queryRenderedFeatures(
-    [[minX, minY], [maxX, maxY]],
-    { layers: ["trails"] }
-  );
+const GAP_COPY = {
+  no_path: "These trails don’t connect in OpenStreetMap.",
+  no_graph: "Routing isn’t available here yet.",
+  cross_region: "Routes can’t cross between map regions yet.",
+};
 
-  // Look for a single trail that passes near both points
-  const prevPt = turf.point(prevCoord);
-  const currPt = turf.point(currCoord);
+const osmEditUrl = (lon, lat) => `https://www.openstreetmap.org/edit?editor=id#map=19/${lat.toFixed(6)}/${lon.toFixed(6)}`;
 
-  for (const trail of corridorTrails) {
-    if (trail.geometry.type !== "LineString" || trail.geometry.coordinates.length < 2) continue;
+function formatMiles(m) {
+  const mi = m / MI;
+  return mi < 0.1 ? `${Math.round(m * 3.28084)} ft` : `${mi.toFixed(1)} mi`;
+}
 
-    // Quick bounding-box prefilter: skip trails whose extent doesn't come near
-    // both endpoints. Avoids expensive nearestPointOnLine on irrelevant trails.
-    const tc = trail.geometry.coordinates;
-    let tMinLng = Infinity, tMaxLng = -Infinity, tMinLat = Infinity, tMaxLat = -Infinity;
-    for (let k = 0; k < tc.length; k++) {
-      if (tc[k][0] < tMinLng) tMinLng = tc[k][0];
-      if (tc[k][0] > tMaxLng) tMaxLng = tc[k][0];
-      if (tc[k][1] < tMinLat) tMinLat = tc[k][1];
-      if (tc[k][1] > tMaxLat) tMaxLat = tc[k][1];
-    }
-    // Pad by ~0.005 degrees (~500m) to account for snap radius at typical zoom
-    const pad = 0.005;
-    const prevNear = prevCoord[0] >= tMinLng - pad && prevCoord[0] <= tMaxLng + pad &&
-                     prevCoord[1] >= tMinLat - pad && prevCoord[1] <= tMaxLat + pad;
-    const currNear = currCoord[0] >= tMinLng - pad && currCoord[0] <= tMaxLng + pad &&
-                     currCoord[1] >= tMinLat - pad && currCoord[1] <= tMaxLat + pad;
-    if (!prevNear || !currNear) continue;
+/** Open the explanation card for a straight leg at its gap pin. */
+export function showGapCard({ gap, reason, length_m }) {
+  if (!gap) return;
+  gapPopup?.remove();
+  const link = reason === "no_path"
+    ? `<a class="gap-card__link" href="${escapeAttr(osmEditUrl(gap[0], gap[1]))}" target="_blank" rel="noopener">Fix it in OpenStreetMap</a>`
+    : "";
+  const html = `
+    <div class="gap-card" role="note">
+      <p class="gap-card__text">${escapeHTML(GAP_COPY[reason] || GAP_COPY.no_path)}</p>
+      <p class="gap-card__meta">Drawn straight for <span class="gap-card__num">${escapeHTML(formatMiles(length_m || 0))}</span></p>
+      ${link}
+    </div>`;
+  gapPopup = new maplibregl.Popup({ className: "gap-popup", closeButton: true, closeOnClick: true, maxWidth: "260px", offset: 10 })
+    .setLngLat(gap)
+    .setHTML(html)
+    .addTo(map);
+}
 
-    const line = turf.lineString(trail.geometry.coordinates);
-    const nearPrev = turf.nearestPointOnLine(line, prevPt, { units: "meters" });
-    const nearCurr = turf.nearestPointOnLine(line, currPt, { units: "meters" });
+function updateSnapTooltip(snap, point) {
+  const el = document.getElementById("snapTooltip");
+  if (!el) return;
+  if (!snap || !point) { hideSnapTooltip(); return; }
+  const unnamedTrail = !snap.name && (snap.highway === "path" || snap.highway === "track");
+  const text = snap.name || (unnamedTrail ? "Know this trail’s name? Add it in OpenStreetMap" : "");
+  if (!text) { hideSnapTooltip(); return; }
+  if (el.textContent !== text) el.textContent = text;
+  el.classList.toggle("snap-tooltip--unnamed", unnamedTrail);
+  el.style.transform = `translate(${Math.round(point.x + 14)}px, ${Math.round(point.y + 14)}px)`;
+  el.classList.add("visible");
+}
 
-    const prevPixel = map.project(nearPrev.geometry.coordinates);
-    const currPixel = map.project(nearCurr.geometry.coordinates);
+function hideSnapTooltip() {
+  document.getElementById("snapTooltip")?.classList.remove("visible");
+}
 
-    const distPrev = Math.sqrt((prevPixel.x - p1.x) ** 2 + (prevPixel.y - p1.y) ** 2);
-    const distCurr = Math.sqrt((currPixel.x - p2.x) ** 2 + (currPixel.y - p2.y) ** 2);
-
-    // Both endpoints must be close to this trail. Uses 2x SNAP_PIXEL_RADIUS because
-    // corridor-connect joins vertices on different trails — the connecting geometry
-    // won't be pixel-perfect at either end, so we need a wider acceptance window.
-    if (distPrev <= SNAP_PIXEL_RADIUS * 2 && distCurr <= SNAP_PIXEL_RADIUS * 2) {
-      try {
-        // Use index-based extraction with canonical vertex coords as endpoints
-        // (indices from nearestPointOnLine for the slice range, but prevCoord/currCoord
-        // as the authoritative start/end to avoid re-projection drift)
-        const slicedCoords = extractTrailSlice(
-          trail.geometry.coordinates,
-          prevCoord, nearPrev.properties.index,
-          currCoord, nearCurr.properties.index
-        );
-        if (slicedCoords.length >= 2) {
-          const trailName = trail.properties?.name || "unnamed";
-          SNAP_DEBUG && console.log("[snap] corridor-connect via:", trailName, slicedCoords.length, "coords");
-          return { coords: slicedCoords, isTrailSnapped: true };
-        }
-      } catch (_) { /* continue to next trail */ }
-    }
+/** Placed leg whose gap pin is within 10 px of a screen point, or null. */
+function gapLegAt(point) {
+  for (const leg of legs) {
+    if (!leg?.gap) continue;
+    const p = map.project(leg.gap);
+    if (Math.hypot(p.x - point.x, p.y - point.y) <= 10) return leg;
   }
-
-  // --- Two-hop junction search ---
-  // No single trail spans both vertices. Look for two trails that share a junction
-  // (a coordinate pair within MERGE_GAP_TOLERANCE_METERS of each other).
-  // Collect candidate trails near each endpoint separately.
-  const prevCandidates = []; // trails near prevCoord
-  const currCandidates = []; // trails near currCoord
-
-  for (const trail of corridorTrails) {
-    if (trail.geometry.type !== "LineString" || trail.geometry.coordinates.length < 2) continue;
-
-    const line = turf.lineString(trail.geometry.coordinates);
-    const nearPrev = turf.nearestPointOnLine(line, prevPt, { units: "meters" });
-    const nearCurr = turf.nearestPointOnLine(line, currPt, { units: "meters" });
-
-    const prevPixel = map.project(nearPrev.geometry.coordinates);
-    const currPixel = map.project(nearCurr.geometry.coordinates);
-
-    const dPrev = Math.sqrt((prevPixel.x - p1.x) ** 2 + (prevPixel.y - p1.y) ** 2);
-    const dCurr = Math.sqrt((currPixel.x - p2.x) ** 2 + (currPixel.y - p2.y) ** 2);
-
-    if (dPrev <= SNAP_PIXEL_RADIUS * 2) {
-      prevCandidates.push({ trail, nearPoint: nearPrev });
-    }
-    if (dCurr <= SNAP_PIXEL_RADIUS * 2) {
-      currCandidates.push({ trail, nearPoint: nearCurr });
-    }
-  }
-
-  for (const pc of prevCandidates) {
-    for (const cc of currCandidates) {
-      // Skip if same trail geometry (already tried in single-trail pass)
-      if (pc.trail === cc.trail) continue;
-
-      // Find a junction: any coordinate on trail A within tolerance of any coordinate on trail B
-      const coordsA = pc.trail.geometry.coordinates;
-      const coordsB = cc.trail.geometry.coordinates;
-
-      for (let ai = 0; ai < coordsA.length; ai++) {
-        for (let bi = 0; bi < coordsB.length; bi++) {
-          const gapM = turf.distance(turf.point(coordsA[ai]), turf.point(coordsB[bi]), { units: "meters" });
-          if (gapM > MERGE_GAP_TOLERANCE_METERS) continue;
-
-          // Found a junction — stitch: prevCoord→junction on trail A, junction→currCoord on trail B
-          try {
-            const junctionCoord = coordsA[ai]; // use trail A's coordinate as the junction point
-            const legA = extractTrailSlice(
-              coordsA,
-              prevCoord, pc.nearPoint.properties.index,
-              junctionCoord, ai
-            );
-            const legB = extractTrailSlice(
-              coordsB,
-              junctionCoord, bi,
-              currCoord, cc.nearPoint.properties.index
-            );
-
-            if (legA.length >= 2 && legB.length >= 2) {
-              // Concatenate, deduplicating the shared junction coordinate
-              const stitched = [...legA, ...legB.slice(1)];
-              const nameA = pc.trail.properties?.name || "unnamed";
-              const nameB = cc.trail.properties?.name || "unnamed";
-              SNAP_DEBUG && console.log("[snap] two-hop connect via:", nameA, "→", nameB,
-                "at junction", JSON.stringify(junctionCoord),
-                stitched.length, "coords");
-              return { coords: stitched, isTrailSnapped: true };
-            }
-          } catch (_) { /* continue searching */ }
-        }
-      }
-    }
-  }
-
   return null;
 }
 
-/**
- * Find the index of the last main-route vertex (non-dayhike) at or before upToIndex.
- */
-function findLastMainRouteVertexIndex(upToIndex) {
-  for (let i = upToIndex; i >= 0; i--) {
-    if (routeVertexTypes[i] !== "dayhike") return i;
-  }
-  return 0;
+let unroutedHintShown = false;
+
+/** "Trail routing covers Zion, the Maze and the Needles. ..." built from the catalog. */
+function unroutedHint() {
+  const names = getCatalogRegions()
+    .filter((r) => r.type === "area" && r.available !== false && graphInfoForRegion(r))
+    .map((r) => {
+      const short = r.name.replace(/ National Park$/, "").replace(/ District$/, "");
+      return short !== r.name && / District$/.test(r.name) ? `the ${short}` : short;
+    });
+  if (!names.length) return "";
+  names.sort((a, b) => (a.startsWith("the ") ? 1 : 0) - (b.startsWith("the ") ? 1 : 0));
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  return `Trail routing covers ${list}. Here, lines are drawn as you click.`;
 }
 
-/**
- * Build the full main route coordinate array from segments.
- * Concatenates segment coords, deduplicating shared endpoints.
- */
-function buildMainRouteDisplayCoords() {
-  if (routeSegments.length === 0) {
-    // Only one vertex placed, or no segments yet
-    const mainVertices = routeCoords.filter((_, i) => routeVertexTypes[i] !== "dayhike");
-    return mainVertices.length > 0 ? [mainVertices[0]] : [];
-  }
+let flashUntil = 0;
+let flashTimer = 0;
+/** A one-off message in the hint slot; the state hint returns after it. */
+function flashDrawingHint(text, ms = 6000) {
+  flashUntil = performance.now() + ms;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { flashUntil = 0; updateDrawingHint(); }, ms);
+  showDrawingHint(text);
+}
 
-  const coords = [...routeSegments[0].coords];
-  for (let i = 1; i < routeSegments.length; i++) {
-    const segCoords = routeSegments[i].coords;
-    // Skip first coord if it's a duplicate of the previous segment's last coord.
-    // Use a small tolerance (1e-10 degrees) rather than exact equality to guard
-    // against floating point drift between segment endpoints.
-    let startJ = 1;
-    if (segCoords.length > 0 && coords.length > 0) {
-      const last = coords[coords.length - 1];
-      const first = segCoords[0];
-      const dLng = Math.abs(last[0] - first[0]);
-      const dLat = Math.abs(last[1] - first[1]);
-      if (dLng > 1e-10 || dLat > 1e-10) {
-        // Not a duplicate — include the first coord
-        startJ = 0;
-        if (dLng < 1e-6 && dLat < 1e-6) {
-          console.warn("[snap] buildMainRouteDisplayCoords: near-duplicate detected between segment", i - 1, "end and segment", i, "start, drift:", dLng.toExponential(2), dLat.toExponential(2));
-        }
-      }
-    }
-    for (let j = startJ; j < segCoords.length; j++) {
-      coords.push(segCoords[j]);
-    }
+/** One-line state hint at the bottom of the map while drawing. */
+function updateDrawingHint() {
+  if (!isDrawingRoute) { hideDrawingHint(); return; }
+  if (performance.now() < flashUntil) return;
+  if (ctx?.status === "loading") return showDrawingHint("Loading trails for routing…", "loading");
+  if (ctx?.status === "error") return showDrawingHint("Couldn’t load trails for routing. Legs are drawn straight.");
+  if (ctx?.status === "none") {
+    // Once per page load, quietly; after that unrouted areas just draw lines.
+    const text = !unroutedHintShown && unroutedHint();
+    if (text) { unroutedHintShown = true; return flashDrawingHint(text, 8000); }
+    return hideDrawingHint();
   }
-
-  return coords;
+  if (ctx?.graph && map.getZoom() < SNAP_MIN_ZOOM) return showDrawingHint("Zoom in to snap to trails");
+  hideDrawingHint();
 }
 
 // ---------------------------------------------------------------------------
-// Distance computation
-// ---------------------------------------------------------------------------
-
-function computeMainRouteDistance() {
-  let total = 0;
-  for (const seg of routeSegments) {
-    if (seg.coords.length >= 2) {
-      total += turf.length(turf.lineString(seg.coords), { units: "miles" });
-    }
-  }
-  return total;
-}
-
-function computeDayhikeDistance() {
-  let total = 0;
-  for (const spur of routeDayhikeSegments) {
-    // Dayhikes are out-and-back, so double the spur distance
-    total += spur.distance * 2;
-  }
-  return total;
-}
-
-// ---------------------------------------------------------------------------
-// Drawing progress notification (for sidebar live preview)
+// Distance summary for the sidebar preview
 // ---------------------------------------------------------------------------
 
 function notifyDrawingProgress() {
+  let main = 0, spur = 0, off = 0;
+  for (const leg of legs) {
+    if (!leg) continue;
+    if (leg.kind === "main") main += leg.length_m; else spur += 2 * leg.length_m;
+    if (leg.mode === "straight" && leg.reason === "no_path") off += leg.length_m;
+  }
   updateDrawingPreview({
-    vertexCount: routeCoords.length,
-    mainDistanceMi: computeMainRouteDistance(),
-    dayhikeDistanceMi: computeDayhikeDistance(),
-    vertexTypes: [...routeVertexTypes],
+    vertexCount: verts.length,
+    mainDistanceMi: main / MI,
+    dayhikeDistanceMi: spur / MI,
+    offTrailMi: off / MI,
+    vertexTypes: verts.map((v) => v.type),
   });
 }
 
@@ -987,8 +861,7 @@ export function exitDeleteMode() {
 
 export function handleDeleteClick(e) {
   if (!TripManager.currentTrip) return;
-  const tripLayers = ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"];
-  const features = map.queryRenderedFeatures(e.point, { layers: tripLayers });
+  const features = map.queryRenderedFeatures(e.point, { layers: TRIP_POINT_LAYERS });
   if (!features.length) return;
   const clickedId = features[0].properties._id;
   const idx = TripManager.currentTrip.features.findIndex(
@@ -1003,10 +876,11 @@ function setActiveToolBtn(id) {
   });
 }
 
-function showDrawingHint(text) {
+function showDrawingHint(text, variant = "") {
   const el = document.getElementById("drawingHint");
   if (el) {
     el.textContent = text;
+    el.classList.toggle("drawing-hint--loading", variant === "loading");
     el.classList.add("visible");
   }
 }
@@ -1061,7 +935,8 @@ export function initPointTypeSelector() {
 }
 
 // ---------------------------------------------------------------------------
-// Keyboard hotkeys for point type switching (1-4)
+// Keyboard: 1-4 switch point type, Backspace / Ctrl-Z / Cmd-Z undo
+// (Esc cancel lives in trip-panel.js)
 // ---------------------------------------------------------------------------
 
 function handleRouteKeyDown(e) {
@@ -1069,38 +944,58 @@ function handleRouteKeyDown(e) {
 
   // Ignore if user is typing in a form input
   const tag = e.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
+
+  const isUndo = (e.key === "Backspace" && !e.metaKey && !e.ctrlKey && !e.altKey) ||
+    ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z");
+  if (isUndo) {
+    e.preventDefault();
+    enqueue(undoLastVertex);
+    return;
+  }
 
   const keyMap = { "1": "route", "2": "camp", "3": "dayhike", "4": "rest" };
   const pointType = keyMap[e.key];
   if (pointType) {
     e.preventDefault();
     setActivePointType(pointType);
+    schedulePreview(); // dayhike previews a spur from the last main point
   }
 }
-
-// ---------------------------------------------------------------------------
-// Trip date range helper
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Elevation profile — Open-Meteo API
 // ---------------------------------------------------------------------------
 
 /**
- * Subsample a coordinate array to at most maxPoints evenly-spaced entries.
+ * Sample a line at even distance spacing (not by vertex index, which
+ * under-samples switchbacks and over-samples straight legs).
  * @param {number[][]} coords - [lng, lat] pairs
- * @param {number} maxPoints
+ * @param {number} maxPoints - at most this many samples, endpoints included
+ * @param {number} minSpacingM - don't sample more densely than this
  * @returns {number[][]}
  */
-function subsampleCoords(coords, maxPoints) {
-  if (coords.length <= maxPoints) return coords;
-  const result = [];
-  const step = (coords.length - 1) / (maxPoints - 1);
-  for (let i = 0; i < maxPoints; i++) {
-    result.push(coords[Math.round(i * step)]);
+export function sampleByDistance(coords, maxPoints = 100, minSpacingM = 25) {
+  if (coords.length < 2) return coords.slice();
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++) {
+    cum.push(cum[i - 1] + haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]));
   }
-  return result;
+  const total = cum[cum.length - 1];
+  const n = Math.max(2, Math.min(maxPoints, Math.floor(total / minSpacingM) + 1));
+  const out = [];
+  let j = 0;
+  for (let k = 0; k < n; k++) {
+    const d = (total * k) / (n - 1);
+    while (j < cum.length - 2 && cum[j + 1] < d) j++;
+    const span = cum[j + 1] - cum[j];
+    const t = span > 0 ? Math.min(1, Math.max(0, (d - cum[j]) / span)) : 0;
+    out.push([
+      coords[j][0] + t * (coords[j + 1][0] - coords[j][0]),
+      coords[j][1] + t * (coords[j + 1][1] - coords[j][1]),
+    ]);
+  }
+  return out;
 }
 
 /**
@@ -1111,10 +1006,10 @@ function subsampleCoords(coords, maxPoints) {
  * @param {number[][]} coords - [lng, lat] display coords of the route
  * @param {string} featureId - the feature's _id property
  */
-async function fetchElevationProfile(coords, featureId) {
-  const sampled = subsampleCoords(coords, 100);
-  const lats = sampled.map(c => c[1]).join(",");
-  const lons = sampled.map(c => c[0]).join(",");
+export async function fetchElevationProfile(coords, featureId) {
+  const sampled = sampleByDistance(coords, 100);
+  const lats = sampled.map(c => c[1].toFixed(6)).join(",");
+  const lons = sampled.map(c => c[0].toFixed(6)).join(",");
 
   try {
     const res = await fetch(

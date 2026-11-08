@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta name="description" content="OutHere — offline hiking map viewer for trails, contours, and points of interest">
-  <title>OutHere — Hiking Map</title>
+  <meta name="description" content="Booot: plan multi-day backpacking trips on an open topo map of trails, contours and water, then export them for your phone.">
+  <title>Booot — Hiking map</title>
 
   <!-- Boot emoji favicon (matches booot-landing) -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🥾</text></svg>">
@@ -19,13 +19,17 @@
   <!-- Turf.js — geospatial utilities for trail snapping -->
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 
-  <!-- Google Fonts: Playfair Display, DM Sans, Source Serif 4, IBM Plex Mono -->
+  <!-- Google Fonts: Playfair Display (trip titles), DM Sans (UI), IBM Plex Mono (numbers) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,400&family=DM+Sans:wght@500;600;700&family=Source+Serif+4:ital,wght@0,400;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <!-- App styles -->
+  <!-- Booot design system (tokens -> motion -> base components), then app styles -->
+  <link rel="stylesheet" href="design/tokens.css">
+  <link rel="stylesheet" href="design/motion.css">
+  <link rel="stylesheet" href="design/components.css">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="design/itinerary.css">
 </head>
 <body>
 
@@ -56,7 +60,10 @@
   </div>
 
   <!-- Drawing hint overlay -->
-  <div class="drawing-hint" id="drawingHint"></div>
+  <div class="drawing-hint" id="drawingHint" role="status" aria-live="polite"></div>
+
+  <!-- Name of the trail under the cursor while drawing -->
+  <div class="snap-tooltip" id="snapTooltip" aria-hidden="true"></div>
 
   <!-- Map container -->
   <div id="map"></div>
@@ -83,17 +90,17 @@
   <div class="trips-home-overlay" id="tripsHomeOverlay" hidden>
     <div class="trips-home" role="dialog" aria-modal="true" aria-labelledby="tripsHomeTitle">
       <div class="trips-home-header">
-        <span class="nps-badge">TRIP JOURNAL</span>
+        <h2 class="trips-home-title" id="tripsHomeTitle">Your trips</h2>
         <button class="modal-close-btn" id="tripsHomeCloseBtn" aria-label="Close trips">&#10005;</button>
       </div>
-      <h2 class="trips-home-title" id="tripsHomeTitle">Your Trips</h2>
       <p class="trips-home-subtitle">Open a trip to keep planning, or start something new.</p>
       <div class="trips-home-actions">
-        <button class="trips-home-new-btn" id="tripsHomeNewBtn" type="button">+ New trip</button>
-        <label class="trips-home-import-btn">
+        <button class="btn btn--primary" id="tripsHomeNewBtn" type="button">New trip</button>
+        <label class="btn btn--quiet">
           Import .geojson
           <input type="file" id="tripsHomeImportInput" accept=".geojson,.json" hidden />
         </label>
+        <button class="btn btn--ghost" id="tripsHomeDemoBtn" type="button">See a demo trip</button>
       </div>
       <div class="trips-grid" id="tripsGrid">
         <!-- Populated by trips-home.js -->
@@ -104,18 +111,29 @@
   <!-- Trip planning panel (right-side modal) -->
   <aside class="trip-panel" id="tripPanel">
 
-    <!-- Modal header: NPS badge, close button, trip title, metadata chips -->
+    <!-- Demo trip notice (only while the bundled demo is open; see TripManager.openDemo) -->
+    <div class="demo-banner" id="demoBanner" hidden>
+      <p class="demo-banner-text"><strong>Demo trip.</strong> Vincent's five days in the Maze, May 2026. Changes here aren't saved.</p>
+      <div class="demo-banner-actions">
+        <button class="btn btn--quiet btn--sm" id="demoOwnBtn" type="button">Make it your own</button>
+        <button class="btn btn--ghost btn--sm" id="demoCloseBtn" type="button">Close</button>
+      </div>
+    </div>
+
+    <!-- Modal header: trip title + close button, metadata chips -->
     <div class="modal-header">
       <div class="modal-header-top">
-        <span class="nps-badge">TRIP PLANNER</span>
+        <h1 class="trip-title-input" id="tripTitle" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="Trip name" data-placeholder="Trip name">Untitled Trip</h1>
         <button class="modal-close-btn" id="sidebarCollapseBtn" aria-label="Close planning panel">&#10005;</button>
       </div>
-      <input class="trip-title-input" id="tripTitle" type="text" value="Untitled Trip" placeholder="Trip name" />
       <div class="trip-meta-chips" id="tripMetaChips"></div>
     </div>
 
-    <!-- Unified notebook panel (no tabs — days are collapsible accordion sections) -->
+    <!-- Notebook: one scroll area. The sketchbook profile sticks to its top
+         and the days scroll underneath it (itinerary-panel.js). -->
     <div class="notebook-panel" id="notebookPanel">
+
+      <figure class="itin-profile" id="itineraryProfile" aria-label="Elevation profile of the trip, divided into days"></figure>
 
       <!-- Overview section (collapsible, replaces top-level readme) -->
       <div class="notebook-overview" id="overviewSection">
@@ -135,21 +153,25 @@
 
       <!-- Unassigned feature pool -->
       <div class="unassigned-pool" id="unassignedPool">
-        <div class="pool-label">Unassigned</div>
+        <div class="pool-head">
+          <div class="pool-label">Unassigned</div>
+          <button class="btn btn--ghost btn--sm" id="assignByDateBtn" hidden>Assign by date</button>
+        </div>
         <div class="pool-chips" id="unassignedChips">
           <!-- Populated by trip-panel.js -->
         </div>
       </div>
 
-      <!-- Day accordion sections -->
-      <div id="daySections">
+      <!-- Days: one continuous story -->
+      <div class="itin-story" id="daySections">
         <!-- Populated by trip-panel.js -->
       </div>
 
       <!-- Add Day button -->
       <div class="add-day-row">
-        <button class="add-day-btn" id="addDayBtn">+ Add day</button>
+        <button class="btn btn--ghost btn--sm" id="addDayBtn">Add day</button>
       </div>
+      <div class="itin-tail" id="itineraryTail" aria-hidden="true"></div>
 
     </div>
 
@@ -157,27 +179,33 @@
 
     <!-- Action buttons -->
     <div class="trip-actions-section">
-      <button class="trip-action-btn" id="downloadTripBtn">Download GeoJSON</button>
-      <button class="trip-action-btn" id="exportMarkdownBtn">Export Notes (.md)</button>
-      <label class="trip-action-btn upload-label">
-        Load Trip
-        <input type="file" id="loadTripInput" accept=".geojson,.json" hidden />
-      </label>
-      <button class="trip-action-btn trip-action-danger" id="newTripBtn">New Trip</button>
+      <p class="import-note" id="gpxImportNote" role="status" hidden></p>
+      <button class="btn btn--primary btn--block" id="downloadTripBtn">Download trip (.geojson)</button>
+      <div class="trip-actions-secondary">
+        <button class="btn btn--ghost btn--sm" id="exportMarkdownBtn">Export notes (.md)</button>
+        <label class="btn btn--ghost btn--sm upload-label">
+          Load trip
+          <input type="file" id="loadTripInput" accept=".geojson,.json" hidden />
+        </label>
+        <label class="btn btn--ghost btn--sm upload-label">
+          Import GPX
+          <input type="file" id="importGpxInput" accept=".gpx,application/gpx+xml" multiple hidden />
+        </label>
+        <button class="btn btn--ghost btn--sm" id="newTripBtn">New trip</button>
+      </div>
     </div>
   </aside>
 
   <!-- Route drawing instructions (floating overlay, visible during drawing) -->
   <div class="route-instructions" id="routeInstructions">
     <div class="route-instructions-inner">
-      <p class="route-instructions-title">Drawing Route</p>
+      <p class="route-instructions-title">Drawing a route</p>
       <ul class="route-instructions-steps">
-        <li><strong>Click</strong> to place route points</li>
+        <li><strong>Click</strong> near a trail; the route follows trails between points</li>
         <li>Press <strong>1-4</strong> to switch: Route, Camp, Dayhike, Rest</li>
-        <li>Points <strong>snap to trails</strong> when nearby</li>
-        <li><strong>Double-click</strong> to finish the route</li>
-        <li>Hold <strong>Shift</strong> to disable snapping</li>
-        <li>Press <strong>Esc</strong> to cancel</li>
+        <li><strong>Backspace</strong> removes the last point</li>
+        <li><strong>Shift-click</strong> for a straight leg</li>
+        <li><strong>Double-click</strong> to finish, <strong>Esc</strong> to cancel</li>
       </ul>
     </div>
   </div>
@@ -202,9 +230,6 @@
   <!-- Onboarding modal — shown when creating a new trip -->
   <div class="onboarding-overlay" id="onboardingOverlay" hidden>
     <div class="onboarding-modal" id="onboardingModal" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
-      <div class="onboarding-header">
-        <span class="nps-badge">NEW TRIP</span>
-      </div>
       <h2 class="onboarding-title" id="onboardingTitle">Plan a trip</h2>
       <p class="onboarding-subtitle">Set up the basics — you can edit everything later.</p>
       <div class="onboarding-fields">
@@ -227,7 +252,8 @@
           </div>
         </div>
       </div>
-      <button class="onboarding-submit" id="onboardingSubmit">Start planning</button>
+      <button class="btn btn--primary btn--block onboarding-submit" id="onboardingSubmit">Start planning</button>
+      <button class="btn btn--ghost btn--block onboarding-demo" id="onboardingDemoBtn" type="button">Or look at a finished trip first</button>
     </div>
   </div>
 
@@ -235,5 +261,7 @@
        planning.js, and trip-panel.js. CDN libraries above stay classic
        scripts and are referenced as globals (maplibregl, pmtiles, turf). -->
   <script type="module" src="app.js"></script>
+  <!-- Motion verbs (confirm on exports); design/motion.js helpers -->
+  <script type="module" src="ui-motion.js"></script>
 </body>
 </html>

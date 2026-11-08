@@ -15,10 +15,14 @@ import {
   handleDeleteClick,
   handleMapClickForRoute,
   handleMapDblClickForRoute,
+  showGapCard,
+  routingDebug,
 } from "./planning.js";
 import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
-import { getInitialRegion, regionMaxBounds, initRegionPicker } from "./region-picker.js";
-import { initTripsHome } from "./trips-home.js";
+import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
+import { graphInfoForRegion } from "./routing.js";
+import { initTripsHome, loadDemoTripFromURL } from "./trips-home.js";
+import { addTripChartLayers, drawingLegLayers, gapPinLayers, vertexPaint, initTripChart, TRIP_POINT_LAYERS, tripChartDebug } from "./map-trip-style.js";
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -246,7 +250,7 @@ export const map = new maplibregl.Map({
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
-window.__outhere = { map, TripManager };
+window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -319,228 +323,104 @@ function addTripLayers() {
   if (map.getSource("trip")) return; // already present (initial load path)
 
   // -------------------------------------------------------------------
-  // Trip planning GeoJSON source + layers
+  // Trip planning GeoJSON source + layers (drawn in map-trip-style.js:
+  // inked route, pencil day bands, glyphs, day numerals). `fid` ids let
+  // the active day highlight use feature-state.
   // -------------------------------------------------------------------
   map.addSource("trip", {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
+    promoteId: "fid",
   });
-
-  // Trip routes — bold orange dashed line
-  map.addLayer({
-    id: "trip-routes",
-    type: "line",
-    source: "trip",
-    filter: ["==", ["get", "type"], "route"],
-    paint: {
-      "line-color": "#e85d04",
-      "line-width": 3.5,
-      "line-dasharray": [3, 2],
-    },
-  });
-
-  // Trip dayhike spurs — amber dashed line
-  map.addLayer({
-    id: "trip-dayhike-spurs",
-    type: "line",
-    source: "trip",
-    filter: ["==", ["get", "type"], "dayhike_spur"],
-    paint: {
-      "line-color": "#d97706",
-      "line-width": 2.5,
-      "line-dasharray": [2, 2],
-      "line-opacity": 0.7,
-    },
-  });
-
-  // Trip camps — green circles
-  map.addLayer({
-    id: "trip-camps",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "camp"],
-    paint: {
-      "circle-radius": 9,
-      "circle-color": "#2d6a4f",
-      "circle-stroke-width": 2.5,
-      "circle-stroke-color": "#fff",
-    },
-  });
-
-  // Trip dayhike points — amber circles
-  map.addLayer({
-    id: "trip-dayhikes",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "dayhike"],
-    paint: {
-      "circle-radius": 7,
-      "circle-color": "#d97706",
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
-    },
-  });
-
-  // Trip rest points — purple circles
-  map.addLayer({
-    id: "trip-rest",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "rest"],
-    paint: {
-      "circle-radius": 7,
-      "circle-color": "#7c3aed",
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
-    },
-  });
-
-  // Legacy waypoints — colored by subtype (backward compat)
-  map.addLayer({
-    id: "trip-waypoints",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "waypoint"],
-    paint: {
-      "circle-radius": 7,
-      "circle-color": [
-        "match",
-        ["get", "subtype"],
-        "water", "#3b82f6",
-        "hazard", "#ef4444",
-        "scenic", "#eab308",
-        "resupply", "#8b5cf6",
-        "#6b7280",
-      ],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
-    },
-  });
-
-  // Trip feature labels
-  map.addLayer({
-    id: "trip-labels",
-    type: "symbol",
-    source: "trip",
-    filter: ["all", ["has", "name"], ["!=", ["get", "name"], ""]],
-    layout: {
-      "text-field": ["get", "name"],
-      "text-size": 12,
-      "text-offset": [0, 1.5],
-      "text-anchor": "top",
-      "text-optional": true,
-    },
-    paint: {
-      "text-color": "#1f2937",
-      "text-halo-color": "#ffffff",
-      "text-halo-width": 1.5,
-    },
-  });
-
-  // Camp night number labels
-  map.addLayer({
-    id: "trip-camp-numbers",
-    type: "symbol",
-    source: "trip",
-    filter: ["==", ["get", "type"], "camp"],
-    layout: {
-      "text-field": ["to-string", ["get", "night_number"]],
-      "text-size": 11,
-      "text-font": ["Open Sans Bold"],
-      "text-allow-overlap": true,
-    },
-    paint: {
-      "text-color": "#ffffff",
-    },
-  });
+  addTripChartLayers();
 
   // -------------------------------------------------------------------
-  // Route drawing in-progress visualization (for custom snap-to-trail)
+  // Route drawing: placed legs + vertices (per click) and the live
+  // preview leg + cursor marker (per frame) in separate sources, so a
+  // long route isn't re-tiled on every mouse move.
   // -------------------------------------------------------------------
-  map.addSource("route-drawing", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
+  map.addSource("route-drawing", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addSource("route-preview", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
-  // Main route drawing line (excludes dayhike spurs)
-  map.addLayer({
-    id: "route-drawing-line",
-    type: "line",
-    source: "route-drawing",
-    filter: ["all",
-      ["==", ["geometry-type"], "LineString"],
-      ["any", ["!", ["has", "segment_type"]], ["!=", ["get", "segment_type"], "dayhike"]],
-    ],
-    paint: {
-      "line-color": "#e85d04",
-      "line-width": 3,
-      "line-dasharray": [2, 2],
-      "line-opacity": 0.7,
-    },
-  });
+  const isLine = ["==", ["geometry-type"], "LineString"];
+  for (const layer of drawingLegLayers("route-preview", "route-preview", isLine, { preview: true })) map.addLayer(layer);
+  for (const layer of drawingLegLayers("route-drawing", "route-drawing", isLine)) map.addLayer(layer);
+  for (const layer of gapPinLayers("route-drawing-gaps", "route-drawing", ["==", ["get", "gap"], true])) map.addLayer(layer);
 
-  // Dayhike spur drawing line
-  map.addLayer({
-    id: "route-drawing-dayhike-line",
-    type: "line",
-    source: "route-drawing",
-    filter: ["all",
-      ["==", ["geometry-type"], "LineString"],
-      ["==", ["get", "segment_type"], "dayhike"],
-    ],
-    paint: {
-      "line-color": "#d97706",
-      "line-width": 2,
-      "line-dasharray": [1, 2],
-      "line-opacity": 0.6,
-    },
-  });
-
+  const paint = vertexPaint();
   map.addLayer({
     id: "route-drawing-vertices",
     type: "circle",
     source: "route-drawing",
-    filter: ["==", ["geometry-type"], "Point"],
-    paint: {
-      "circle-radius": [
-        "case",
-        ["==", ["get", "point_type"], "camp"], 8,
-        ["==", ["get", "point_type"], "dayhike"], 7,
-        ["==", ["get", "point_type"], "rest"], 7,
-        6,
-      ],
-      "circle-color": [
-        "case",
-        ["==", ["get", "point_type"], "camp"], "#2d6a4f",
-        ["==", ["get", "point_type"], "dayhike"], "#d97706",
-        ["==", ["get", "point_type"], "rest"], "#7c3aed",
-        ["get", "snapped"], "#3b82f6",
-        "#e85d04",
-      ],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
-    },
+    filter: ["==", ["get", "vertex"], true],
+    paint: paint.vertices,
   });
 
-  // Snap preview — ghost marker showing where next click will land
-  map.addSource("snap-preview", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
+  // Cursor marker: ink dot on a trail, hollow ring where the click won't snap.
   map.addLayer({
-    id: "snap-preview-marker",
+    id: "route-preview-cursor",
     type: "circle",
-    source: "snap-preview",
-    paint: {
-      "circle-radius": 8,
-      "circle-color": ["case", ["get", "snapped"], "#3b82f6", "#e85d04"],
-      "circle-opacity": 0.6,
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
-      "circle-stroke-opacity": 0.8,
-    },
+    source: "route-preview",
+    filter: ["==", ["get", "cursor"], true],
+    paint: paint.cursor,
   });
+
+  addRoutedAreasLayers(resolveTokenColors());
+}
+
+/**
+ * "Routed areas": catalog regions that publish a routing graph, outlined and
+ * lightly tinted with --accent, named in small type. Hidden until the Layers
+ * panel switches it on. Added under the trip layers so it never covers a route.
+ */
+function addRoutedAreasLayers(C) {
+  if (map.getSource("routed-areas")) return;
+  map.addSource("routed-areas", { type: "geojson", data: routedAreasData() });
+  const hidden = { visibility: "none" };
+  const before = "trip-chart-casing";
+  map.addLayer({
+    id: "routed-areas-fill", type: "fill", source: "routed-areas", layout: hidden,
+    filter: ["==", ["geometry-type"], "Polygon"],
+    paint: { "fill-color": C.accent, "fill-opacity": 0.07 },
+  }, before);
+  map.addLayer({
+    id: "routed-areas-line", type: "line", source: "routed-areas",
+    filter: ["==", ["geometry-type"], "Polygon"],
+    layout: { ...hidden, "line-join": "round" },
+    paint: { "line-color": C.accent, "line-width": 1.5, "line-opacity": 0.7, "line-dasharray": [4, 2] },
+  }, before);
+  map.addLayer({
+    id: "routed-areas-label", type: "symbol", source: "routed-areas",
+    filter: ["==", ["geometry-type"], "Point"],
+    layout: { ...hidden, "text-field": ["get", "name"], "text-size": 12, "text-anchor": "top-left", "text-offset": [0.4, 0.4], "text-allow-overlap": true },
+    paint: { "text-color": C.accent, "text-halo-color": C.surfaceRaised, "text-halo-width": 1.5 },
+  }, before);
+}
+
+function routedAreasData() {
+  const features = [];
+  for (const r of getCatalogRegions()) {
+    if (!r.bounds || !graphInfoForRegion(r)) continue;
+    const { west: w, south: s, east: e, north: n } = r.bounds;
+    features.push(
+      { type: "Feature", geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }, properties: { name: r.name } },
+      // Label hangs from the top-left corner (Maze and Needles overlap, so not the center).
+      { type: "Feature", geometry: { type: "Point", coordinates: [w, n] }, properties: { name: r.name } },
+    );
+  }
+  return { type: "FeatureCollection", features };
+}
+
+document.addEventListener("outhere:catalog", () => map.getSource("routed-areas")?.setData(routedAreasData()));
+
+/** Resolve the design tokens the map needs into concrete colors. */
+function resolveTokenColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const t = (name) => cs.getPropertyValue(name).trim();
+  return {
+    accent: t("--accent"),
+    surfaceRaised: t("--surface-raised"),
+  };
 }
 
 /**
@@ -559,6 +439,7 @@ export function restoreRuntimeLayers() {
 map.on("load", () => {
   loadingEl.classList.add("hidden");
 
+  initTripChart();
   addTripLayers();
 
   // -------------------------------------------------------------------
@@ -575,8 +456,9 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   // Region picker (async catalog fetch) + trips home view
   // -------------------------------------------------------------------
-  initRegionPicker();
+  const regionsReady = initRegionPicker();
   initTripsHome();
+  loadDemoTripFromURL(regionsReady); // dev only: ?demo=maze
 
   // -------------------------------------------------------------------
   // Click handlers for route drawing + trip features
@@ -598,8 +480,17 @@ map.on("load", () => {
     }
   });
 
+  // Gap pins on saved routes explain the straight leg (and link to the OSM fix).
+  map.on("click", "trip-gap-pins", (e) => {
+    if (isDrawingRoute || isDeleteMode) return;
+    const f = e.features[0];
+    showGapCard({ gap: f.geometry.coordinates, reason: f.properties.reason, length_m: f.properties.length_m });
+  });
+  map.on("mouseenter", "trip-gap-pins", () => { if (!isDrawingRoute && !isDeleteMode) map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "trip-gap-pins", () => { if (!isDrawingRoute && !isDeleteMode) map.getCanvas().style.cursor = ""; });
+
   // Trip feature click — show popup (skip during route drawing)
-  for (const layerId of ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"]) {
+  for (const layerId of TRIP_POINT_LAYERS) {
     map.on("click", layerId, (e) => {
       if (isDrawingRoute) return;
       showTripFeaturePopup(e);
@@ -655,6 +546,8 @@ function applyLayerToggleState() {
     const checkbox = layerGroupCheckboxes.get(group.id);
     if (checkbox && !checkbox.checked) {
       setLayerGroupVisibility(group, false);
+    } else if (checkbox && group.id === "routed-areas") {
+      setLayerGroupVisibility(group, true); // runtime layers start hidden
     }
   }
 }
@@ -769,11 +662,11 @@ map.on("click", "pois", (e) => {
   // Build popup content
   let html = `<strong>${escapeHTML(props.name || "Unnamed")}</strong>`;
   if (props.poi_category) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.poi_category)}</span>`;
+    html += `<br><span class="popup-meta">${escapeHTML(props.poi_category)}</span>`;
   }
   if (props.elevation) {
     const ft = Math.round(props.elevation * 3.28084);
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${ft} ft</span>`;
+    html += `<br><span class="popup-data">${ft} ft</span>`;
   }
 
   new maplibregl.Popup({ offset: 8, maxWidth: "240px" })
@@ -809,17 +702,17 @@ function showTripFeaturePopup(e) {
 
   let html = `<strong>${escapeHTML(props.name || typeLabel)}</strong>`;
   if (props.date) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.date)}</span>`;
+    html += `<br><span class="popup-data">${escapeHTML(props.date)}</span>`;
   }
   if (type === "camp") {
     let detail = "";
     if (props.water_nearby) detail += "Water nearby";
-    if (detail) html += `<br><span style="color:#6b7280;font-size:0.85em">${detail}</span>`;
+    if (detail) html += `<br><span class="popup-meta">${detail}</span>`;
   } else if (type === "waypoint" && props.subtype) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.subtype)}</span>`;
+    html += `<br><span class="popup-meta">${escapeHTML(props.subtype)}</span>`;
   }
   if (props.notes) {
-    html += `<br><span style="color:#6b7280;font-size:0.8em">${escapeHTML(props.notes)}</span>`;
+    html += `<br><span class="popup-meta">${escapeHTML(props.notes)}</span>`;
   }
 
   new maplibregl.Popup({ offset: 12, maxWidth: "260px" })

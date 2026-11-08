@@ -1,0 +1,124 @@
+/* ==========================================================================
+   Booot motion vocabulary. Six verbs, used consistently:
+
+   press    every clickable thing sinks a little when pressed     .m-press
+   lift     cards/chips rise 1px on hover (things you can grab)   .m-lift
+   confirm  a short shiver when a state change lands             .m-confirm (JS adds)
+   flip     two-state toggle; label slides like a slot machine   .flip-btn
+   draw     a finished route line draws itself in                .m-draw (SVG)
+   count    numbers tick up to their new value                   motion.js countUp()
+
+   Motion confirms something the user did. It never decorates idle UI.
+   Everything collapses under prefers-reduced-motion via tokens.css.
+   Requires: tokens.css
+   ========================================================================== */
+
+/* ---- press ------------------------------------------------------------- */
+.m-press {
+  transition:
+    transform var(--dur-base) var(--ease-spring),
+    box-shadow var(--dur-quick) var(--ease-out),
+    background-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
+}
+.m-press:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+  box-shadow: var(--shadow-press);
+  transition-duration: var(--dur-instant);
+}
+
+/* ---- lift -------------------------------------------------------------- */
+.m-lift {
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+.m-lift:hover {
+  transform: translateY(var(--lift-y));
+  box-shadow: var(--shadow-2);
+}
+.m-lift:active {
+  transform: translateY(0) scale(var(--press-scale));
+  box-shadow: var(--shadow-1);
+  transition-duration: var(--dur-instant);
+}
+
+/* ---- confirm (shiver) -------------------------------------------------- */
+@keyframes m-shiver {
+  0%   { transform: rotate(0deg); }
+  15%  { transform: rotate(-1.5deg); }
+  32%  { transform: rotate(1.5deg); }
+  50%  { transform: rotate(-1deg); }
+  66%  { transform: rotate(1deg); }
+  82%  { transform: rotate(-0.4deg); }
+  92%  { transform: rotate(0.4deg); }
+  100% { transform: rotate(0deg); }
+}
+.m-confirm { animation: m-shiver var(--dur-slow) ease; }
+
+/* ---- flip (two-state slot-machine toggle) ------------------------------ */
+/* <button class="flip-btn" data-mode="a">
+     <span class="flip-face flip-face--front">Label A</span>
+     <span class="flip-face flip-face--back">Label B</span>
+   </button>   Wire with motion.js wireFlip(). */
+.flip-btn {
+  position: relative;
+  overflow: hidden;            /* clips the hidden face. Required */
+  min-width: 88px;
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  font: var(--weight-semi) var(--text-sm)/1 var(--font-ui);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+.flip-btn[data-mode="a"]       { background: var(--flip-a, var(--accent)); }
+.flip-btn[data-mode="b"]       { background: var(--flip-b, var(--teal-500)); }
+.flip-btn[data-mode="a"]:hover { background: var(--flip-b, var(--teal-500)); }
+.flip-btn[data-mode="b"]:hover { background: var(--flip-a, var(--accent)); }
+.flip-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.flip-face--front                          { transform: translateY(0); }
+.flip-face--back                           { transform: translateY(100%); }
+.flip-btn[data-mode="b"] .flip-face--back  { transform: translateY(-100%); }
+.flip-btn[data-mode="a"]:hover .flip-face--front { transform: translateY(-100%); }
+.flip-btn[data-mode="a"]:hover .flip-face--back  { transform: translateY(0); }
+.flip-btn[data-mode="b"]:hover .flip-face--front { transform: translateY(100%); }
+.flip-btn[data-mode="b"]:hover .flip-face--back  { transform: translateY(0); }
+/* After a click: shiver, and freeze the hover preview until mouseleave */
+.flip-btn.m-confirm .flip-face { transition: none; }
+.flip-btn[data-mode="a"].m-confirm:hover { background: var(--flip-a, var(--accent)); }
+.flip-btn[data-mode="b"].m-confirm:hover { background: var(--flip-b, var(--teal-500)); }
+.flip-btn.m-confirm:hover .flip-face--front { transform: translateY(0); }
+.flip-btn[data-mode="a"].m-confirm:hover .flip-face--back { transform: translateY(100%); }
+.flip-btn[data-mode="b"].m-confirm:hover .flip-face--back { transform: translateY(-100%); }
+
+/* ---- draw (SVG strokes) ------------------------------------------------ */
+/* Set --path-length on the element (motion.js drawIn() does it for you). */
+.m-draw {
+  stroke-dasharray: var(--path-length, 1000);
+  stroke-dashoffset: var(--path-length, 1000);
+  animation: m-draw var(--dur-draw) var(--ease-in-out) forwards;
+}
+@keyframes m-draw { to { stroke-dashoffset: 0; } }
+
+/* ---- appear (panels, popovers) ----------------------------------------- */
+@keyframes m-appear {
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+.m-appear { animation: m-appear var(--dur-base) var(--ease-out) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .m-confirm, .m-draw, .m-appear { animation: none; }
+  .m-draw { stroke-dashoffset: 0; }
+}
