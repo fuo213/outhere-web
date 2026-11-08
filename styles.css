@@ -2330,6 +2330,8 @@ body.panel-open .route-instructions {
 
 /* Day-hike miles beside the route total in the header chip: quieter. */
 .meta-chip-extra {
-  color: var(--text-muted);
-  margin-left: 2px;
+  font-family: var(--font-ui);
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
+.meta-chip-num { font-family: var(--font-data); }

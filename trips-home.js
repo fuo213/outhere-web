@@ -16,6 +16,7 @@
 import { map } from "./app.js"; // circular with app.js; only used at runtime
 import {
   TripManager,
+  fitTripToView,
   migrateTrip,
   downloadTripGeoJSON,
   openSidebar,
@@ -195,6 +196,7 @@ function openTrip(id) {
   TripManager.setTrip(trip);
   hideTripsHome();
   openSidebar();
+  fitTripToView(); // after the region camera, so the trip wins
 }
 
 function duplicateTrip(id) {
@@ -401,6 +403,7 @@ export function initTripsHome() {
         syncRegionForTrip(TripManager.currentTrip);
         hideTripsHome();
         openSidebar();
+        fitTripToView();
       } catch (err) {
         alert("Could not load file: " + err.message);
       }
@@ -440,6 +443,7 @@ export async function loadDemoTripFromURL(regionsReady) {
     syncRegionForTrip(TripManager.currentTrip);
     hideTripsHome();
     openSidebar();
+    fitTripToView();
   } catch (err) {
     console.warn(`[demo] could not load demo trip "${key}":`, err.message);
   }

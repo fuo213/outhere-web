@@ -234,7 +234,6 @@ export const TripManager = {
     this.render();
     this.save();
     prefetchRoutingGraph();
-    fitTripToView(this.currentTrip);
   },
 
   loadFromGeoJSON(geojson) {
@@ -253,7 +252,6 @@ export const TripManager = {
     this.currentTrip = migrateTrip(geojson);
     this.render();
     this.save();
-    fitTripToView(this.currentTrip);
   },
 
   buildExport() {
@@ -637,7 +635,7 @@ function renderMetaChips() {
     }
   }
   const dayhikeHTML = dayhikeMi >= 0.05
-    ? ` <span class="meta-chip-extra">+${dayhikeMi.toFixed(1)} day hike${dayhikeMi >= 1.05 || dayhikeMi < 0.95 ? "s" : ""}</span>` : "";
+    ? `<span class="meta-chip-extra" aria-hidden="true">·</span><span class="meta-chip-extra">+<span class="meta-chip-num">${dayhikeMi.toFixed(1)}</span> day hike${dayhikeMi >= 1.05 || dayhikeMi < 0.95 ? "s" : ""}</span>` : "";
   const dayCount = trip.days?.length || 0;
 
   const chips = [];
@@ -1026,7 +1024,7 @@ function buildNotesBlock(day) {
  * right (it covers the map rather than shrinking it). Instant under reduced
  * motion. Used when a trip is opened or imported.
  */
-function fitTripToView(trip) {
+export function fitTripToView(trip = TripManager.currentTrip) {
   if (!map || !trip?.features?.length) return;
   const pts = [];
   for (const f of trip.features) {
