@@ -942,26 +942,160 @@ body {
    Drawing hint overlay
    --------------------------------------------------------------------------- */
 
+/* Routing state while drawing ("Loading trails for routing…", "Zoom in to
+   snap to trails", "Routing isn't available here yet."). Sits above the
+   route instructions card, on paper like the rest of the chrome. */
 .drawing-hint {
   position: absolute;
-  bottom: 32px;
+  bottom: 176px;
   left: 50%;
-  transform: translateX(-50%);
-  background: rgba(30,26,20,0.85);
-  color: #F2EDE3;
-  padding: 8px 20px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-family: 'DM Sans', sans-serif;
+  transform: translate(-50%, var(--space-1));
+  background: var(--surface-raised);
+  color: var(--text-body);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
   z-index: 5;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-base) var(--ease-out);
 }
 
 .drawing-hint.visible {
   opacity: 1;
+  transform: translate(-50%, 0);
 }
+
+body.panel-open .drawing-hint {
+  left: calc((100% - 520px) / 2);
+}
+
+/* Loading is the one place motion may say "working": a short rule draws
+   under the text while the graph downloads (tabletop direction: a line being
+   inked, never a spinner). Static under reduced motion. */
+.drawing-hint--loading::after {
+  content: "";
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 5px;
+  height: 1px;
+  background: var(--type-route);
+  transform-origin: left center;
+  animation: hint-ink var(--dur-draw) var(--ease-in-out) infinite alternate;
+}
+
+@keyframes hint-ink {
+  from { transform: scaleX(0.1); }
+  to   { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawing-hint--loading::after { animation: none; }
+}
+
+/* Trail name under the cursor while drawing. */
+.snap-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  max-width: 240px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-raised);
+  color: var(--text-body);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+.snap-tooltip.visible { opacity: 1; }
+
+.snap-tooltip--unnamed {
+  color: var(--text-secondary);
+  white-space: normal;
+}
+
+/* Gap card: why a leg is drawn straight, with the OpenStreetMap fix link. */
+.gap-popup .maplibregl-popup-content {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-3);
+  padding: var(--space-3) var(--space-8) var(--space-3) var(--space-4);
+}
+
+.gap-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.gap-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.gap-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip { border-top-color: var(--surface-raised); }
+.gap-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.gap-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.gap-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip { border-bottom-color: var(--surface-raised); }
+.gap-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--surface-raised); }
+.gap-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--surface-raised); }
+
+.gap-popup .maplibregl-popup-close-button {
+  top: var(--space-1);
+  right: var(--space-1);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.gap-popup .maplibregl-popup-close-button:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.gap-card {
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--text-body);
+}
+
+.gap-card__text {
+  margin: 0;
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+
+.gap-card__meta {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+}
+
+.gap-card__num {
+  font-family: var(--font-data);
+}
+
+.gap-card__link {
+  display: inline-block;
+  margin-top: var(--space-2);
+  color: var(--accent);
+  font-weight: var(--weight-semi);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gap-card__link:hover { color: var(--accent-hover); }
+.gap-card__link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 
 /* ---------------------------------------------------------------------------
    Route drawing instructions (parchment floating overlay at bottom)

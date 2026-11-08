@@ -53,7 +53,9 @@ Don't use this repo for:
 ```
 outhere-web/
 ├── index.html      # Entry point, CDN script tags, DOM structure
-├── app.js          # Map init, style builder, layer controls, POI popups
+├── app.js          # Map init, style builder, layer controls, POI popups, trip + route layers
+├── planning.js     # Route drawing: clicks, live routed preview, undo, legs → trip features (schema 1.1 segments)
+├── routing.js      # Trail routing: decodes the region's booot-trail-graph, flatbush snapping, A* (SNAPPING_DESIGN.md)
 ├── config.js       # Tile URL, map center/bounds, layer group definitions
 ├── styles.css      # Full-screen layout, header, layer panel, responsive
 └── .claude/docs/   # Detailed patterns documentation
@@ -102,6 +104,21 @@ npx wrangler pages deploy . --project-name outhere-web
 ln -s ../outhere/utah_maps/output/utah_hiking.pmtiles .
 # Then set TILE_URL = "utah_hiking.pmtiles" in config.js
 ```
+
+## Trail routing
+
+Routes follow real trails using the per-region routing graph the pipeline
+publishes (`routing_graph` in catalog.json, format `booot-trail-graph` v1;
+design in `../SNAPPING_DESIGN.md`). The graph loads lazily per region (draw
+start, trip open). Where no graph exists, legs are drawn straight with
+"Routing isn't available here yet." Exports write `schema_version` "1.1"
+with per-leg `segments` + `routing`.
+
+- **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
+  maps a region id to a local graph file (keep `dev-graphs/` out of git).
+- **Verify:** `node design/tools/shoot.mjs --scenes design/tools/scenes-routing.json`
+  draws Angels Landing / West Rim / Hop Valley (expect 2.11 / 14.57 / 6.54 mi),
+  a no-path gap, interactions and preview timing.
 
 ## Data Flow
 

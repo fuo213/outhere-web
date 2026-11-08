@@ -25,6 +25,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,400&family=DM+Sans:wght@500;600;700&family=Source+Serif+4:ital,wght@0,400;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <!-- App styles -->
+  <!-- Booot design tokens (values only; feature styles in styles.css read them) -->
+  <link rel="stylesheet" href="design/tokens.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -56,7 +58,10 @@
   </div>
 
   <!-- Drawing hint overlay -->
-  <div class="drawing-hint" id="drawingHint"></div>
+  <div class="drawing-hint" id="drawingHint" role="status" aria-live="polite"></div>
+
+  <!-- Name of the trail under the cursor while drawing -->
+  <div class="snap-tooltip" id="snapTooltip" aria-hidden="true"></div>
 
   <!-- Map container -->
   <div id="map"></div>
@@ -172,12 +177,11 @@
     <div class="route-instructions-inner">
       <p class="route-instructions-title">Drawing Route</p>
       <ul class="route-instructions-steps">
-        <li><strong>Click</strong> to place route points</li>
+        <li><strong>Click</strong> near a trail; the route follows trails between points</li>
         <li>Press <strong>1-4</strong> to switch: Route, Camp, Dayhike, Rest</li>
-        <li>Points <strong>snap to trails</strong> when nearby</li>
-        <li><strong>Double-click</strong> to finish the route</li>
-        <li>Hold <strong>Shift</strong> to disable snapping</li>
-        <li>Press <strong>Esc</strong> to cancel</li>
+        <li><strong>Backspace</strong> removes the last point</li>
+        <li><strong>Shift-click</strong> for a straight leg</li>
+        <li><strong>Double-click</strong> to finish, <strong>Esc</strong> to cancel</li>
       </ul>
     </div>
   </div>

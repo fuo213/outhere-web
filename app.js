@@ -15,9 +15,11 @@ import {
   handleDeleteClick,
   handleMapClickForRoute,
   handleMapDblClickForRoute,
+  showGapCard,
+  routingDebug,
 } from "./planning.js";
 import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
-import { getInitialRegion, regionMaxBounds, initRegionPicker } from "./region-picker.js";
+import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById } from "./region-picker.js";
 import { initTripsHome } from "./trips-home.js";
 
 // ---------------------------------------------------------------------------
@@ -246,7 +248,7 @@ export const map = new maplibregl.Map({
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
-window.__outhere = { map, TripManager };
+window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -326,34 +328,34 @@ function addTripLayers() {
     data: { type: "FeatureCollection", features: [] },
   });
 
-  // Trip routes — bold orange dashed line
+  // Colors come from design/tokens.css: MapLibre paint can't read CSS
+  // variables, so resolve them once here (re-run after every style swap).
+  const C = resolveTokenColors();
+
+  // Legacy routes (no per-leg `segments`, pre-schema-1.1): one line each.
   map.addLayer({
     id: "trip-routes",
     type: "line",
     source: "trip",
-    filter: ["==", ["get", "type"], "route"],
-    paint: {
-      "line-color": "#e85d04",
-      "line-width": 3.5,
-      "line-dasharray": [3, 2],
-    },
+    filter: ["all", ["==", ["get", "type"], "route"], ["!", ["has", "segments"]]],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": C.route, "line-width": 3 },
   });
 
-  // Trip dayhike spurs — amber dashed line
   map.addLayer({
     id: "trip-dayhike-spurs",
     type: "line",
     source: "trip",
-    filter: ["==", ["get", "type"], "dayhike_spur"],
-    paint: {
-      "line-color": "#d97706",
-      "line-width": 2.5,
-      "line-dasharray": [2, 2],
-      "line-opacity": 0.7,
-    },
+    filter: ["all", ["==", ["get", "type"], "dayhike_spur"], ["!", ["has", "segments"]]],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": C.dayhike, "line-width": 2.5 },
   });
 
-  // Trip camps — green circles
+  // Routed routes/spurs: one feature per leg (buildRoutingOverlay), styled
+  // by how the leg was made.
+  for (const layer of legLayers("trip-legs", "trip", ["==", ["get", "type"], "route_leg"], C)) map.addLayer(layer);
+  for (const layer of gapPinLayers("trip-gap-pins", "trip", ["==", ["get", "type"], "route_gap"], C)) map.addLayer(layer);
+
   map.addLayer({
     id: "trip-camps",
     type: "circle",
@@ -361,13 +363,12 @@ function addTripLayers() {
     filter: ["==", ["get", "type"], "camp"],
     paint: {
       "circle-radius": 9,
-      "circle-color": "#2d6a4f",
+      "circle-color": C.camp,
       "circle-stroke-width": 2.5,
-      "circle-stroke-color": "#fff",
+      "circle-stroke-color": C.surfaceRaised,
     },
   });
 
-  // Trip dayhike points — amber circles
   map.addLayer({
     id: "trip-dayhikes",
     type: "circle",
@@ -375,13 +376,12 @@ function addTripLayers() {
     filter: ["==", ["get", "type"], "dayhike"],
     paint: {
       "circle-radius": 7,
-      "circle-color": "#d97706",
+      "circle-color": C.dayhike,
       "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
+      "circle-stroke-color": C.surfaceRaised,
     },
   });
 
-  // Trip rest points — purple circles
   map.addLayer({
     id: "trip-rest",
     type: "circle",
@@ -389,9 +389,9 @@ function addTripLayers() {
     filter: ["==", ["get", "type"], "rest"],
     paint: {
       "circle-radius": 7,
-      "circle-color": "#7c3aed",
+      "circle-color": C.rest,
       "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
+      "circle-stroke-color": C.surfaceRaised,
     },
   });
 
@@ -455,92 +455,137 @@ function addTripLayers() {
   });
 
   // -------------------------------------------------------------------
-  // Route drawing in-progress visualization (for custom snap-to-trail)
+  // Route drawing: placed legs + vertices (per click) and the live
+  // preview leg + cursor marker (per frame) in separate sources, so a
+  // long route isn't re-tiled on every mouse move.
   // -------------------------------------------------------------------
-  map.addSource("route-drawing", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
+  map.addSource("route-drawing", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addSource("route-preview", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
-  // Main route drawing line (excludes dayhike spurs)
-  map.addLayer({
-    id: "route-drawing-line",
-    type: "line",
-    source: "route-drawing",
-    filter: ["all",
-      ["==", ["geometry-type"], "LineString"],
-      ["any", ["!", ["has", "segment_type"]], ["!=", ["get", "segment_type"], "dayhike"]],
-    ],
-    paint: {
-      "line-color": "#e85d04",
-      "line-width": 3,
-      "line-dasharray": [2, 2],
-      "line-opacity": 0.7,
-    },
-  });
-
-  // Dayhike spur drawing line
-  map.addLayer({
-    id: "route-drawing-dayhike-line",
-    type: "line",
-    source: "route-drawing",
-    filter: ["all",
-      ["==", ["geometry-type"], "LineString"],
-      ["==", ["get", "segment_type"], "dayhike"],
-    ],
-    paint: {
-      "line-color": "#d97706",
-      "line-width": 2,
-      "line-dasharray": [1, 2],
-      "line-opacity": 0.6,
-    },
-  });
+  const isLine = ["==", ["geometry-type"], "LineString"];
+  for (const layer of legLayers("route-preview", "route-preview", isLine, C, 0.6)) map.addLayer(layer);
+  for (const layer of legLayers("route-drawing", "route-drawing", isLine, C)) map.addLayer(layer);
+  for (const layer of gapPinLayers("route-drawing-gaps", "route-drawing", ["==", ["get", "gap"], true], C)) map.addLayer(layer);
 
   map.addLayer({
     id: "route-drawing-vertices",
     type: "circle",
     source: "route-drawing",
-    filter: ["==", ["geometry-type"], "Point"],
+    filter: ["==", ["get", "vertex"], true],
     paint: {
       "circle-radius": [
-        "case",
-        ["==", ["get", "point_type"], "camp"], 8,
-        ["==", ["get", "point_type"], "dayhike"], 7,
-        ["==", ["get", "point_type"], "rest"], 7,
-        6,
+        "match", ["get", "point_type"],
+        "camp", 8,
+        "dayhike", 7,
+        "rest", 7,
+        5,
       ],
       "circle-color": [
-        "case",
-        ["==", ["get", "point_type"], "camp"], "#2d6a4f",
-        ["==", ["get", "point_type"], "dayhike"], "#d97706",
-        ["==", ["get", "point_type"], "rest"], "#7c3aed",
-        ["get", "snapped"], "#3b82f6",
-        "#e85d04",
+        "match", ["get", "point_type"],
+        "camp", C.camp,
+        "dayhike", C.dayhike,
+        "rest", C.rest,
+        C.route,
       ],
       "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
+      "circle-stroke-color": C.surfaceRaised,
     },
   });
 
-  // Snap preview — ghost marker showing where next click will land
-  map.addSource("snap-preview", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
+  // Cursor marker: filled on a trail, hollow where the click won't snap.
   map.addLayer({
-    id: "snap-preview-marker",
+    id: "route-preview-cursor",
     type: "circle",
-    source: "snap-preview",
+    source: "route-preview",
+    filter: ["==", ["get", "cursor"], true],
     paint: {
-      "circle-radius": 8,
-      "circle-color": ["case", ["get", "snapped"], "#3b82f6", "#e85d04"],
-      "circle-opacity": 0.6,
+      "circle-radius": 6,
+      "circle-color": ["case", ["get", "snapped"], C.route, C.surfaceRaised],
       "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
-      "circle-stroke-opacity": 0.8,
+      "circle-stroke-color": ["case", ["get", "snapped"], C.surfaceRaised, C.textSecondary],
+      "circle-opacity": 0.9,
     },
   });
+}
+
+/** Resolve the design tokens the map needs into concrete colors. */
+function resolveTokenColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const t = (name) => cs.getPropertyValue(name).trim();
+  return {
+    route: t("--type-route"),
+    camp: t("--type-camp"),
+    dayhike: t("--type-dayhike"),
+    rest: t("--type-rest"),
+    accent: t("--accent"),
+    surfaceRaised: t("--surface-raised"),
+    textSecondary: t("--text-secondary"),
+  };
+}
+
+/**
+ * Three line layers for route legs (SNAPPING_DESIGN.md §2.6), keyed on the
+ * feature's `leg_mode` and `kind` ("main" | "spur"):
+ *   trail (and any future mode) solid --type-route / --type-dayhike, 3 px,
+ *                               on a 6 px --surface-raised casing
+ *   manual (Shift)              same color, dash [2, 2]
+ *   straight (no route found)   --accent, dash [1, 1.5]
+ * MapLibre 4 can't drive line-dasharray from data, hence one layer per mode.
+ */
+function legLayers(prefix, source, baseFilter, C, opacity = 1) {
+  const color = ["case", ["==", ["get", "kind"], "spur"], C.dayhike, C.route];
+  const mode = ["get", "leg_mode"];
+  const notStraightOrManual = ["!", ["in", mode, ["literal", ["manual", "straight"]]]];
+  return [
+    // Paper casing so the route reads above the basemap's own trail lines.
+    {
+      id: `${prefix}-casing`, type: "line", source,
+      filter: ["all", baseFilter, notStraightOrManual],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": C.surfaceRaised, "line-width": 6, "line-opacity": 0.85 * opacity },
+    },
+    {
+      id: `${prefix}-trail`, type: "line", source,
+      filter: ["all", baseFilter, notStraightOrManual],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": color, "line-width": 3, "line-opacity": opacity },
+    },
+    {
+      id: `${prefix}-manual`, type: "line", source,
+      filter: ["all", baseFilter, ["==", mode, "manual"]],
+      layout: { "line-join": "round" },
+      paint: { "line-color": color, "line-width": 3, "line-dasharray": [2, 2], "line-opacity": opacity },
+    },
+    {
+      id: `${prefix}-straight`, type: "line", source,
+      filter: ["all", baseFilter, ["==", mode, "straight"]],
+      layout: { "line-join": "round" },
+      paint: { "line-color": C.accent, "line-width": 3, "line-dasharray": [1, 1.5], "line-opacity": opacity },
+    },
+  ];
+}
+
+/**
+ * Gap pin where a straight leg's gap is (click it for the explanation card):
+ * a paper ring with a rust rim and rust center, so it can't be mistaken for
+ * the basemap's filled POI dots.
+ */
+function gapPinLayers(id, source, filter, C) {
+  return [
+    {
+      id, type: "circle", source, filter,
+      paint: {
+        "circle-radius": 7,
+        "circle-color": C.surfaceRaised,
+        "circle-stroke-width": 2.5,
+        "circle-stroke-color": C.accent,
+      },
+    },
+    {
+      id: `${id}-dot`, type: "circle", source, filter,
+      paint: { "circle-radius": 2.5, "circle-color": C.accent },
+    },
+  ];
 }
 
 /**
@@ -597,6 +642,15 @@ map.on("load", () => {
       handleMapDblClickForRoute(e);
     }
   });
+
+  // Gap pins on saved routes explain the straight leg (and link to the OSM fix).
+  map.on("click", "trip-gap-pins", (e) => {
+    if (isDrawingRoute || isDeleteMode) return;
+    const f = e.features[0];
+    showGapCard({ gap: f.geometry.coordinates, reason: f.properties.reason, length_m: f.properties.length_m });
+  });
+  map.on("mouseenter", "trip-gap-pins", () => { if (!isDrawingRoute && !isDeleteMode) map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "trip-gap-pins", () => { if (!isDrawingRoute && !isDeleteMode) map.getCanvas().style.cursor = ""; });
 
   // Trip feature click — show popup (skip during route drawing)
   for (const layerId of ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"]) {

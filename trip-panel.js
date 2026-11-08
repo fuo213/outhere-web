@@ -23,6 +23,8 @@ import {
   exitDeleteMode,
   isDeleteMode,
   getTripDateRange,
+  buildRoutingOverlay,
+  prefetchRoutingGraph,
 } from "./planning.js";
 import { TripsStore, hideTripsHome } from "./trips-home.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
@@ -35,7 +37,10 @@ import { getActiveRegionId } from "./region-picker.js"; // circular; only used a
 
 // Canonical trip format version (see outhere/trips/trip.schema.json + FORMAT.md).
 // Distinct from the legacy _schema_version integer migration counter.
-const TRIP_SCHEMA_VERSION = "1.0";
+// 1.1 adds per-leg routing provenance (`segments`, `routing`); 1.0 files
+// remain valid and are still read.
+const TRIP_SCHEMA_VERSION = "1.1";
+const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1"];
 
 let activeDayId = null;       // day ID currently highlighted on map, or null
 const expandedDayIds = new Set(); // which day sections are expanded (UI state only)
@@ -163,7 +168,12 @@ export const TripManager = {
   /** Update MapLibre source and sidebar. */
   render() {
     if (map.getSource("trip")) {
-      map.getSource("trip").setData(this.currentTrip || { type: "FeatureCollection", features: [] });
+      // Routed routes/spurs also render per leg (trail / manual / straight
+      // + gap pins); the overlay never touches the stored trip.
+      const trip = this.currentTrip;
+      map.getSource("trip").setData(trip
+        ? { type: "FeatureCollection", features: [...trip.features, ...buildRoutingOverlay(trip)] }
+        : { type: "FeatureCollection", features: [] });
     }
     renderSidebar();
     renderTripTitle();
@@ -199,6 +209,7 @@ export const TripManager = {
     }
     this.currentTrip = migrateTrip(saved);
     this.render();
+    prefetchRoutingGraph();
     return true;
   },
 
@@ -210,6 +221,7 @@ export const TripManager = {
     this.currentTrip = migrateTrip(trip);
     this.render();
     this.save();
+    prefetchRoutingGraph();
   },
 
   loadFromGeoJSON(geojson) {
@@ -302,7 +314,7 @@ export const TripManager = {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the canonical export document (schema_version 1.0) without mutating
+ * Build the canonical export document (schema_version 1.1) without mutating
  * the live trip: stamps schema_version, mirrors the readme into `notes`
  * (mobile reads `notes`), and guarantees a `dates` key.
  */
@@ -447,7 +459,9 @@ function validateTripExport(trip) {
   } else {
     if (typeof meta.trip_id !== "string" || meta.trip_id.length === 0) push("properties.trip_id missing or empty");
     if (typeof meta.name !== "string") push("properties.name missing");
-    if (meta.schema_version !== TRIP_SCHEMA_VERSION) push(`properties.schema_version is ${JSON.stringify(meta.schema_version)}, expected "${TRIP_SCHEMA_VERSION}"`);
+    if (!READABLE_SCHEMA_VERSIONS.includes(meta.schema_version)) {
+      push(`properties.schema_version is ${JSON.stringify(meta.schema_version)}, expected one of ${READABLE_SCHEMA_VERSIONS.join(", ")}`);
+    }
     if (meta.dates !== null && meta.dates !== undefined) {
       if (typeof meta.dates !== "object" ||
           !ISO_DATE_RE.test(meta.dates.start || "") ||
@@ -499,6 +513,9 @@ function validateTripExport(trip) {
         (!Number.isInteger(f.properties.route_index) || f.properties.route_index < 0)) {
       push(`${where}: dayhike_spur missing non-negative integer route_index`);
     }
+    if (ftype === "route" || ftype === "dayhike_spur") {
+      validateRoutingProvenance(f, where, push);
+    }
     if (["camp", "dayhike", "rest"].includes(ftype) &&
         f.properties.date !== undefined && f.properties.date !== "" &&
         !ISO_DATE_RE.test(f.properties.date)) {
@@ -523,6 +540,42 @@ function validateTripExport(trip) {
   }
 
   return problems;
+}
+
+const SEGMENT_MODES = ["trail", "straight", "manual", "imported"];
+const SEGMENT_REASONS = ["no_path", "no_graph", "cross_region"];
+const isIndex = (n) => Number.isInteger(n) && n >= 0;
+
+/** schema 1.1 `segments` / `routing` on route and dayhike_spur features (both optional). */
+function validateRoutingProvenance(f, where, push) {
+  const p = f.properties;
+  if (p.segments !== undefined) {
+    if (!Array.isArray(p.segments)) {
+      push(`${where}: segments is not an array`);
+    } else {
+      const nCoords = Array.isArray(f.geometry.coordinates) ? f.geometry.coordinates.length : 0;
+      p.segments.forEach((seg, k) => {
+        const at = `${where}.segments[${k}]`;
+        if (!seg || typeof seg !== "object") { push(`${at}: not an object`); return; }
+        if (!SEGMENT_MODES.includes(seg.mode)) push(`${at}: mode "${seg.mode}" not one of ${SEGMENT_MODES.join("|")}`);
+        if (seg.reason !== undefined && !SEGMENT_REASONS.includes(seg.reason)) push(`${at}: reason "${seg.reason}" not one of ${SEGMENT_REASONS.join("|")}`);
+        if (!isIndex(seg.from_vertex) || !isIndex(seg.to_vertex)) push(`${at}: from_vertex/to_vertex must be non-negative integers`);
+        if (seg.coord_range !== undefined) {
+          const r = seg.coord_range;
+          if (!Array.isArray(r) || r.length !== 2 || !r.every(isIndex) || r[0] > r[1] || r[1] >= nCoords) {
+            push(`${at}: coord_range must be [start, end] indices into geometry.coordinates`);
+          }
+        }
+        if (seg.length_m !== undefined && !(typeof seg.length_m === "number" && seg.length_m >= 0)) push(`${at}: length_m must be a number >= 0`);
+        if (seg.osm_way_ids !== undefined && !(Array.isArray(seg.osm_way_ids) && seg.osm_way_ids.every(Number.isInteger))) {
+          push(`${at}: osm_way_ids must be an array of integers`);
+        }
+      });
+    }
+  }
+  if (p.routing !== undefined && (!p.routing || p.routing.engine !== "booot-graph")) {
+    push(`${where}: routing.engine must be "booot-graph"`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -726,6 +779,7 @@ function setActiveDayHighlight(dayId) {
 
   const tripLayerIds = [
     "trip-routes", "trip-dayhike-spurs",
+    "trip-legs-casing", "trip-legs-trail", "trip-legs-manual", "trip-legs-straight", "trip-gap-pins", "trip-gap-pins-dot",
     "trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints",
     "trip-labels",
   ];
@@ -1224,6 +1278,11 @@ function getFeatureLabel(props, type) {
   }
 }
 
+/** Meters of fallback (no route found) straight legs on a routed route. */
+function offTrailMeters(props) {
+  return (props.segments || []).reduce((m, s) => m + (s.mode === "straight" ? (s.length_m || 0) : 0), 0);
+}
+
 function getFeatureStats(props, type) {
   if (type === "route") {
     const mainDist = props.main_route_distance_mi;
@@ -1231,6 +1290,8 @@ function getFeatureStats(props, type) {
     if (mainDist && mainDist > 0) {
       let s = `${mainDist.toFixed(1)} mi`;
       if (dhDist && dhDist > 0) s += ` + ${dhDist.toFixed(1)} mi day hikes`;
+      const offMi = offTrailMeters(props) / 1609.344;
+      if (offMi >= 0.05) s += ` · includes ${offMi.toFixed(1)} mi off-trail`;
       return s;
     }
     const numPts = props.vertex_coords?.length || 0;
@@ -1336,6 +1397,7 @@ export function updateDrawingPreview(info) {
   let label = `${info.vertexCount} pt${info.vertexCount !== 1 ? "s" : ""}`;
   if (parseFloat(mainDist) > 0) label = `${mainDist} mi`;
   if (parseFloat(dhDist) > 0) label += ` +${dhDist}`;
+  if ((info.offTrailMi || 0) >= 0.05) label += `, includes ${info.offTrailMi.toFixed(1)} mi off-trail`;
 
   chip.innerHTML = `
     <span class="tile-icon-dot tile-icon-dot--route"></span>
