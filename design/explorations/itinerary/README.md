@@ -142,5 +142,5 @@ later. Drop C, or keep it only as the fallback described above.
 against `outhere/trips/trip.schema.json`. Load it in the app with
 `?demo=maze` (localhost and Pages branch previews only), or with "Load trip".
 It is routed on the live `maze-district` graph (1a03b49c) with the planner's
-own A* (`routing.js` from `feat/graph-routing`, run in Node). The build
+own A* (the app's `routing.js`, run in Node). The build
 script and click plan are in `design/fixtures/src/`.

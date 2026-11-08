@@ -1,5 +1,5 @@
 // Rebuilds design/fixtures/demo-maze-chocolate-drops.trip.geojson.
-// Needs: routing.js from feat/graph-routing copied here as routing.mjs (its
+// Needs: the app's routing.js copied here as routing.mjs (its
 // flatbush import pointed at ./flatbush-shim.mjs), the live graph saved as
 // graph.json (catalog.json -> maze-district routing_graph), and the USGS 3DEP
 // 1/3" tiles from outhere/utah_maps/downloads/dem (or ELEV=open-meteo).
