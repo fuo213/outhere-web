@@ -22,6 +22,7 @@ import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayTy
 import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
 import { graphInfoForRegion } from "./routing.js";
 import { initTripsHome, loadDemoTripFromURL } from "./trips-home.js";
+import { addTripChartLayers, drawingLegLayers, gapPinLayers, vertexPaint, initTripChart, TRIP_POINT_LAYERS, tripChartDebug } from "./map-trip-style.js";
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -249,7 +250,7 @@ export const map = new maplibregl.Map({
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
-window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug };
+window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -322,138 +323,16 @@ function addTripLayers() {
   if (map.getSource("trip")) return; // already present (initial load path)
 
   // -------------------------------------------------------------------
-  // Trip planning GeoJSON source + layers
+  // Trip planning GeoJSON source + layers (drawn in map-trip-style.js:
+  // inked route, pencil day bands, glyphs, day numerals). `fid` ids let
+  // the active day highlight use feature-state.
   // -------------------------------------------------------------------
   map.addSource("trip", {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
+    promoteId: "fid",
   });
-
-  // Colors come from design/tokens.css: MapLibre paint can't read CSS
-  // variables, so resolve them once here (re-run after every style swap).
-  const C = resolveTokenColors();
-
-  // Legacy routes (no per-leg `segments`, pre-schema-1.1): one line each.
-  map.addLayer({
-    id: "trip-routes",
-    type: "line",
-    source: "trip",
-    filter: ["all", ["==", ["get", "type"], "route"], ["!", ["has", "segments"]]],
-    layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": C.route, "line-width": 3 },
-  });
-
-  map.addLayer({
-    id: "trip-dayhike-spurs",
-    type: "line",
-    source: "trip",
-    filter: ["all", ["==", ["get", "type"], "dayhike_spur"], ["!", ["has", "segments"]]],
-    layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": C.dayhike, "line-width": 2.5 },
-  });
-
-  // Routed routes/spurs: one feature per leg (buildRoutingOverlay), styled
-  // by how the leg was made.
-  for (const layer of legLayers("trip-legs", "trip", ["==", ["get", "type"], "route_leg"], C)) map.addLayer(layer);
-  for (const layer of gapPinLayers("trip-gap-pins", "trip", ["==", ["get", "type"], "route_gap"], C)) map.addLayer(layer);
-
-  map.addLayer({
-    id: "trip-camps",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "camp"],
-    paint: {
-      "circle-radius": 9,
-      "circle-color": C.camp,
-      "circle-stroke-width": 2.5,
-      "circle-stroke-color": C.surfaceRaised,
-    },
-  });
-
-  map.addLayer({
-    id: "trip-dayhikes",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "dayhike"],
-    paint: {
-      "circle-radius": 7,
-      "circle-color": C.dayhike,
-      "circle-stroke-width": 2,
-      "circle-stroke-color": C.surfaceRaised,
-    },
-  });
-
-  map.addLayer({
-    id: "trip-rest",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "rest"],
-    paint: {
-      "circle-radius": 7,
-      "circle-color": C.rest,
-      "circle-stroke-width": 2,
-      "circle-stroke-color": C.surfaceRaised,
-    },
-  });
-
-  // Legacy waypoints — colored by subtype (backward compat)
-  map.addLayer({
-    id: "trip-waypoints",
-    type: "circle",
-    source: "trip",
-    filter: ["==", ["get", "type"], "waypoint"],
-    paint: {
-      "circle-radius": 7,
-      "circle-color": [
-        "match",
-        ["get", "subtype"],
-        "water", "#3b82f6",
-        "hazard", "#ef4444",
-        "scenic", "#eab308",
-        "resupply", "#8b5cf6",
-        "#6b7280",
-      ],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
-    },
-  });
-
-  // Trip feature labels
-  map.addLayer({
-    id: "trip-labels",
-    type: "symbol",
-    source: "trip",
-    filter: ["all", ["has", "name"], ["!=", ["get", "name"], ""]],
-    layout: {
-      "text-field": ["get", "name"],
-      "text-size": 12,
-      "text-offset": [0, 1.5],
-      "text-anchor": "top",
-      "text-optional": true,
-    },
-    paint: {
-      "text-color": "#1f2937",
-      "text-halo-color": "#ffffff",
-      "text-halo-width": 1.5,
-    },
-  });
-
-  // Camp night number labels
-  map.addLayer({
-    id: "trip-camp-numbers",
-    type: "symbol",
-    source: "trip",
-    filter: ["==", ["get", "type"], "camp"],
-    layout: {
-      "text-field": ["to-string", ["get", "night_number"]],
-      "text-size": 11,
-      "text-font": ["Open Sans Bold"],
-      "text-allow-overlap": true,
-    },
-    paint: {
-      "text-color": "#ffffff",
-    },
-  });
+  addTripChartLayers();
 
   // -------------------------------------------------------------------
   // Route drawing: placed legs + vertices (per click) and the live
@@ -464,51 +343,29 @@ function addTripLayers() {
   map.addSource("route-preview", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
   const isLine = ["==", ["geometry-type"], "LineString"];
-  for (const layer of legLayers("route-preview", "route-preview", isLine, C, 0.6)) map.addLayer(layer);
-  for (const layer of legLayers("route-drawing", "route-drawing", isLine, C)) map.addLayer(layer);
-  for (const layer of gapPinLayers("route-drawing-gaps", "route-drawing", ["==", ["get", "gap"], true], C)) map.addLayer(layer);
+  for (const layer of drawingLegLayers("route-preview", "route-preview", isLine, { preview: true })) map.addLayer(layer);
+  for (const layer of drawingLegLayers("route-drawing", "route-drawing", isLine)) map.addLayer(layer);
+  for (const layer of gapPinLayers("route-drawing-gaps", "route-drawing", ["==", ["get", "gap"], true])) map.addLayer(layer);
 
+  const paint = vertexPaint();
   map.addLayer({
     id: "route-drawing-vertices",
     type: "circle",
     source: "route-drawing",
     filter: ["==", ["get", "vertex"], true],
-    paint: {
-      "circle-radius": [
-        "match", ["get", "point_type"],
-        "camp", 8,
-        "dayhike", 7,
-        "rest", 7,
-        5,
-      ],
-      "circle-color": [
-        "match", ["get", "point_type"],
-        "camp", C.camp,
-        "dayhike", C.dayhike,
-        "rest", C.rest,
-        C.route,
-      ],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": C.surfaceRaised,
-    },
+    paint: paint.vertices,
   });
 
-  // Cursor marker: filled on a trail, hollow where the click won't snap.
+  // Cursor marker: ink dot on a trail, hollow ring where the click won't snap.
   map.addLayer({
     id: "route-preview-cursor",
     type: "circle",
     source: "route-preview",
     filter: ["==", ["get", "cursor"], true],
-    paint: {
-      "circle-radius": 6,
-      "circle-color": ["case", ["get", "snapped"], C.route, C.surfaceRaised],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": ["case", ["get", "snapped"], C.surfaceRaised, C.textSecondary],
-      "circle-opacity": 0.9,
-    },
+    paint: paint.cursor,
   });
 
-  addRoutedAreasLayers(C);
+  addRoutedAreasLayers(resolveTokenColors());
 }
 
 /**
@@ -520,7 +377,7 @@ function addRoutedAreasLayers(C) {
   if (map.getSource("routed-areas")) return;
   map.addSource("routed-areas", { type: "geojson", data: routedAreasData() });
   const hidden = { visibility: "none" };
-  const before = "trip-routes";
+  const before = "trip-chart-casing";
   map.addLayer({
     id: "routed-areas-fill", type: "fill", source: "routed-areas", layout: hidden,
     filter: ["==", ["geometry-type"], "Polygon"],
@@ -561,79 +418,9 @@ function resolveTokenColors() {
   const cs = getComputedStyle(document.documentElement);
   const t = (name) => cs.getPropertyValue(name).trim();
   return {
-    route: t("--type-route"),
-    camp: t("--type-camp"),
-    dayhike: t("--type-dayhike"),
-    rest: t("--type-rest"),
     accent: t("--accent"),
     surfaceRaised: t("--surface-raised"),
-    textSecondary: t("--text-secondary"),
   };
-}
-
-/**
- * Three line layers for route legs (SNAPPING_DESIGN.md §2.6), keyed on the
- * feature's `leg_mode` and `kind` ("main" | "spur"):
- *   trail (and any future mode) solid --type-route / --type-dayhike, 3 px,
- *                               on a 6 px --surface-raised casing
- *   manual (Shift)              same color, dash [2, 2]
- *   straight (no route found)   --accent, dash [1, 1.5]
- * MapLibre 4 can't drive line-dasharray from data, hence one layer per mode.
- */
-function legLayers(prefix, source, baseFilter, C, opacity = 1) {
-  const color = ["case", ["==", ["get", "kind"], "spur"], C.dayhike, C.route];
-  const mode = ["get", "leg_mode"];
-  const notStraightOrManual = ["!", ["in", mode, ["literal", ["manual", "straight"]]]];
-  return [
-    // Paper casing so the route reads above the basemap's own trail lines.
-    {
-      id: `${prefix}-casing`, type: "line", source,
-      filter: ["all", baseFilter, notStraightOrManual],
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": C.surfaceRaised, "line-width": 6, "line-opacity": 0.85 * opacity },
-    },
-    {
-      id: `${prefix}-trail`, type: "line", source,
-      filter: ["all", baseFilter, notStraightOrManual],
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": color, "line-width": 3, "line-opacity": opacity },
-    },
-    {
-      id: `${prefix}-manual`, type: "line", source,
-      filter: ["all", baseFilter, ["==", mode, "manual"]],
-      layout: { "line-join": "round" },
-      paint: { "line-color": color, "line-width": 3, "line-dasharray": [2, 2], "line-opacity": opacity },
-    },
-    {
-      id: `${prefix}-straight`, type: "line", source,
-      filter: ["all", baseFilter, ["==", mode, "straight"]],
-      layout: { "line-join": "round" },
-      paint: { "line-color": C.accent, "line-width": 3, "line-dasharray": [1, 1.5], "line-opacity": opacity },
-    },
-  ];
-}
-
-/**
- * Gap pin where a straight leg's gap is (click it for the explanation card):
- * a paper ring with a rust rim and rust center, so it can't be mistaken for
- * the basemap's filled POI dots.
- */
-function gapPinLayers(id, source, filter, C) {
-  return [
-    {
-      id, type: "circle", source, filter,
-      paint: {
-        "circle-radius": 7,
-        "circle-color": C.surfaceRaised,
-        "circle-stroke-width": 2.5,
-        "circle-stroke-color": C.accent,
-      },
-    },
-    {
-      id: `${id}-dot`, type: "circle", source, filter,
-      paint: { "circle-radius": 2.5, "circle-color": C.accent },
-    },
-  ];
 }
 
 /**
@@ -652,6 +439,7 @@ export function restoreRuntimeLayers() {
 map.on("load", () => {
   loadingEl.classList.add("hidden");
 
+  initTripChart();
   addTripLayers();
 
   // -------------------------------------------------------------------
@@ -702,7 +490,7 @@ map.on("load", () => {
   map.on("mouseleave", "trip-gap-pins", () => { if (!isDrawingRoute && !isDeleteMode) map.getCanvas().style.cursor = ""; });
 
   // Trip feature click — show popup (skip during route drawing)
-  for (const layerId of ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"]) {
+  for (const layerId of TRIP_POINT_LAYERS) {
     map.on("click", layerId, (e) => {
       if (isDrawingRoute) return;
       showTripFeaturePopup(e);

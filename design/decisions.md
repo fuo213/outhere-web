@@ -95,6 +95,30 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
+- 2026-11-08 · **Trip chart on the real map** (direction B carried onto the
+  planner map): the route is a clean ink line (`--ink-900`, ~2.4 px at z13,
+  round caps/joins) on a thin `--surface-raised` casing; each day's stretch
+  gets a colored-pencil band underneath (`line-pattern` drawn on canvas at
+  runtime: light even pass, -62° hatching, ragged edges, paper tooth),
+  alternating `--sage-500` / `--dust-500` like B. Unassigned routes are ink
+  only. Geometry is exact; the hand lives in the pencil, glyphs, numerals
+  and labels. Circled day numerals in Plex Mono (numbers job) at each day's
+  start, set behind the way the day leaves. Glyphs from the sketchbook
+  family: tent (camp gold), drop (water), teal day-hike arrow + dashed teal
+  spur, ringed-dot start, target end, scenic asterisk, hazard step; minor
+  glyphs wait for z12. Camp names in italic DM Sans (map convention for
+  places), others from z12.5, with MapLibre collision. Shift legs are dashed
+  ink; real OSM gaps stay rust, dotted, with a hand-drawn rust ring pin.
+  While drawing, placed legs are inked and the live preview is a lighter
+  pencil line (`--ink-400`), so a click reads as inking it. Active day:
+  band and ink strengthen, other days mute to ~30-50%. **Same styling
+  outside planning mode** (panel closed, trips home behind the modal): the
+  chart is the trip's identity and reads calmly at every zoom, so a lighter
+  variant would only add a second look to learn · planner with `?demo=maze`,
+  `map-trip-style.js` · Vincent: B "is how we should show the actual route
+  inside of the main map". Open: sage band on the green protected-area fill
+  is quieter than dust; whether day bands should keep reusing sage/dust.
+
 - 2026-11-07 · **Route legs on the map (trail routing)**: routed legs are
   solid `--type-route` on a 6 px `--surface-raised` casing; Shift legs dash
   [2,2]; no-path fallback legs are `--accent` dotted [1,1.5] with a gap pin

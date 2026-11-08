@@ -35,6 +35,7 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `trips-home.js` | `TripsStore`: multi-trip localStorage store (`outhere_trips_index`, `outhere_trip_<id>`, `outhere_active_trip`; migrates legacy `outhere_trip`). Trips home view: open / duplicate / export / delete / import |
 | `trip-panel.js` | `TripManager` (trip data model, internal `_schema_version` 4 migrations), notebook sidebar (overview, unassigned pool, day accordion, drag-and-drop), canonical export (`buildTripExport` + `validateTripExport`), `escapeHTML` / `escapeAttr` |
 | `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = straight leg, Esc cancels, double-click finishes), live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
+| `map-trip-style.js` | How the trip is drawn on the map (itinerary direction B, "Trip chart"): inked route on a paper casing, colored-pencil `line-pattern` band per day, glyphs (tent, drop, day-hike arrow, start/end rings, gap pin), circled day numerals, italic labels, all rasterized at runtime with `map.addImage`. Drawing/preview leg styles. Active-day highlight (feature-state) + the `booot:active-day` event |
 | `routing.js` | Trail routing: loads the region's `booot-trail-graph`, flatbush snapping (meters), A* |
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
@@ -116,7 +117,37 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   2.18 / 14.64 / 6.54 mi; distances move with OSM edits (the Feb-2026 graph
   gave 2.11 / 14.57 / 6.54 before Walter's Wiggles was re-mapped in more detail).
 
-## Design system
+## Trip on the map and the active day
+
+`map-trip-style.js` owns every trip layer on the `trip` source (ids
+`trip-chart-*`, plus `trip-gap-pins`). Route geometry is drawn exactly as
+routed; the hand-drawn feel comes only from images (pencil band pattern,
+glyphs, numerals, labels) generated on canvas at the device pixel ratio.
+Numerals and labels are created on demand in `styleimagemissing`
+(`booot-day-<n>`, `booot-lbl:<kind>:<name>`). planning.js
+`buildRoutingOverlay()` passes its leg features through
+`tripChartOverlay(trip, legs)`, which adds `day_index` / `tone` / `fid` and
+the chart's own features (`route_line`, `chart_point`, `day_mark`,
+`trip_ring`, `spur_end`). The `trip` source uses `promoteId: "fid"` so the
+highlight is feature-state only (no source rebuild). GeoJSON sources
+stringify array properties: drive offsets from scalar properties.
+
+**Active day contract** (shared by the trip panel and the map):
+- Event: `window` `CustomEvent("booot:active-day", { detail: { dayIndex, dayId, source } })`.
+  `dayIndex` is 0-based or `null`; `dayId` is the trip day's `id` or `null`
+  (`dayId` wins when both are given). Both `null` = no active day (all days
+  shown evenly). `source` names the sender (`"panel"`, `"map"`, …).
+- The map listens: the active day's pencil band and ink strengthen, other
+  days (and unassigned routes) mute. If most of the day is off-screen
+  (beside the open panel), the camera eases to it (instant under reduced
+  motion); otherwise the camera doesn't move.
+- Clicking a day's line or numeral on the map makes it active (clicking the
+  active day again clears it) and dispatches the same event with
+  `source: "map"`. Listeners should ignore their own events; the map
+  ignores the events it dispatched.
+- Until the panel dispatches the event itself, a small bridge in
+  `initTripChart()` translates clicks on the legacy `.day-focus-btn`.
+
 
 All UI work follows `design/`:
 

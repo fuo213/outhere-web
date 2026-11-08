@@ -22,6 +22,7 @@ import {
   loadGraph, peekGraph, pickGraphRegion, graphInfoForRegion,
   metersPerPixel, lineLength, haversine,
 } from "./routing.js";
+import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
 export let isDrawingRoute = false;
@@ -603,7 +604,7 @@ export function buildRoutingOverlay(trip) {
       }
     });
   }
-  return out;
+  return tripChartOverlay(trip, out); // + day info, glyphs, labels, numerals (map-trip-style.js)
 }
 
 function savedGap(props, k, legCoords) {
@@ -791,8 +792,7 @@ export function exitDeleteMode() {
 
 export function handleDeleteClick(e) {
   if (!TripManager.currentTrip) return;
-  const tripLayers = ["trip-camps", "trip-dayhikes", "trip-rest", "trip-waypoints"];
-  const features = map.queryRenderedFeatures(e.point, { layers: tripLayers });
+  const features = map.queryRenderedFeatures(e.point, { layers: TRIP_POINT_LAYERS });
   if (!features.length) return;
   const clickedId = features[0].properties._id;
   const idx = TripManager.currentTrip.features.findIndex(
