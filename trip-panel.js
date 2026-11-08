@@ -888,9 +888,12 @@ function buildDaySection(day, dayIndex, mday, tripIsEmpty) {
 
   // ── Head: label, date, pencil rule, totals ────────────────────────────────
   const dateLabel = day.date ? formatDateLabel(day.date) : "";
+  // Route miles only, so the header matches the profile's day tag; day-hike
+  // spurs show their own round trip in the stop list.
+  const routeMi = dayFeatures.reduce((m, f) => m + (getDisplayType(f.properties) === "route" ? (f.properties.main_route_distance_mi || 0) : 0), 0);
   let sum = "";
-  if (stats.totalMiles > 0) {
-    sum = `${stats.totalMiles.toFixed(1)} mi`;
+  if (routeMi > 0) {
+    sum = `${routeMi.toFixed(1)} mi`;
     if (stats.totalElevGain > 0 || stats.totalElevLoss > 0) {
       sum += ` · +${stats.totalElevGain.toLocaleString("en-US")}<span class="loss"> −${stats.totalElevLoss.toLocaleString("en-US")}</span> ft`;
     }

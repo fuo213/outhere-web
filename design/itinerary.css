@@ -15,7 +15,7 @@
   --pencil-a: var(--sage-500);         /* days 1, 3, 5... */
   --pencil-b: var(--dust-500);         /* days 2, 4, 6... */
   --pencil-loose: var(--earth-500);    /* a route not in a day yet */
-  --itin-fade: var(--space-6);         /* paper fade under the sticky profile */
+  --itin-fade: var(--space-8);         /* paper fade under the sticky profile */
 }
 
 /* Shared <defs> for list glyphs (paper grain). Out of layout. */
@@ -44,7 +44,7 @@
   right: 0;
   top: 100%;
   height: var(--itin-fade);
-  background: linear-gradient(to bottom, var(--surface), color-mix(in srgb, var(--surface) 0%, transparent));
+  background: linear-gradient(to bottom, var(--surface) 30%, color-mix(in srgb, var(--surface) 0%, transparent));
   pointer-events: none;
 }
 
@@ -69,7 +69,7 @@
 .band { transition: opacity var(--dur-base) var(--ease-out); }
 .band-boost { opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
 .band.is-active .band-boost { opacity: 1; }
-.itin-profile[data-active] .band:not(.is-active) { opacity: 0.5; }
+.itin-profile[data-active] .band:not(.is-active) { opacity: 0.38; }
 
 .day-tag { transition: opacity var(--dur-quick) var(--ease-out); }
 .itin-profile[data-active] .day-tag:not(.is-active) { opacity: 0.55; }
@@ -143,12 +143,12 @@ body.is-dragging-feature .unassigned-pool:not(.has-items) .pool-empty { display:
 
 .itin-day {
   position: relative;
-  padding: var(--space-4) 0 var(--space-5);
+  padding: var(--space-4) 0 var(--space-2);
   border-radius: var(--radius-md);
   transition: background-color var(--dur-quick) var(--ease-out);
 }
+/* Sections take focus only programmatically (band click, map); no ring. */
 .itin-day:focus { outline: none; }
-.itin-day:focus-visible { box-shadow: var(--focus-ring); }
 
 .itin-day-head { display: flex; align-items: center; gap: var(--space-2); }
 .itin-day-label {

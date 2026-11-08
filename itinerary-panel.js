@@ -140,7 +140,7 @@ function paint() {
   fig.classList.toggle("is-compact", S.compact && m.mode !== "empty");
   if (m.mode === "empty") {
     fig.innerHTML = `<div class="itin-empty">
-      ${drawEmpty(W)}
+      ${drawEmpty(W - 24)}
       <p class="itin-empty-title">Your elevation profile draws itself here.</p>
       <p class="itin-empty-hint">Draw a route on the map, then drag it into a day.</p>
       <button type="button" class="btn btn--quiet btn--sm" data-action="draw-route">Draw route</button>
@@ -186,7 +186,8 @@ function sizeTail() {
 }
 
 function pickActive() {
-  if (S.lock != null || !S.sections.length || S.model?.mode !== "days") return;
+  // While drawing (compact strip) the line jumps up; keep the day you were on.
+  if (S.compact || S.lock != null || !S.sections.length || S.model?.mode !== "days") return;
   const y = S.scroll.getBoundingClientRect().top + S.lineY;
   let idx = null;
   for (let i = 0; i < S.sections.length; i++) {

@@ -277,8 +277,8 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
         <rect x="${(x0 - 2).toFixed(1)}" y="${top - 10}" width="${(x1 - x0 + 4).toFixed(1)}" height="${base - top + 12}" fill="${tone}" fill-opacity="0.26" filter="url(#ip-grain-soft)"/>
         <g stroke="${tone}" fill="none" stroke-linecap="round" filter="url(#ip-grain)">${hatch([x0 - 2, top - 12, x1 + 2, base + 2], { spacing: 2.3, angle: -63 + (d.i % 2) * 6, seed: 21 + d.i, w: 1, minO: 0.55, maxO: 1 })}</g>
         <g class="band-boost" stroke="${tone}" fill="none" stroke-linecap="round" filter="url(#ip-grain)">
-          <rect x="${(x0 - 2).toFixed(1)}" y="${top - 10}" width="${(x1 - x0 + 4).toFixed(1)}" height="${base - top + 12}" fill="${tone}" fill-opacity="0.18" stroke="none"/>
-          ${hatch([x0 - 2, top - 12, x1 + 2, base + 2], { spacing: 3.1, angle: -57 + (d.i % 2) * 6, seed: 51 + d.i, w: 1, minO: 0.5, maxO: 0.9 })}
+          <rect x="${(x0 - 2).toFixed(1)}" y="${top - 10}" width="${(x1 - x0 + 4).toFixed(1)}" height="${base - top + 12}" fill="${tone}" fill-opacity="0.3" stroke="none"/>
+          ${hatch([x0 - 2, top - 12, x1 + 2, base + 2], { spacing: 2.2, angle: -57 + (d.i % 2) * 6, seed: 51 + d.i, w: 1, minO: 0.5, maxO: 0.9 })}
         </g>
       </g></g>`;
     } else if (!compact) {
@@ -296,7 +296,7 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
     const cx = (x0 + x1) / 2, bw = x1 - x0;
     hits += `<rect class="day-hit" data-i="${d.i}" x="${x0.toFixed(1)}" y="0" width="${Math.max(bw, 1).toFixed(1)}" height="${H}" fill="transparent" role="button" tabindex="-1" aria-label="Go to day ${d.n}"><title>Day ${d.n}</title></rect>`;
     if (compact) {
-      if (bw >= 16) tags += `<text class="sk-num day-tag${isA ? " is-active" : ""}" data-i="${d.i}" x="${(x0 + 4).toFixed(1)}" y="${H - 9}">${d.n}</text>`;
+      if (bw >= 16) tags += `<text class="sk-num halo day-tag${isA ? " is-active" : ""}" data-i="${d.i}" x="${(x0 + 4).toFixed(1)}" y="${H - 9}">${d.n}</text>`;
       continue;
     }
     if (tagFull) {
@@ -366,10 +366,9 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
   // Baseline (hand-ruled) with mile ticks.
   let axis = `<path d="${inkStroke(wobble([[L - 2, base + 0.5], [W - Rr + 2, base + 0.5]], { amp: 0.5, seed: 3 }), { w: 0.9, vary: 0.2, amp: 0.2, seed: 4 })}" fill="var(--sketch-ink-soft)"/>`;
   const step = tickStep(m.total, plotW, narrow ? 44 : 40);
-  const lastTick = Math.floor(m.total / step + 1e-9) * step;
   for (let mi = 0; mi <= m.total + 1e-9; mi += step) {
     const x = X(mi);
-    const label = `${+mi.toFixed(1)}${Math.abs(mi - lastTick) < 1e-9 ? " mi" : ""}`;
+    const label = `${+mi.toFixed(1)}${mi === 0 ? " mi" : ""}`;
     axis += `<path d="${inkStroke([[x, base + 1], [x + 0.2, base + 5]], { w: 0.8, vary: 0.1, amp: 0.05, seed: Math.round(mi * 10) + 1, taper: 1 })}" fill="var(--sketch-ink-soft)"/>`;
     const anchor = mi === 0 ? "start" : x > W - 24 ? "end" : "middle";
     axis += `<text class="sk-num" x="${x.toFixed(1)}" y="${base + 18}" text-anchor="${anchor}">${label}</text>`;
