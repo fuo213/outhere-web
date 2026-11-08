@@ -36,3 +36,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# ======================
+# Personal trip data (real GPS history): never commit
+# ======================
+design/fixtures/local/
+*.gpx

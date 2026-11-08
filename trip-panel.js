@@ -34,6 +34,7 @@ import { glyphIcon, glyphDefsSVG } from "./sketch.js";
 import { confirm as confirmMotion } from "./design/motion.js";
 import { TripsStore, hideTripsHome } from "./trips-home.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
+import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
 
 // ---------------------------------------------------------------------------
 // Trip state manager
@@ -685,6 +686,7 @@ function renderUnassignedPool() {
   // The tray only takes room when it holds something (or while you drag or
   // draw: then it's where a feature can go back to / where the new route lands).
   poolEl?.classList.toggle("has-items", unassignedFeatures.length > 0);
+  refreshGpxActions();
   if (unassignedFeatures.length === 0) {
     chipsEl.innerHTML = `<span class="pool-empty">Drop here to take it out of its day.</span>`;
     return;
@@ -1641,6 +1643,9 @@ export function initTripPanel() {
       e.target.value = "";
     }
   });
+
+  // Import GPX (button, multi-select, drop on the panel) + Assign by date
+  initGpxImport(TripManager);
 
   // New trip button → show onboarding modal
   document.getElementById("newTripBtn").addEventListener("click", () => {

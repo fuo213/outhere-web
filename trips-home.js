@@ -421,11 +421,27 @@ export function initTripsHome() {
 // ---------------------------------------------------------------------------
 // Dev only: ?demo=maze opens a bundled demo trip (design/fixtures/).
 // Honored on localhost and Pages branch previews, never on production.
+// The spanish-bottom demo is personal data: it loads only if the git-ignored
+// local fixture is present, so on a preview it just shows a quiet note.
 // ---------------------------------------------------------------------------
 
 const DEMO_TRIPS = {
   maze: "design/fixtures/demo-maze-chocolate-drops.trip.geojson",
+  // Personal recording (real GPS history). The file lives in design/fixtures/local/,
+  // which is git-ignored, so it exists only on the machine that made it.
+  "spanish-bottom": "design/fixtures/local/spanish-bottom-2026.trip.geojson",
 };
+const LOCAL_ONLY_DEMOS = new Set(["spanish-bottom"]);
+
+/** A quiet one-line note that fades out on its own (demo loader status). */
+function demoNote(text) {
+  const el = document.createElement("p");
+  el.className = "demo-note";
+  el.setAttribute("role", "status");
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 8000);
+}
 
 /** @param {Promise} regionsReady resolves once the region catalog is loaded */
 export async function loadDemoTripFromURL(regionsReady) {
@@ -436,7 +452,10 @@ export async function loadDemoTripFromURL(regionsReady) {
   try {
     await regionsReady;
     const res = await fetch(DEMO_TRIPS[key]);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      if (LOCAL_ONLY_DEMOS.has(key)) demoNote("That demo trip only exists on the machine that recorded it.");
+      throw new Error(`HTTP ${res.status}`);
+    }
     // Same path as Load trip. The fixture keeps a fixed trip_id, so reloading
     // overwrites the saved copy instead of piling up duplicates.
     TripManager.loadFromGeoJSON(await res.json());

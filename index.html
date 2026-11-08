@@ -143,7 +143,10 @@
 
       <!-- Unassigned feature pool -->
       <div class="unassigned-pool" id="unassignedPool">
-        <div class="pool-label">Unassigned</div>
+        <div class="pool-head">
+          <div class="pool-label">Unassigned</div>
+          <button class="btn btn--ghost btn--sm" id="assignByDateBtn" hidden>Assign by date</button>
+        </div>
         <div class="pool-chips" id="unassignedChips">
           <!-- Populated by trip-panel.js -->
         </div>
@@ -166,12 +169,17 @@
 
     <!-- Action buttons -->
     <div class="trip-actions-section">
+      <p class="import-note" id="gpxImportNote" role="status" hidden></p>
       <button class="btn btn--primary btn--block" id="downloadTripBtn">Download trip (.geojson)</button>
       <div class="trip-actions-secondary">
         <button class="btn btn--ghost btn--sm" id="exportMarkdownBtn">Export notes (.md)</button>
         <label class="btn btn--ghost btn--sm upload-label">
           Load trip
           <input type="file" id="loadTripInput" accept=".geojson,.json" hidden />
+        </label>
+        <label class="btn btn--ghost btn--sm upload-label">
+          Import GPX
+          <input type="file" id="importGpxInput" accept=".gpx,application/gpx+xml" multiple hidden />
         </label>
         <button class="btn btn--ghost btn--sm" id="newTripBtn">New trip</button>
       </div>
