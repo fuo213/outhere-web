@@ -100,15 +100,18 @@ export function buildItinerary(trip) {
       };
     });
   }
-  // A day with no route still gets a little room on the page (a rest day).
+  // A day with no route between routed days still gets a little room on the
+  // page (a rest day). Unplanned days after the last route take none.
   const emptyW = routeMiles > 0 ? Math.max(routeMiles * 0.06, 0.2) : 1;
+  let lastRouted = -1;
+  groups.forEach((g, k) => { if (g.pieces.length) lastRouted = k; });
 
   let mi0 = 0;
-  const days = groups.map((g) => {
+  const days = groups.map((g, gk) => {
     const startMi = mi0;
     let off = 0;
     for (const p of g.pieces) { p.startMi = mi0 + off; off += p.miles; }
-    const width = g.pieces.length ? off : emptyW;
+    const width = g.pieces.length ? off : gk > lastRouted ? 0 : emptyW;
     const along = (pt) => {
       let best = null;
       for (const p of g.pieces) {
@@ -161,7 +164,17 @@ export function buildItinerary(trip) {
       if (!lo || ft < lo.ft) lo = { mi, ft };
     });
   }
+  // Rest days sit at the elevation where the previous day ended.
+  let lastFt = null;
+  for (const d of days) {
+    if (d.empty) { d.restFt = lastFt; continue; }
+    const p = d.pieces.at(-1);
+    lastFt = p.profile ? p.profile.at(-1) : null;
+  }
   const elevAt = (mi) => {
+    for (const d of days) {
+      if (d.empty && d.endMi > d.startMi && mi > d.startMi + 1e-9 && mi < d.endMi - 1e-9) return d.restFt;
+    }
     for (const d of days) for (const p of d.pieces) {
       if (mi < p.startMi - 1e-9 || mi > p.startMi + p.miles + 1e-9) continue;
       if (!p.profile) return null;
@@ -266,11 +279,12 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
 
   // Day bands (pencil), with a denser "boost" layer shown on the active day.
   let bands = "", hits = "", tags = "", dividers = "";
-  const tagFull = m.mode === "days" && !compact && m.days.every((d) => X(d.endMi) - X(d.startMi) >= (narrow ? 38 : 46));
+  const tagFull = m.mode === "days" && !compact && m.days.every((d) => d.endMi === d.startMi || X(d.endMi) - X(d.startMi) >= (narrow ? 38 : 46));
   for (const d of m.days) {
     const x0 = X(d.startMi), x1 = X(d.endMi), tone = toneFor(d.i, d.loose);
     const isA = active === d.i;
     const first = d === m.days[0];
+    if (d.endMi === d.startMi) continue; // an unplanned day after the last route: not on the page
     defs += `<clipPath id="ip-band${d.i}"><rect x="${(x0 + (first ? -2 : 0.9)).toFixed(1)}" y="0" width="${Math.max(0, x1 - x0 - (first ? -2 : 0.9) - 0.9).toFixed(1)}" height="${H}"/></clipPath>`;
     if (!d.empty) {
       bands += `<g class="band${isA ? " is-active" : ""}" data-i="${d.i}" clip-path="url(#ip-band${d.i})"><g clip-path="url(#ip-area)" mask="url(#ip-pressure)">
@@ -283,7 +297,8 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
       </g></g>`;
     } else if (!compact) {
       // A day with no route: a short pencil dash at rest height, nothing to climb.
-      const y = m.days[d.i - 1] ? yAt(m.days[d.i - 1].endMi) : flatY;
+      if (x1 - x0 < 1) continue;
+      const y = d.restFt != null ? Y(d.restFt) : flatY;
       bands += `<g class="band band--empty${isA ? " is-active" : ""}" data-i="${d.i}"><path d="${pathD(wobble([[x0 + 3, y], [x1 - 3, y]], { amp: 0.4, seed: 70 + d.i }))}" stroke="${tone}" stroke-width="2" stroke-linecap="round" fill="none" stroke-dasharray="2 3"/></g>`;
     }
     // Dividers between days: pencil hairlines from the line to the baseline.
