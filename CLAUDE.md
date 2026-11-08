@@ -34,7 +34,8 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `region-picker.js` | Fetches `catalog.json` (localStorage cache, ~24h TTL, stale-while-revalidate), region switcher UI, `applyRegion()` swaps the PMTiles source via `map.setStyle()` |
 | `trips-home.js` | `TripsStore`: multi-trip localStorage store (`outhere_trips_index`, `outhere_trip_<id>`, `outhere_active_trip`; migrates legacy `outhere_trip`). Trips home view: open / duplicate / export / delete / import |
 | `trip-panel.js` | `TripManager` (trip data model, internal `_schema_version` 4 migrations), notebook sidebar (overview, unassigned pool, day accordion, drag-and-drop), canonical export (`buildTripExport` + `validateTripExport`), `escapeHTML` / `escapeAttr` |
-| `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = no snap, Esc cancels, double-click finishes), trail snapping, distances, elevation profiles |
+| `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = straight leg, Esc cancels, double-click finishes), live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
+| `routing.js` | Trail routing: loads the region's `booot-trail-graph`, flatbush snapping (meters), A* |
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
 | `ui-motion.js` | Motion wiring: `confirm` shiver on exports (delegated clicks) |
@@ -51,7 +52,8 @@ Classic `<script>` tags in `index.html`, used as globals from the modules:
 
 - `maplibregl`: MapLibre GL JS 4.7.1 (unpkg)
 - `pmtiles`: PMTiles 3.2.1 (unpkg)
-- `turf`: Turf 6.5.0 (jsDelivr), used by snapping and distances
+- `turf`: Turf 6.5.0 (jsDelivr), still loaded; routing no longer uses it
+- Flatbush 4.4.0: ES-module import from jsDelivr in `routing.js` (spatial index for snapping)
 - Google Fonts: Playfair Display, DM Sans, IBM Plex Mono
 
 Runtime network calls: tiles.booot.org (catalog + PMTiles range requests),
@@ -82,7 +84,7 @@ free (see product principles in `../CLAUDE.md`); pin exact versions.
 ## Trip format
 
 Exports must match the canonical trip format in `../outhere/trips/`
-(`trip.schema.json` + `FORMAT.md`, `schema_version: "1.0"`; read FORMAT.md's
+(`trip.schema.json` + `FORMAT.md`, `schema_version: "1.1"`; read FORMAT.md's
 Drift section first). Don't invent fields: extend the schema in `outhere`
 first. `buildTripExport()` stamps `schema_version` and mirrors `readme` into
 `notes`; `validateTripExport()` is a lightweight structural self-check, not a
@@ -90,13 +92,24 @@ full schema validator, so validate real exports against the schema after
 touching export code. The internal `_schema_version` (4) is a separate
 localStorage migration counter.
 
-## Trail snapping (being replaced)
+## Trail routing
 
-`planning.js` snaps to rendered tile geometry
-(`queryRenderedFeatures` on the `trails` layer + Turf), so results depend on
-zoom and on clipped, simplified tile geometry. It's slated to be replaced by
-routing on a per-region trail graph built by the pipeline. See `../SNAPPING_RESEARCH.md`
-before working on snapping; don't invest in the render-tile approach.
+Routes follow real trails using the per-region routing graph the pipeline
+publishes (`routing_graph` in catalog.json, format `booot-trail-graph` v1;
+design in `../SNAPPING_DESIGN.md`). The graph loads lazily per region (draw
+start, trip open) and one throwaway route warms A* up right after it loads.
+Where no graph exists, legs are drawn straight with "Routing isn't available
+here yet." Exports write `schema_version` "1.1" with per-leg `segments` +
+`routing`.
+
+- **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
+  maps a region id to a local graph file (keep `dev-graphs/` out of git).
+- **Verify:** `node design/tools/shoot.mjs --scenes design/tools/scenes-routing.json`
+  (add `--base https://<branch>.outhere-web.pages.dev` for a Pages preview)
+  draws Angels Landing / West Rim / Hop Valley, a no-path gap, interactions
+  and preview timing. On the 2026-11-07 OSM graph (zion d9883fc4) expect
+  2.18 / 14.64 / 6.54 mi; distances move with OSM edits (the Feb-2026 graph
+  gave 2.11 / 14.57 / 6.54 before Walter's Wiggles was re-mapped in more detail).
 
 ## Design system
 

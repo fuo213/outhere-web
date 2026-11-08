@@ -3,6 +3,8 @@
 //
 //   node design/tools/shoot.mjs                 # default scenes → /tmp/booot-shots
 //   node design/tools/shoot.mjs --out DIR --scenes scenes.json --only planner
+//   node design/tools/shoot.mjs --scenes design/tools/scenes-routing.json --query "graph=zion:dev-graphs/zion.json"
+//     (--query is appended to every scene path, e.g. for localhost-only overrides)
 //
 // Starts `python3 -m http.server 8000` in the repo root if nothing is
 // listening (port 8000 is in the tile CORS allowlist), drives headless Chrome
@@ -13,6 +15,13 @@
 //       {"wait": 4000}, {"click": "#tripsHomeNewBtn"}, {"type": ["#onboardingName", "Zion"]},
 //       {"eval": "document.body.dataset.x = 1"}, {"hover": "#addRouteBtn"},
 //       {"mapClick": [-200, 0]}, {"mapDblClick": [-40, 90]}, {"shot": "03-planner"} ] }
+//
+//   Map steps by coordinate (projected through window.__outhere.map; the
+//   point must be on screen): {"mapClickLngLat": [lon, lat]},
+//   {"mapDblClickLngLat": [lon, lat]}, {"mapMoveLngLat": [lon, lat]}.
+//   {"mapClickExpr": "js returning [lon, lat]"} clicks a computed point.
+//   Add "shift": true to hold Shift. {"eval": "..."} prints its result when it
+//   returns one; {"save": ["name.json", "expr"]} writes the result as JSON to OUT.
 
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -88,11 +97,12 @@ async function main() {
     await send("Page.enable"); await send("Runtime.enable"); await send("Log.enable");
 
     const mapPoint = async ([dx, dy]) => { const r = await evalJS(`(() => { const b = document.getElementById('map').getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; })()`); return [r[0] + dx, r[1] + dy]; };
-    const mouse = async (x, y, clickCount = 1) => {
-      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+    const lngLatPoint = async ([lon, lat]) => evalJS(`(() => { const m = window.__outhere.map; const b = m.getContainer().getBoundingClientRect(); const p = m.project([${+lon}, ${+lat}]); return [b.x + p.x, b.y + p.y]; })()`);
+    const mouse = async (x, y, clickCount = 1, modifiers = 0) => {
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers });
       for (let c = 1; c <= clickCount; c++) {
-        await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: c });
-        await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: c });
+        await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: c, modifiers });
+        await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: c, modifiers });
       }
       await sleep(400);
     };
@@ -101,7 +111,9 @@ async function main() {
       const [w, h] = scene.viewport || [1440, 900];
       await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 600 });
       const loaded = once("Page.loadEventFired");
-      await send("Page.navigate", { url: BASE + (scene.path || "/") });
+      const path = scene.path || "/";
+      const query = args.query && args.query !== true ? (path.includes("?") ? "&" : "?") + args.query : "";
+      await send("Page.navigate", { url: BASE + path + query });
       await loaded;
       for (const step of scene.steps) {
         try {
@@ -109,9 +121,14 @@ async function main() {
           else if (step.click) { await evalJS(`document.querySelector(${JSON.stringify(step.click)}).click()`); await sleep(400); }
           else if (step.hover) { const [x, y] = await evalJS(`(() => { const b = document.querySelector(${JSON.stringify(step.hover)}).getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; })()`); await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); await sleep(400); }
           else if (step.type) { const [sel, text] = step.type; await evalJS(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.focus(); el.value = ${JSON.stringify(text)}; el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); })()`); }
-          else if (step.eval) await evalJS(step.eval);
+          else if (step.eval) { const v = await evalJS(step.eval); if (v !== undefined) console.log(`eval ${scene.name}:`, JSON.stringify(v)); }
+          else if (step.save) { const [name, expr] = step.save; const file = join(OUT, name); writeFileSync(file, JSON.stringify(await evalJS(expr), null, 2)); console.log("saved", file); }
           else if (step.mapClick) await mouse(...(await mapPoint(step.mapClick)));
           else if (step.mapDblClick) await mouse(...(await mapPoint(step.mapDblClick)), 2);
+          else if (step.mapClickLngLat) await mouse(...(await lngLatPoint(step.mapClickLngLat)), 1, step.shift ? 8 : 0);
+          else if (step.mapDblClickLngLat) await mouse(...(await lngLatPoint(step.mapDblClickLngLat)), 2, step.shift ? 8 : 0);
+          else if (step.mapClickExpr) await mouse(...(await lngLatPoint(await evalJS(step.mapClickExpr))));
+          else if (step.mapMoveLngLat) { const [x, y] = await lngLatPoint(step.mapMoveLngLat); await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers: step.shift ? 8 : 0 }); await sleep(step.pause ?? 50); }
           else if (step.shot) {
             const { data } = await send("Page.captureScreenshot", { format: "png" });
             const file = join(OUT, `${step.shot}.png`);
