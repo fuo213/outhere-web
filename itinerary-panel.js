@@ -53,6 +53,11 @@ export function initItineraryPanel({ figure, scroll, tail, onDrawRoute }) {
     paint();
   }).observe(S.scroll);
 
+  // The paper fade only shows once something is actually scrolling under it.
+  const stuck = () => S.fig.classList.toggle("is-stuck", S.scroll.scrollTop > 2);
+  scroll.addEventListener("scroll", stuck, { passive: true });
+  stuck();
+
   figure.addEventListener("click", (e) => {
     if (e.target.closest("[data-action='draw-route']")) { S.onDrawRoute?.(); return; }
     const hit = e.target.closest(".day-hit");

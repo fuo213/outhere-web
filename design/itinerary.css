@@ -46,7 +46,10 @@
   height: var(--itin-fade);
   background: linear-gradient(to bottom, var(--surface) 30%, color-mix(in srgb, var(--surface) 0%, transparent));
   pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
 }
+.itin-profile.is-stuck::after { opacity: 1; }
 
 .itin-profile svg { display: block; overflow: visible; }
 .itin-profile-art { position: relative; }
