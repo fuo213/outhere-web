@@ -769,11 +769,11 @@ map.on("click", "pois", (e) => {
   // Build popup content
   let html = `<strong>${escapeHTML(props.name || "Unnamed")}</strong>`;
   if (props.poi_category) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.poi_category)}</span>`;
+    html += `<br><span class="popup-meta">${escapeHTML(props.poi_category)}</span>`;
   }
   if (props.elevation) {
     const ft = Math.round(props.elevation * 3.28084);
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${ft} ft</span>`;
+    html += `<br><span class="popup-data">${ft} ft</span>`;
   }
 
   new maplibregl.Popup({ offset: 8, maxWidth: "240px" })
@@ -809,17 +809,17 @@ function showTripFeaturePopup(e) {
 
   let html = `<strong>${escapeHTML(props.name || typeLabel)}</strong>`;
   if (props.date) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.date)}</span>`;
+    html += `<br><span class="popup-data">${escapeHTML(props.date)}</span>`;
   }
   if (type === "camp") {
     let detail = "";
     if (props.water_nearby) detail += "Water nearby";
-    if (detail) html += `<br><span style="color:#6b7280;font-size:0.85em">${detail}</span>`;
+    if (detail) html += `<br><span class="popup-meta">${detail}</span>`;
   } else if (type === "waypoint" && props.subtype) {
-    html += `<br><span style="color:#6b7280;font-size:0.85em">${escapeHTML(props.subtype)}</span>`;
+    html += `<br><span class="popup-meta">${escapeHTML(props.subtype)}</span>`;
   }
   if (props.notes) {
-    html += `<br><span style="color:#6b7280;font-size:0.8em">${escapeHTML(props.notes)}</span>`;
+    html += `<br><span class="popup-meta">${escapeHTML(props.notes)}</span>`;
   }
 
   new maplibregl.Popup({ offset: 12, maxWidth: "260px" })

@@ -979,7 +979,7 @@ function buildDayAutoSummary(dayFeatures, dayId) {
   if (dayFeatures.length === 0) {
     featureList.innerHTML = `
       <div class="day-drop-zone">
-        <svg class="day-drop-zone-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#A89880" stroke-width="1.2" stroke-linecap="round">
+        <svg class="day-drop-zone-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
           <polyline points="2,17 6,5 10,12 13,3 18,17"/>
         </svg>
         <span class="day-drop-zone-label">Drag waypoints here</span>

@@ -39,6 +39,25 @@ change tokens or principles. Propose, then log.
 
 ## Trying
 
+- **2026-11-07 · Phase 1b app migration calls** (seen on real screens in
+  the 1b PR, awaiting Vincent's review):
+  - No badge above titles: "TRIP PLANNER", "TRIP JOURNAL", "NEW TRIP" removed
+    (per the rejected micro-label pattern). Trip title and close share a row.
+  - Trip panel primary = "Download trip (.geojson)"; export notes / load /
+    new trip are ghost buttons in one row. "New trip" is no longer red: it
+    doesn't destroy anything (the current trip stays saved).
+  - Active point-type tool and tile Save fill with `--type-*-text` (white on
+    the light `--type-*` fills was 2.1:1 for camp).
+  - Layers button "open" state uses the accent like the Plan button, not teal
+    (teal means dayhike).
+  - Notes editors in DM Sans, not Plex Mono (mono is for numbers only).
+  - Elevation loss in `--text-secondary`, not rust (one rust per view);
+    instruction keywords in ink, not rust.
+  - "Overview" and "Day 1" rows are sentence case; the tracked label is kept
+    for real section headers (Unassigned, Layers, Regions).
+  - Scrims lose the 2px backdrop blur; panels lose the faint ruled-paper
+    texture (both read as decoration; the ruling was nearly invisible).
+  - Layer panel sits above the planning toolbar (they overlapped before).
 - **2026-11-07 · Three type families with strict jobs** (Playfair titles /
   DM Sans UI / Plex Mono numbers). Source Serif 4 dropped from UI.
 - **2026-11-07 · 11px type floor** and only one tracked-uppercase style.

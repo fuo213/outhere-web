@@ -315,8 +315,8 @@ export function renderTripsHome() {
   if (trips.length === 0) {
     grid.innerHTML = `
       <div class="trips-empty">
-        <p>No trips yet.</p>
-        <p class="trips-empty-sub">Start a new trip or import a saved .geojson file.</p>
+        <p>No trips yet</p>
+        <p class="trips-empty-sub">Start a new trip to draw your route on the map, or import a .geojson you exported earlier.</p>
       </div>`;
     return;
   }
