@@ -10,8 +10,7 @@ no backend. All state lives in the browser (localStorage).
 - **Tiles:** https://tiles.booot.org (R2 custom domain, built by `../outhere`)
 - **Product name:** **Booot** on every user-facing surface. "OutHere" is the
   internal repo/code name only (identifiers and `outhere_*` localStorage keys
-  stay as they are). Some visible copy (page `<title>`, meta description)
-  still says OutHere; Phase 1b of `../BOOOT_NEXT_STEPS.md` renames it.
+  stay as they are).
 
 Ecosystem context (other repos, canonical formats, cross-repo rules):
 `../CLAUDE.md`.
@@ -37,7 +36,8 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `trip-panel.js` | `TripManager` (trip data model, internal `_schema_version` 4 migrations), notebook sidebar (overview, unassigned pool, day accordion, drag-and-drop), canonical export (`buildTripExport` + `validateTripExport`), `escapeHTML` / `escapeAttr` |
 | `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = no snap, Esc cancels, double-click finishes), trail snapping, distances, elevation profiles |
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
-| `styles.css` | All app styles (still raw hex; see Design system) |
+| `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
+| `ui-motion.js` | Motion wiring: `confirm` shiver on exports (delegated clicks) |
 | `design/` | The Booot design system (below) |
 
 Modules import each other circularly (`app.js` exports `map`; the others
@@ -52,8 +52,7 @@ Classic `<script>` tags in `index.html`, used as globals from the modules:
 - `maplibregl`: MapLibre GL JS 4.7.1 (unpkg)
 - `pmtiles`: PMTiles 3.2.1 (unpkg)
 - `turf`: Turf 6.5.0 (jsDelivr), used by snapping and distances
-- Google Fonts: Playfair Display, DM Sans, IBM Plex Mono (+ Source Serif 4,
-  due to be dropped in Phase 1b)
+- Google Fonts: Playfair Display, DM Sans, IBM Plex Mono
 
 Runtime network calls: tiles.booot.org (catalog + PMTiles range requests),
 MapLibre demotiles for glyphs/sprite, and the free Open-Meteo elevation API
@@ -114,9 +113,12 @@ All UI work follows `design/`:
 - `skills/`: sources of the `booot-design` (applied automatically to UI work)
   and `/design-review` skills
 
-The app itself is not on the tokens yet: `styles.css` still hardcodes colors
-and doesn't import `tokens.css`. Migrating it is Phase 1b. New UI should use
-the tokens; screenshot visible changes before calling them done.
+The app is on the tokens (Phase 1b): `index.html` links the design CSS
+before `styles.css`, and `styles.css` has no raw hex/rgba/px font sizes. The
+only raw colors left in the app are map paint (`buildStyle()` in `app.js`,
+`config.js` legends/style defaults, `layer-styles.js`), which belong to the
+pipeline map style. New buttons/cards go in the press/lift selector list at
+the top of `styles.css`; screenshot visible changes before calling them done.
 
 ## Gotchas
 

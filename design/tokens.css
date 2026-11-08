@@ -42,6 +42,7 @@
   --gold-500: #D4A853;   /* camp */
   --gold-700: #8F6F22;   /* gold as text (4.0:1, >=13px semibold) */
   --water-500: #5A8FA8;  /* water stops */
+  --water-700: #3E6E85;  /* water as text (4.9:1 on its tint) */
   --red-700:  #991B1B;   /* destructive */
   --red-50:   #FEE2E2;
 
@@ -90,6 +91,7 @@
   --type-water:         var(--water-500);
   --type-water-tint:    #EBF2F6;
   --type-water-border:  #88B0C8;
+  --type-water-text:    var(--water-700);
 
   /* ---- Type ------------------------------------------------------------- */
   --font-display: 'Playfair Display', Georgia, serif;     /* trip titles, page heroes. Nothing else */

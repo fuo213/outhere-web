@@ -86,7 +86,13 @@ Contrast rules (measured on `--surface` #F2EDE3):
 | `--type-*` fills | 1.9–3.2 | **never text**: use `--type-*-text` |
 
 Point types: route = sage, camp = gold, dayhike = teal, rest = dust, water =
-water-blue. Each has `fill`, `tint`, `border`, `text` variants.
+water-blue. Each has `fill`, `tint`, `border`, `text` variants (water's
+`--type-water-text` added in 1b). When a type needs a **solid fill with light
+text on it** (active point-type tool, a tile's Save button), fill with the
+`--type-*-text` shade: the `--type-*` fills are too light for white text.
+
+Overlays use the flat `--scrim`: no backdrop blur. Surfaces are flat paper:
+no ruled-line texture.
 
 ## Type scale
 
@@ -112,8 +118,8 @@ resting card → `--shadow-4` side panel. Pressed things lose their shadow.
 |---|---|---|---|
 | **press** | sinks to 0.97, shadow collapses, springs back | every button and tool | built into `.btn`/`.tool`; `.m-press` elsewhere |
 | **lift** | rises 1px with a soft shadow on hover | things you can grab or open: cards, pills | `.m-lift` |
-| **confirm** | a 420ms shiver | a state change landed: saved, assigned to a day, exported | `confirm(el)` |
-| **flip** | label slides like a slot machine on hover, previewing the other state | two-state toggles (edit/preview, units, layer on/off) | `.flip-btn` + `wireFlip()` |
+| **confirm** | a 420ms shiver | a state change landed: saved, assigned to a day, exported | `confirm(el)`; app wiring in `ui-motion.js` |
+| **flip** | label slides like a slot machine on hover, previewing the other state | two-state toggles (edit/preview, units, layer on/off) | `.flip-btn` + `wireFlip()` (reusable; no text toggle in the app uses it yet) |
 | **draw** | line draws itself in | a route was just finished; route previews | `.m-draw` / `drawIn()` |
 | **count** | numbers tick to their new value | day/trip totals after an edit | `countUp()` |
 
@@ -172,6 +178,31 @@ token, and a small loader helper in `motion.js` that maps MapLibre events
 - **Chips:** `.chip` for metadata (mono numbers + icon).
 - **Pills:** `.pill[data-type]` for trip features you can drag into days.
 - **Cards, fields, empty states:** `.card`, `.field` + `.input`, `.empty`.
+
+### How the app uses them (Phase 1b)
+`index.html` links `design/tokens.css`, `motion.css`, `components.css`, then
+`styles.css` (feature styles, token names only). Static buttons use the
+`.btn` classes directly; JS-rendered pieces keep their own class names and
+mirror a base component in `styles.css`:
+| App class | Mirrors |
+|---|---|
+| `.feature-chip[data-type]` | `.pill` (+ `waypoint` → water tokens) |
+| `.meta-chip` | `.chip` |
+| `.tool-btn`, MapLibre controls | `.tool` |
+| `.trip-card`, `.feature-tile` | `.card` + lift |
+| `.onboarding-input` / `-label` | `.input` / `.field-label` |
+| `.trips-empty`, `.day-drop-zone` | `.empty` |
+
+Press and lift for these are wired by one selector list at the top of
+`styles.css`; add new buttons/cards there. `confirm` fires on exports
+(`ui-motion.js`, delegated clicks). Section labels in the app that use the
+`.t-label` treatment: Unassigned, Layers, Regions, style sub-headers, the
+drawing-instructions title. Accordion rows ("Overview", "Day 1") are
+sentence case.
+
+**Trip panel hierarchy:** the one primary is "Download trip (.geojson)"
+(it becomes "Send to phone" when that ships); export notes / load / new trip
+are small ghost buttons in one row. No badge above the title.
 
 ## Voice
 Plain, warm, specific, second person. Verbs on buttons ("Draw route", "Send to

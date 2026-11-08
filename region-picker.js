@@ -176,7 +176,7 @@ export function applyRegion(region, { fly = true } = {}) {
   persistActiveRegion();
   updateRegionButton();
   renderRegionList();
-  document.title = `OutHere — ${region.name}`;
+  document.title = `Booot — ${region.name}`;
 
   // Release the old region's camera constraints before moving.
   map.setMaxBounds(null);
@@ -351,7 +351,7 @@ export async function initRegionPicker() {
   });
 
   updateRegionButton();
-  document.title = `OutHere — ${activeRegion.name}`;
+  document.title = `Booot — ${activeRegion.name}`;
   renderRegionList(); // fallback list until the catalog arrives
 
   const cached = readCatalogCache();
