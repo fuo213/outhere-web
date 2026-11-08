@@ -1,0 +1,2427 @@
+[
+ {
+  "name": "routing-angels-landing",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Angels Landing"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.9515271,37.2599664], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.9515271,
+     37.2599664
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.94799,37.2693149], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapDblClickLngLat": [
+     -112.94799,
+     37.2693149
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; const r = o.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1); const c = r.geometry.coordinates; const b = c.reduce((b, p) => [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.max(b[2], p[0]), Math.max(b[3], p[1])], [180, 90, -180, -90]); o.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 80, bottom: 80, left: 80, right: 600 }, duration: 0 }); await new Promise((res) => o.map.once('idle', res)); })()"
+   },
+   {
+    "wait": 1500
+   },
+   {
+    "shot": "routing-angels-landing"
+   },
+   {
+    "eval": "(() => { const r = window.__outhere.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1).properties; return { main_route_distance_mi: +r.main_route_distance_mi.toFixed(3), modes: r.segments.map((s) => s.mode + (s.reason ? ':' + s.reason : '')), legs_mi: r.segments.map((s) => +(s.length_m / 1609.344).toFixed(3)), routing: r.routing, vertex_snapped: r.vertex_snapped }; })()"
+   },
+   {
+    "save": [
+     "routing-angels-landing.trip.geojson",
+     "window.__outhere.TripManager.buildExport()"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "routing-west-rim",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "West Rim"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-113.022996,37.3815049], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -113.022996,
+     37.3815049
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.98976,37.297496], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.98976,
+     37.297496
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.9515271,37.2599664], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapDblClickLngLat": [
+     -112.9515271,
+     37.2599664
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; const r = o.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1); const c = r.geometry.coordinates; const b = c.reduce((b, p) => [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.max(b[2], p[0]), Math.max(b[3], p[1])], [180, 90, -180, -90]); o.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 80, bottom: 80, left: 80, right: 600 }, duration: 0 }); await new Promise((res) => o.map.once('idle', res)); })()"
+   },
+   {
+    "wait": 1500
+   },
+   {
+    "shot": "routing-west-rim"
+   },
+   {
+    "eval": "(() => { const r = window.__outhere.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1).properties; return { main_route_distance_mi: +r.main_route_distance_mi.toFixed(3), modes: r.segments.map((s) => s.mode + (s.reason ? ':' + s.reason : '')), legs_mi: r.segments.map((s) => +(s.length_m / 1609.344).toFixed(3)), routing: r.routing, vertex_snapped: r.vertex_snapped }; })()"
+   },
+   {
+    "save": [
+     "routing-west-rim.trip.geojson",
+     "window.__outhere.TripManager.buildExport()"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "routing-hop-valley",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Hop Valley"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-113.1131973,37.3402704], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -113.1131973,
+     37.3402704
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-113.1462684,37.4168255], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapDblClickLngLat": [
+     -113.1462684,
+     37.4168255
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; const r = o.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1); const c = r.geometry.coordinates; const b = c.reduce((b, p) => [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.max(b[2], p[0]), Math.max(b[3], p[1])], [180, 90, -180, -90]); o.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 80, bottom: 80, left: 80, right: 600 }, duration: 0 }); await new Promise((res) => o.map.once('idle', res)); })()"
+   },
+   {
+    "wait": 1500
+   },
+   {
+    "shot": "routing-hop-valley"
+   },
+   {
+    "eval": "(() => { const r = window.__outhere.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1).properties; return { main_route_distance_mi: +r.main_route_distance_mi.toFixed(3), modes: r.segments.map((s) => s.mode + (s.reason ? ':' + s.reason : '')), legs_mi: r.segments.map((s) => +(s.length_m / 1609.344).toFixed(3)), routing: r.routing, vertex_snapped: r.vertex_snapped }; })()"
+   },
+   {
+    "save": [
+     "routing-hop-valley.trip.geojson",
+     "window.__outhere.TripManager.buildExport()"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "routing-gap",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Springdale gap"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.9849,37.2012], zoom: 14 })"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickLngLat": [
+     -112.983857,
+     37.201728
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "mapMoveLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "wait": 300
+   },
+   {
+    "shot": "routing-gap-preview"
+   },
+   {
+    "mapClickLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "shot": "routing-gap-drawing"
+   },
+   {
+    "mapDblClickLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "shot": "routing-gap-card"
+   },
+   {
+    "eval": "(() => { const a = document.querySelector('.gap-card__link'); return { text: document.querySelector('.gap-card__text')?.textContent, href: a?.href }; })()"
+   },
+   {
+    "eval": "(() => { const r = window.__outhere.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1).properties; return { main_route_distance_mi: +r.main_route_distance_mi.toFixed(3), modes: r.segments.map((s) => s.mode + (s.reason ? ':' + s.reason : '')), legs_mi: r.segments.map((s) => +(s.length_m / 1609.344).toFixed(3)), routing: r.routing, vertex_snapped: r.vertex_snapped }; })()"
+   },
+   {
+    "save": [
+     "routing-gap.trip.geojson",
+     "window.__outhere.TripManager.buildExport()"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "routing-preview-perf",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Preview timing"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.925,37.26], zoom: 13 })"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickLngLat": [
+     -112.9515271,
+     37.2599664
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.routing.resetStats()"
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9475,
+     37.26
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94735,
+     37.26053
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94732,
+     37.26109
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9474,
+     37.26167
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94762,
+     37.26226
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94796,
+     37.26283
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94844,
+     37.26337
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94905,
+     37.26385
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94977,
+     37.26426
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95059,
+     37.26458
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9515,
+     37.2648
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95247,
+     37.2649
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95348,
+     37.26487
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9545,
+     37.2647
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9555,
+     37.2644
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95645,
+     37.26396
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95732,
+     37.26339
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95809,
+     37.26269
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95873,
+     37.26188
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9592,
+     37.26098
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9595,
+     37.26
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9596,
+     37.25897
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95949,
+     37.25792
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95916,
+     37.25688
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95862,
+     37.25586
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95786,
+     37.25491
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95691,
+     37.25405
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95577,
+     37.2533
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95447,
+     37.2527
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95303,
+     37.25226
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9515,
+     37.252
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9499,
+     37.25194
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94829,
+     37.25209
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94669,
+     37.25244
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94515,
+     37.25301
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94372,
+     37.25378
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94244,
+     37.25473
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94134,
+     37.25586
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94047,
+     37.25713
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93985,
+     37.25852
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9395,
+     37.26
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93945,
+     37.26153
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93971,
+     37.26307
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94027,
+     37.26458
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94114,
+     37.26602
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94231,
+     37.26735
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94374,
+     37.26854
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94542,
+     37.26955
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9473,
+     37.27035
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94934,
+     37.2709
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9515,
+     37.2712
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95372,
+     37.27122
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95595,
+     37.27096
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95813,
+     37.27041
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9602,
+     37.26958
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96211,
+     37.26849
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9638,
+     37.26715
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96522,
+     37.26559
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96634,
+     37.26386
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96711,
+     37.26198
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9675,
+     37.26
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9675,
+     37.25797
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9671,
+     37.25595
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96629,
+     37.25397
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96509,
+     37.2521
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96352,
+     37.25038
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96161,
+     37.24887
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9594,
+     37.2476
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95694,
+     37.24661
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95428,
+     37.24594
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9515,
+     37.2456
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94865,
+     37.24562
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94581,
+     37.246
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94306,
+     37.24674
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94045,
+     37.24783
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93806,
+     37.24925
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93597,
+     37.25097
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93421,
+     37.25295
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93286,
+     37.25515
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93194,
+     37.25752
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9315,
+     37.26
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93155,
+     37.26253
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9321,
+     37.26504
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93315,
+     37.26748
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93467,
+     37.26978
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93665,
+     37.27188
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93904,
+     37.27372
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94178,
+     37.27525
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94483,
+     37.27643
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94809,
+     37.27723
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9515,
+     37.2776
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95497,
+     37.27754
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95842,
+     37.27704
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96176,
+     37.27611
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9649,
+     37.27476
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96776,
+     37.27301
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97027,
+     37.27091
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97235,
+     37.2685
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97394,
+     37.26583
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97501,
+     37.26298
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9755,
+     37.26
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9754,
+     37.25697
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97471,
+     37.25397
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97342,
+     37.25107
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97156,
+     37.24834
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96918,
+     37.24586
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96631,
+     37.24369
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96303,
+     37.24189
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95941,
+     37.24052
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95554,
+     37.23961
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9515,
+     37.2392
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9474,
+     37.2393
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94334,
+     37.23991
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93942,
+     37.24104
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93575,
+     37.24265
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93241,
+     37.24473
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92949,
+     37.24721
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92709,
+     37.25005
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92525,
+     37.25318
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92404,
+     37.25652
+    ],
+    "pause": 30
+   },
+   {
+    "wait": 300
+   },
+   {
+    "shot": "routing-preview"
+   },
+   {
+    "eval": "(() => { const s = window.__outhere.routing.stats; const q = (a, p) => { const b = [...a].sort((x, y) => x - y); return +(b[Math.min(b.length - 1, Math.floor(p * b.length))] || 0).toFixed(2); }; return { warm_up_ms: +(window.__outhere.routing.warmUpMs ?? -1).toFixed(1), first_frame_ms: +(s.frameMs[0] ?? 0).toFixed(2), frames: s.frames, memoHits: s.memoHits, aborted: s.aborted, over4ms: s.frameMs.map((x, i) => [i, +x.toFixed(1)]).filter((x) => x[1] > 4), route_ms: { p50: q(s.routeMs, 0.5), p95: q(s.routeMs, 0.95), max: q(s.routeMs, 1) }, frame_ms: { p50: q(s.frameMs, 0.5), p95: q(s.frameMs, 0.95), max: q(s.frameMs, 1) } }; })()"
+   }
+  ]
+ },
+ {
+  "name": "routing-interactions",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Interactions"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.9515271,37.2599664], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.9515271,
+     37.2599664
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void document.dispatchEvent(new KeyboardEvent('keydown', { key: \"2\", bubbles: true, ...{} }))"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.9507009,37.2748126], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.9507009,
+     37.2748126
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void document.dispatchEvent(new KeyboardEvent('keydown', { key: \"3\", bubbles: true, ...{} }))"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.94799,37.2693149], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.94799,
+     37.2693149
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void document.dispatchEvent(new KeyboardEvent('keydown', { key: \"1\", bubbles: true, ...{} }))"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.944,37.279], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.944,
+     37.279
+    ],
+    "shift": true
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.94,37.28], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.94,
+     37.28
+    ],
+    "shift": true
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void document.dispatchEvent(new KeyboardEvent('keydown', { key: \"Backspace\", bubbles: true, ...{} }))"
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void document.dispatchEvent(new KeyboardEvent('keydown', { key: \"z\", bubbles: true, ...{\"ctrlKey\":true} }))"
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.947,37.279], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.947,
+     37.279
+    ],
+    "shift": true
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.947,37.279], zoom: 14 })"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapDblClickLngLat": [
+     -112.947,
+     37.279
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; const r = o.TripManager.currentTrip.features.filter((f) => f.properties.type === 'route').at(-1); const c = r.geometry.coordinates; const b = c.reduce((b, p) => [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.max(b[2], p[0]), Math.max(b[3], p[1])], [180, 90, -180, -90]); o.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 80, bottom: 80, left: 80, right: 600 }, duration: 0 }); await new Promise((res) => o.map.once('idle', res)); })()"
+   },
+   {
+    "wait": 1500
+   },
+   {
+    "shot": "routing-interactions"
+   },
+   {
+    "eval": "(() => { const fs = window.__outhere.TripManager.currentTrip.features; const r = fs.find((f) => f.properties.type === 'route').properties; const spur = fs.find((f) => f.properties.type === 'dayhike_spur')?.properties; return { vertex_types: r.vertex_types, modes: r.segments.map((s) => s.mode + ':' + s.from_vertex + '>' + s.to_vertex), main_mi: +r.main_route_distance_mi.toFixed(3), dayhike_mi: +r.dayhike_distance_mi.toFixed(3), spur: spur && spur.segments.map((s) => s.mode + ':' + s.from_vertex + '>' + s.to_vertex), points: fs.filter((f) => f.geometry.type === 'Point').map((f) => f.properties.type) }; })()"
+   },
+   {
+    "save": [
+     "routing-interactions.trip.geojson",
+     "window.__outhere.TripManager.buildExport()"
+    ]
+   },
+   {
+    "eval": "(() => { window.__outhere.TripManager.loadFromGeoJSON({\"type\":\"FeatureCollection\",\"properties\":{\"trip_id\":\"11111111-2222-4333-8444-555555555555\",\"name\":\"Imported GPX\",\"schema_version\":\"1.1\",\"region\":\"zion\"},\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"LineString\",\"coordinates\":[[-112.9515,37.26],[-112.9505,37.265],[-112.948,37.2693]]},\"properties\":{\"type\":\"route\",\"main_route_distance_mi\":0.7,\"source\":{\"type\":\"gpx\",\"name\":\"track.gpx\"},\"segments\":[{\"mode\":\"imported\",\"from_vertex\":0,\"to_vertex\":1,\"coord_range\":[0,2],\"length_m\":1100}]}}]}); const e = window.__outhere.TripManager.buildExport(); return { loaded: window.__outhere.TripManager.currentTrip.properties.name, legs: window.__outhere.map.querySourceFeatures('trip').filter((f) => f.properties.type === 'route_leg').length, schema_version: e.properties.schema_version }; })()"
+   },
+   {
+    "wait": 1000
+   },
+   {
+    "save": [
+     "routing-imported.trip.geojson",
+     "window.__outhere.TripManager.buildExport()"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "routing-preview-perf-long",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Preview timing, long"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-113.1131973,37.3402704], zoom: 11 })"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickLngLat": [
+     -113.1131973,
+     37.3402704
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.955,37.27], zoom: 11 })"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "eval": "void window.__outhere.routing.resetStats()"
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95,
+     37.27
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94981,
+     37.27066
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94977,
+     37.27136
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94988,
+     37.27209
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95015,
+     37.27282
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95058,
+     37.27354
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95118,
+     37.27421
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95194,
+     37.27481
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95284,
+     37.27533
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95387,
+     37.27573
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.955,
+     37.276
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95621,
+     37.27612
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95747,
+     37.27609
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95875,
+     37.27588
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96,
+     37.2755
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96119,
+     37.27495
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96228,
+     37.27423
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96324,
+     37.27336
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96404,
+     37.27235
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96463,
+     37.27122
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.965,
+     37.27
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96512,
+     37.26872
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96499,
+     37.2674
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96458,
+     37.2661
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9639,
+     37.26483
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96295,
+     37.26364
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96176,
+     37.26256
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96033,
+     37.26162
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95871,
+     37.26087
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95692,
+     37.26032
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.955,
+     37.26
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95301,
+     37.25993
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95098,
+     37.26011
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94898,
+     37.26056
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94706,
+     37.26126
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94528,
+     37.26222
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94367,
+     37.26342
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9423,
+     37.26482
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94121,
+     37.26642
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94043,
+     37.26815
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94,
+     37.27
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93994,
+     37.27191
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94026,
+     37.27383
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94097,
+     37.27572
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94206,
+     37.27752
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94351,
+     37.27919
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9453,
+     37.28068
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9474,
+     37.28194
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94975,
+     37.28293
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9523,
+     37.28363
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.955,
+     37.284
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95778,
+     37.28403
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96056,
+     37.2837
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96329,
+     37.28301
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96587,
+     37.28197
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96826,
+     37.28061
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97037,
+     37.27893
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97215,
+     37.27699
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97355,
+     37.27482
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97451,
+     37.27247
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.975,
+     37.27
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.975,
+     37.26747
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9745,
+     37.26493
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97349,
+     37.26246
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97199,
+     37.26013
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97003,
+     37.25798
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96764,
+     37.25608
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96487,
+     37.2545
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9618,
+     37.25326
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95848,
+     37.25242
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.955,
+     37.252
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95144,
+     37.25202
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94789,
+     37.2525
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94444,
+     37.25343
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94119,
+     37.25479
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93821,
+     37.25656
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93558,
+     37.25871
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93339,
+     37.26119
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9317,
+     37.26394
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93055,
+     37.2669
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93,
+     37.27
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93006,
+     37.27316
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93075,
+     37.2763
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93206,
+     37.27935
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93397,
+     37.28223
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93644,
+     37.28485
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93942,
+     37.28715
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94286,
+     37.28907
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94666,
+     37.29054
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95074,
+     37.29153
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.955,
+     37.292
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.95934,
+     37.29193
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96365,
+     37.2913
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96783,
+     37.29014
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97175,
+     37.28845
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97533,
+     37.28626
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97846,
+     37.28364
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.98106,
+     37.28062
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.98306,
+     37.27729
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.98438,
+     37.27372
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.985,
+     37.27
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.98488,
+     37.26621
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.98401,
+     37.26246
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9824,
+     37.25883
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.98008,
+     37.25542
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9771,
+     37.25232
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.97352,
+     37.24961
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96941,
+     37.24737
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96489,
+     37.24565
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.96005,
+     37.24452
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.955,
+     37.244
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.94988,
+     37.24412
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9448,
+     37.24489
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.9399,
+     37.2463
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93531,
+     37.24832
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.93114,
+     37.25091
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92749,
+     37.25401
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92448,
+     37.25756
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92219,
+     37.26147
+    ],
+    "pause": 30
+   },
+   {
+    "mapMoveLngLat": [
+     -112.92068,
+     37.26565
+    ],
+    "pause": 30
+   },
+   {
+    "wait": 300
+   },
+   {
+    "shot": "routing-preview-long"
+   },
+   {
+    "eval": "(() => { const s = window.__outhere.routing.stats; const q = (a, p) => { const b = [...a].sort((x, y) => x - y); return +(b[Math.min(b.length - 1, Math.floor(p * b.length))] || 0).toFixed(2); }; return { warm_up_ms: +(window.__outhere.routing.warmUpMs ?? -1).toFixed(1), first_frame_ms: +(s.frameMs[0] ?? 0).toFixed(2), frames: s.frames, memoHits: s.memoHits, aborted: s.aborted, over4ms: s.frameMs.map((x, i) => [i, +x.toFixed(1)]).filter((x) => x[1] > 4), route_ms: { p50: q(s.routeMs, 0.5), p95: q(s.routeMs, 0.95), max: q(s.routeMs, 1) }, frame_ms: { p50: q(s.frameMs, 0.5), p95: q(s.frameMs, 0.95), max: q(s.frameMs, 1) } }; })()"
+   }
+  ]
+ }
+]

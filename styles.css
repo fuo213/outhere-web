@@ -991,26 +991,150 @@ textarea {
    Drawing hint overlay
    --------------------------------------------------------------------------- */
 
+/* Routing state while drawing ("Loading trails for routing…", "Zoom in to
+   snap to trails", "Routing isn't available here yet."). Sits above the
+   route instructions card. Ink pill, like the other transient map notices. */
 .drawing-hint {
   position: absolute;
-  bottom: var(--space-8);
+  /* Above the centered route instructions card (bottom 50px + its height). */
+  bottom: 176px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, var(--space-1));
   background: var(--text);
   color: var(--surface);
   padding: var(--space-2) var(--space-5);
   border-radius: var(--radius-pill);
   box-shadow: var(--shadow-2);
   font: var(--weight-medium) var(--text-md)/1.3 var(--font-ui);
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--space-5));
+  text-align: center;
   z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+.drawing-hint.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+body.panel-open .drawing-hint {
+  left: calc((100% - 520px) / 2);
+}
+
+/* Loading is the one place motion may say "working": a short rule draws
+   under the text while the graph downloads (tabletop direction: a line being
+   inked, never a spinner). Static under reduced motion. */
+.drawing-hint--loading::after {
+  content: "";
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 5px;
+  height: 1px;
+  background: var(--type-route);
+  transform-origin: left center;
+  animation: hint-ink var(--dur-draw) var(--ease-in-out) infinite alternate;
+}
+
+@keyframes hint-ink {
+  from { transform: scaleX(0.1); }
+  to   { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawing-hint--loading::after { animation: none; }
+}
+
+/* Trail name under the cursor while drawing. */
+.snap-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  max-width: 240px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-raised);
+  color: var(--text-body);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--dur-quick) var(--ease-out);
 }
 
-.drawing-hint.visible {
-  opacity: 1;
+.snap-tooltip.visible { opacity: 1; }
+
+.snap-tooltip--unnamed {
+  color: var(--text-secondary);
+  white-space: normal;
 }
+
+/* Gap card: why a leg is drawn straight, with the OpenStreetMap fix link.
+   Inherits the base popup (paper, border, shadow-3); only adds room for the
+   close button. */
+.gap-popup .maplibregl-popup-content {
+  padding: var(--space-3) var(--space-8) var(--space-3) var(--space-4);
+}
+
+.gap-popup .maplibregl-popup-close-button {
+  top: var(--space-1);
+  right: var(--space-1);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.gap-popup .maplibregl-popup-close-button:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.gap-card {
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--text-body);
+}
+
+.gap-card__text {
+  margin: 0;
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+
+.gap-card__meta {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+}
+
+.gap-card__num {
+  font-family: var(--font-data);
+}
+
+.gap-card__link {
+  display: inline-block;
+  margin-top: var(--space-2);
+  color: var(--accent);
+  font-weight: var(--weight-semi);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gap-card__link:hover { color: var(--accent-hover); }
+.gap-card__link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 
 /* ---------------------------------------------------------------------------
    Route drawing instructions (paper card floating at the bottom)
@@ -2030,6 +2154,9 @@ body.panel-open .route-instructions {
   cursor: default;
 }
 
+/* While a route is being drawn, the pool isn't empty: hide "No unassigned features". */
+.drawing-preview-chip ~ .pool-empty { display: none; }
+
 .drawing-preview-pulse {
   width: 7px;
   height: 7px;
@@ -2156,6 +2283,24 @@ body.panel-open .route-instructions {
   body.panel-open #map {
     right: 0;
   }
+
+  /* The instructions card wraps tall on a phone: put the routing hint at the
+     top of the map, below the region switcher and clear of the map controls
+     and drawing toolbar. */
+  .drawing-hint,
+  body.panel-open .drawing-hint {
+    top: 64px;
+    bottom: auto;
+    left: 120px;
+    right: var(--space-4);
+    width: auto;
+    max-width: none;
+    transform: translateY(calc(-1 * var(--space-1)));
+    border-radius: var(--radius-md);
+    text-align: left;
+  }
+
+  .drawing-hint.visible { transform: none; }
 
   /* Panel covers the map, so don't offset the drawing instructions */
   body.panel-open .route-instructions {
