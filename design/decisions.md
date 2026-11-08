@@ -81,6 +81,23 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
+- 2026-11-07 · **Route legs on the map (trail routing)**: routed legs are
+  solid `--type-route` on a 6 px `--surface-raised` casing; Shift legs dash
+  [2,2]; no-path fallback legs are `--accent` dotted [1,1.5] with a gap pin
+  drawn as a paper ring with a rust rim and rust center · planner, draw a
+  route in Zion (`design/tools/scenes-routing.json`) · the casing keeps the
+  route readable over the basemap's own colored trail lines, and the ring
+  pin can't be confused with the basemap's filled POI dots.
+- 2026-11-07 · **Ink-rule loading hint**: while a region's trail graph
+  downloads, the drawing hint reads "Loading trails for routing…" and a
+  1 px sage rule draws back and forth under it (static under reduced motion)
+  · `.drawing-hint--loading` in styles.css · first small piece of the
+  tabletop loading direction: a line being inked instead of a spinner. It
+  only runs while the data is actually loading. On top of 1b (2026-11-08)
+  the hint keeps 1b's ink pill (`--text` on `--surface`) instead of the
+  paper pill the routing branch had, and sits above the instructions card;
+  the gap card inherits 1b's base popup instead of restyling it.
+
 - 2026-11-07 · **"Tabletop" loading**: map layers drop onto the paper one
   by one as they load; panels set down like sheets; imported trips draw in,
   then day cards drop into place · not built yet; direction in DESIGN.md
