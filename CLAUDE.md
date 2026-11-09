@@ -37,7 +37,11 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `itinerary-profile.js` | Pure: `buildItinerary(trip)` (day-by-day model: miles from geometry, elevation from each route's `elevation_profile`, stops projected onto the route) and `drawProfile()` (the sketchbook elevation profile as SVG, drawn at the real pixel width) |
 | `itinerary-panel.js` | The sticky profile in the trip panel: active day (IntersectionObserver), band click to scroll, compact strip while drawing, the `booot:active-day` signal |
 | `sketch.js` | The drawing kit: ink strokes, pencil hatching, paper grain, the hand-drawn glyph family (also used as stop icons) |
-| `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = straight leg, Esc cancels, double-click finishes), live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
+| `planning.js` | Drawing the line (clicks only guide snapping; Shift = straight leg, Esc cancels, double-click finishes). Modes: new line, `redraw` (seeded at a cut, rejoins the faint old line), `spur` (day hike from a stop). Live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
+| `line-model.js` | Pure 1.2 model: line index (legs, metres), attach resolve/locate, passes near a point, `buildPlan` (camps → days, stops per day/pass), `syncLineTrip` (trip.days for mobile), `displayTrip` (the line cut per day for the chart + profile), `convertTypedVertices` (1.1 → 1.2) |
+| `stops.js` | Stop tool (keys 1-6: camp, break, water, hazard, viewpoint, note) and the stop menu (name, nights, water source/reliability, Out/Back, day hike, move, delete) |
+| `route-edit.js` | Line edits: "Redraw from here" commit (stitch, shift, re-attach or flag stops), extend from the end, "Return the same way" (`mirror_of`), line menu, trip-level undo + toast |
+| `line-panel.js` | The 1.2 day story (days built from camps; stops in walking order; off-route flags) |
 | `map-trip-style.js` | How the trip is drawn on the map (itinerary direction B, "Trip chart"): inked route on a paper casing, colored-pencil `line-pattern` band per day, glyphs (tent, drop, day-hike arrow, start/end rings, gap pin), circled day numerals, italic labels, all rasterized at runtime with `map.addImage`. Drawing/preview leg styles. Active-day highlight (feature-state) + the `booot:active-day` event |
 | `gpx-core.js` / `gpx-import.js` | GPX import. Core is pure (parse via DOMParser, 1.5 m simplification, recorded-elevation profile and gain/loss with a 3 m hysteresis, route feature with `segments: [{mode:"imported"}]` + `source`). Import wires the trip panel: Import GPX (multi-select), drop files on the panel, "Assign by date". Client-side only; recorded elevation beats Open-Meteo for imported routes |
 | `gpx-match.js` / `route-names.js` | Pure. `matchTrack(graph, coords)` map-matches a recording to the routing graph (resample ~17 m, nearest way within 25 m, sticky to the previous way, junction/GPS-gap noise merged) and returns name runs + OSM way ids + a loop flag. `route-names.js` holds the auto-name rules (`deriveNameFromRuns`, `deriveImportedName` with loop names, `isGenericRouteName`), shared by planning.js and GPX import. Test: `FLATBUSH_DIR=<dir with node_modules/flatbush> [ZION_GRAPH=<graph json>] node design/tools/test-gpx-match.mjs` |
@@ -123,6 +127,30 @@ first. `buildTripExport()` stamps `schema_version` and mirrors `readme` into
 full schema validator, so validate real exports against the schema after
 touching export code. The internal `_schema_version` (4) is a separate
 localStorage migration counter.
+
+## Line + stops (trip format 1.2, POC)
+
+New trips are 1.2 (`schema_version: "1.2"`, draft fields in
+`../outhere/trips/`). One main `route` is the line; clicks only guided its
+routing and stay as hidden anchors (`vertex_coords` / `segments`). Stops are
+separate Point features:
+- **Time stops** `camp` / `break` carry `attach: { route_id, leg, offset_m }`
+  (leg = segment index). Always resolve per leg (`resolveAttach`), never by
+  nearest point, so stops on overlapping passes stay on their pass. No
+  `attach` = off route (flagged, never deleted). Camp `nights` adds rest days.
+- **Place stops** `waypoint` (`water` + `water_source`/`reliability`,
+  `hazard`, `scenic`, `note`) have no attach; the itinerary lists them on
+  every pass within `NEAR_M` (120 m).
+- **Days build themselves** (`buildPlan`): camps number along the line; Day N
+  runs camp N-1 → camp N; dates follow the start date. `TripManager.render()`
+  runs `syncLineTrip` (rewrites `trip.days` for mobile, keyed by `_key`,
+  stripped on export) and draws `displayTrip()` (the line cut per day) with
+  the unchanged chart/profile code.
+- **Edits** are "Redraw from here", draw-on-from-the-end and "Return the same
+  way" (route-edit.js), each undoable (Cmd/Ctrl-Z or the toast). Out/Back
+  needs passes within `OVERLAP_M` (30 m), so switchbacks don't count.
+- 1.0/1.1 trips with one routed line convert on open (typed vertices →
+  attached stops); others (several routes, GPX) keep the day-assignment model.
 
 ## Trail routing
 

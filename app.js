@@ -23,6 +23,11 @@ import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findR
 import { graphInfoForRegion } from "./routing.js";
 import { initTripsHome, loadDemoTripFromURL } from "./trips-home.js";
 import { addTripChartLayers, drawingLegLayers, gapPinLayers, vertexPaint, initTripChart, TRIP_POINT_LAYERS, tripChartDebug } from "./map-trip-style.js";
+import { handleMapClickForStop, isStopToolActive, openStopMenu } from "./stops.js";
+import * as lineModel from "./line-model.js";
+import * as routeEdit from "./route-edit.js";
+import * as stops from "./stops.js";
+const { isLineTrip } = lineModel;
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -250,7 +255,7 @@ export const map = new maplibregl.Map({
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
-window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug };
+window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug, lineModel, routeEdit, stops };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -343,6 +348,24 @@ function addTripLayers() {
   map.addSource("route-preview", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
   const isLine = ["==", ["geometry-type"], "LineString"];
+  const tok = resolveTokenColors();
+  // "Redraw from here": the stretch the change would remove, faded under a
+  // paper wash with a rust dash, so you see it before you commit.
+  map.addSource("route-ghost", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({
+    id: "route-ghost-fade", type: "line", source: "route-ghost", filter: ["==", ["get", "role"], "remove"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": tok.surfaceRaised, "line-width": ["interpolate", ["linear"], ["zoom"], 9, 10, 13, 20, 17, 32], "line-opacity": 0.82 },
+  });
+  map.addLayer({
+    id: "route-ghost-remove", type: "line", source: "route-ghost", filter: ["==", ["get", "role"], "remove"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": tok.accent, "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.4, 13, 2.2, 17, 3], "line-dasharray": [1.2, 1.8], "line-opacity": 0.9 },
+  });
+  map.addLayer({
+    id: "route-ghost-rejoin", type: "circle", source: "route-ghost", filter: ["==", ["get", "role"], "rejoin"],
+    paint: { "circle-radius": 6, "circle-color": tok.surfaceRaised, "circle-stroke-width": 2, "circle-stroke-color": tok.ink },
+  });
   for (const layer of drawingLegLayers("route-preview", "route-preview", isLine, { preview: true })) map.addLayer(layer);
   for (const layer of drawingLegLayers("route-drawing", "route-drawing", isLine)) map.addLayer(layer);
   for (const layer of gapPinLayers("route-drawing-gaps", "route-drawing", ["==", ["get", "gap"], true])) map.addLayer(layer);
@@ -420,6 +443,7 @@ function resolveTokenColors() {
   return {
     accent: t("--accent"),
     surfaceRaised: t("--surface-raised"),
+    ink: t("--text"),
   };
 }
 
@@ -468,6 +492,7 @@ map.on("load", () => {
       handleDeleteClick(e);
       return;
     }
+    if (!isDrawingRoute && handleMapClickForStop(e)) return;
     if (isDrawingRoute) {
       handleMapClickForRoute(e);
     }
@@ -492,7 +517,13 @@ map.on("load", () => {
   // Trip feature click — show popup (skip during route drawing)
   for (const layerId of TRIP_POINT_LAYERS) {
     map.on("click", layerId, (e) => {
-      if (isDrawingRoute) return;
+      if (isDrawingRoute || isDeleteMode || isStopToolActive()) return;
+      // 1.2 trips: a stop opens its menu (name, nights, water, pass, day hike).
+      if (isLineTrip(TripManager.currentTrip) && e.features?.[0]?.properties?._id) {
+        e.originalEvent.stopPropagation();
+        openStopMenu(e.features[0].properties._id);
+        return;
+      }
       showTripFeaturePopup(e);
     });
     // Don't clobber the crosshair cursor while drawing or in delete mode

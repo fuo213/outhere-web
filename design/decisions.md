@@ -95,6 +95,24 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
+- 2026-11-08 · **Line + stops planner (POC, trip format 1.2)** · branch
+  `poc/line-stops`, new trip in Zion · the draw tool only draws the line
+  (no point types); a separate pin tool drops stops (keys 1-6, pills reuse
+  the point-type selector, active fill = the type's text shade, ink for
+  hazard/viewpoint/note). Stops open a small paper menu on the map (name,
+  nights stepper, water source/reliability selects, Out/Back segmented
+  toggle, "Day hike from here" quiet, Move ghost, Delete in danger ink).
+  Clicking the line opens a three-item list ("Add a camp here", "Redraw from
+  here", "Return the same way"). While redrawing, the stretch that will go
+  is washed out with paper and dashed rust; hovering the old line shows
+  "Rejoin your line here" and shrinks the rust stretch to what will really
+  be removed. Every edit says what happened in an ink toast with Undo; a stop
+  pushed off the route gets a rust dot in the toast and a rust-ruled note at
+  the top of the itinerary ("Camp 2 is off your route now"). Day titles read
+  "Camp 1 to Camp 2"; rest days "Rest day at Camp 2". New glyph: `note` (a
+  slip with a folded corner) in sketch.js; breaks use the rest glyph.
+  Why: days come from where you sleep, so the itinerary builds itself.
+
 - 2026-11-08 · **Trip chart on the real map** (direction B carried onto the
   planner map): the route is a clean ink line (`--ink-900`, ~2.4 px at z13,
   round caps/joins) on a thin `--surface-raised` casing; each day's stretch

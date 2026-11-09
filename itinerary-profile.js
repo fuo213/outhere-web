@@ -120,7 +120,8 @@ export function buildItinerary(trip) {
       }
       return best ? best.mi : startMi + width / 2;
     };
-    const stops = g.feats
+    // 1.2 trips hand over their stops already placed (per pass, per leg).
+    const stops = g.d._stops ? g.d._stops.map((s) => ({ ...s, mi: startMi + s.dayMi })) : g.feats
       .filter((f) => !isRoute(f) && f.geometry?.type === "Point" && Array.isArray(f.geometry.coordinates))
       .map((f) => {
         const p = f.properties;

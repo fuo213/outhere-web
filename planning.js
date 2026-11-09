@@ -1,10 +1,19 @@
 /**
  * Booot trip planning: drawing tools.
  *
- * Route drawing with switchable point types (route/camp/dayhike/rest; keys
- * 1-4). Clicks snap to the region's routing graph and every leg is routed
- * along real trails by routing.js (A* over the pipeline-built OSM graph,
- * SNAPPING_DESIGN.md Part 2). A live routed preview follows the cursor.
+ * Drawing the line. Clicks only guide snapping: they snap to the region's
+ * routing graph and every leg is routed along real trails by routing.js (A*
+ * over the pipeline-built OSM graph, SNAPPING_DESIGN.md Part 2). After the
+ * line is finished the clicks are hidden; they stay in the data as anchors
+ * (vertex_coords / segments). Stops are a separate layer (stops.js).
+ *
+ * Modes (startRouteDrawing(opts)):
+ *   line    a new line (on a 1.2 trip with a line, the draw tool extends it)
+ *   redraw  seeded at a cut point on the line ("Redraw from here",
+ *           route-edit.js): the old line after the cut goes faint; clicking
+ *           back onto it rejoins there and finishes
+ *   spur    a day hike drawn from a stop (from_stop), returns the same day
+ * A live routed preview follows the cursor.
  *
  * Legs that can't be routed are drawn straight and say why:
  *   manual        Shift-click (or a point placed away from any trail)
@@ -24,16 +33,25 @@ import {
 } from "./routing.js";
 import { deriveNameFromRuns } from "./route-names.js";
 import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
+import { exitStopTool, cancelStopMove } from "./stops.js"; // circular; runtime only
+import { startExtend, snapshot } from "./route-edit.js"; // circular; runtime only
+import { isLineTrip, mainRoute, passesNear, sliceM } from "./line-model.js";
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
 export let isDrawingRoute = false;
 export let isDeleteMode = false;
 
-/** Placed points: { coord: [lon, lat], snapped, type, snap } (snap = routing.js snap result or null). */
+/** Placed points: { coord: [lon, lat], snapped, snap, seed?, rejoinM? } (snap = routing.js snap result or null). */
 let verts = [];
 /** legs[i] ends at verts[i] (legs[0] is unused). See computeLeg(). */
 let legs = [];
-let currentPointType = "route";
+/**
+ * What this drawing is: { mode: "line" } | { mode: "spur", seed, fromStop }
+ * | { mode: "redraw", seed, cutM, ix (old line index), onCommit }.
+ */
+let drawOpts = { mode: "line" };
+/** While redrawing: the rejoin point under the cursor ({ m, coord }) or null. */
+let rejoinHover = null;
 
 /**
  * Routing context for the route being drawn: one graph per route.
@@ -121,10 +139,7 @@ function snapPoint(lngLat, zoom) {
 // Legs
 // ---------------------------------------------------------------------------
 
-function lastMainIndex(upTo) {
-  for (let i = upTo; i >= 0; i--) if (verts[i].type !== "dayhike") return i;
-  return 0;
-}
+const legKind = () => (drawOpts.mode === "spur" ? "spur" : "main");
 
 function straightLeg(from, to, A, B, kind, mode, reason, { preview = false } = {}) {
   const coords = [A.coord, B.coord];
@@ -162,7 +177,7 @@ function unroutableReason(A, B) {
  *          or {aborted: true} when a preview query blows its budget
  */
 function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, preview = false } = {}) {
-  const kind = B.type === "dayhike" ? "spur" : "main";
+  const kind = legKind();
   if (shift) return straightLeg(from, to, A, B, kind, "manual");
   // Graph still downloading (preview only; clicks wait for it): neutral straight.
   if (ctx?.status === "loading") return straightLeg(from, to, A, B, kind, "manual");
@@ -180,9 +195,15 @@ function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, previe
 // Drawing lifecycle
 // ---------------------------------------------------------------------------
 
-export function startRouteDrawing() {
+export function startRouteDrawing(opts = {}) {
   if (isDrawingRoute) return;       // already drawing — ignore repeat clicks
   if (isDeleteMode) exitDeleteMode(); // drawing and delete mode are exclusive
+  exitStopTool();
+  // The draw tool on a 1.2 trip that already has a line draws on from its end.
+  if (!opts.mode && isLineTrip(TripManager.currentTrip) && mainRoute(TripManager.currentTrip)) {
+    startExtend();
+    return;
+  }
   isDrawingRoute = true;
   session++;
   verts = [];
@@ -190,7 +211,8 @@ export function startRouteDrawing() {
   previewLeg = null;
   previewMemo = new Map();
   queue = Promise.resolve();
-  currentPointType = "route";
+  drawOpts = { mode: "line", ...opts };
+  rejoinHover = null;
 
   // Area regions know their graph up front: start loading it now. For a
   // full-state region the first click decides (smallest area containing it).
@@ -200,8 +222,6 @@ export function startRouteDrawing() {
   setActiveToolBtn("addRouteBtn");
   document.getElementById("planningToolbar")?.classList.add("active");
   alignPlanningToolbar();
-  showPointTypeSelector();
-  setActivePointType("route");
   showRouteModal();
   map.doubleClickZoom.disable();
   // Box zoom swallows shift+mousedown, which would eat the shift-click
@@ -218,6 +238,21 @@ export function startRouteDrawing() {
 
   _routeKeyHandler = handleRouteKeyDown;
   document.addEventListener("keydown", _routeKeyHandler);
+
+  // Redraw / spur: the first point is given (the cut, or the stop).
+  if (drawOpts.seed) {
+    const seed = drawOpts.seed;
+    enqueue(async () => {
+      await ensureContext(seed);
+      const g = ctx?.graph;
+      const snap = g && g.contains(seed[0], seed[1]) ? g.snap(seed[0], seed[1], 25) : null;
+      verts.push({ coord: snap ? [snap.lon, snap.lat] : seed, snapped: !!snap, snap, seed: true });
+      updateRouteDrawing();
+      updateGhost();
+      notifyDrawingProgress();
+    });
+  }
+  updateGhost();
 }
 
 /** Run drawing work in click order, dropping it if drawing was reset meanwhile. */
@@ -236,24 +271,43 @@ export function handleMapClickForRoute(e) {
   const lngLat = [e.lngLat.lng, e.lngLat.lat];
   const shift = e.originalEvent.shiftKey;
   const zoom = map.getZoom();
-  const type = currentPointType;
-  enqueue(() => addVertex(lngLat, { shift, zoom, type }));
+  enqueue(() => addVertex(lngLat, { shift, zoom }));
 }
 
-async function addVertex(lngLat, { shift, zoom, type }) {
+/**
+ * Redraw: a point within the snap distance of the faint old line (after the
+ * cut) rejoins it there; on overlapping passes the first pass after the cut.
+ * @returns {{ m, coord } | null} the rejoin point on the OLD line
+ */
+function rejoinAt(lngLat, zoom) {
+  if (drawOpts.mode !== "redraw" || !drawOpts.ix || verts.length < 1) return null;
+  const ix = drawOpts.ix;
+  if (drawOpts.cutM >= ix.total - 1) return null; // extending: nothing to rejoin
+  const radius = snapRadius(lngLat[1], zoom);
+  const minM = drawOpts.cutM + Math.max(radius, 30);
+  const pass = passesNear(ix, lngLat, radius).find((p) => p.m > minM);
+  return pass ? { m: pass.m, coord: pass.coord } : null;
+}
+
+async function addVertex(lngLat, { shift, zoom }) {
   await ensureContext(lngLat);
-  const snap = shift ? null : snapPoint(lngLat, zoom);
-  const v = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, type, snap };
+  const rejoin = rejoinAt(lngLat, zoom);
+  let snap;
+  if (rejoin) {
+    const g = ctx?.graph;
+    snap = !shift && g && g.contains(...rejoin.coord) ? g.snap(rejoin.coord[0], rejoin.coord[1], 25) : null;
+  } else snap = shift ? null : snapPoint(lngLat, zoom);
+  const v = { coord: rejoin ? rejoin.coord : snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, snap };
+  if (rejoin) v.rejoinM = rejoin.m;
 
   // The two clicks of a finishing double-click land on the same spot: keep one.
   const last = verts[verts.length - 1];
-  if (last && last.type === type && haversine(...last.coord, ...v.coord) < 1) return;
+  if (last && haversine(...last.coord, ...v.coord) < 1) return;
 
   verts.push(v);
   const i = verts.length - 1;
   if (i >= 1) {
-    const from = lastMainIndex(i - 1);
-    legs[i] = computeLeg(from, i, verts[from], v, { shift });
+    legs[i] = computeLeg(i - 1, i, verts[i - 1], v, { shift });
     // Say why once, without covering the map where the user keeps clicking.
     if (legs[i].reason === "no_path") flashDrawingHint("These trails don\u2019t connect in OpenStreetMap. Click the rust pin to fix it.");
   }
@@ -262,10 +316,11 @@ async function addVertex(lngLat, { shift, zoom, type }) {
   updateRouteDrawing();
   updatePreviewSource();
   notifyDrawingProgress();
+  if (rejoin) finishRouteDrawing(); // back on the old line: that's the whole change
 }
 
 function undoLastVertex() {
-  if (!verts.length) return;
+  if (!verts.length || (verts.length === 1 && verts[0].seed)) return; // the cut / stop stays
   verts.pop();
   legs.length = verts.length;
   previewLeg = null;
@@ -283,12 +338,24 @@ export function handleMapDblClickForRoute(e) {
 }
 
 function finishRouteDrawing() {
-  const mainLegs = legs.filter((l) => l && l.kind === "main");
-  if (verts.length < 2 || !mainLegs.length) {
+  const drawn = legs.filter(Boolean);
+  if (verts.length < 2 || !drawn.length) {
     resetRouteDrawing();
     cancelDrawing();
     return;
   }
+  if (drawOpts.mode === "spur") return finishSpur(drawn);
+  if (drawOpts.mode === "redraw") {
+    const opts = drawOpts;
+    const rejoinM = verts.at(-1).rejoinM ?? null;
+    const routing = routingInfo();
+    const out = drawn.map((l) => ({ coords: l.coords.map(round6), mode: l.mode, reason: l.reason, wayIds: l.wayIds }));
+    resetRouteDrawing();
+    cancelDrawing();
+    opts.onCommit?.({ newLegs: out, rejoinM, routing });
+    return;
+  }
+  const mainLegs = drawn;
 
   // 1. Main route: legs concatenated at graph precision (6 dp), duplicate
   //    joints removed, with per-leg provenance (schema 1.1 `segments`).
@@ -307,14 +374,14 @@ function finishRouteDrawing() {
   if (geometryCoords.length < 2) geometryCoords.push([...geometryCoords[0]]);
   const routing = routingInfo();
 
-  const spurLegs = legs.filter((l) => l && l.kind === "spur");
+  const spurLegs = [];
   const autoName = deriveRouteName(mainLegs);
   const properties = {
     type: "route",
     name: autoName,
     planned: true,
     notes: "",
-    vertex_types: verts.map((v) => v.type),
+    vertex_types: verts.map(() => "route"),
     vertex_snapped: verts.map((v) => v.snapped),
     vertex_coords: verts.map((v) => round6(v.coord)),
     main_route_distance_mi: lineLength(geometryCoords) / MI,
@@ -333,48 +400,45 @@ function finishRouteDrawing() {
     fetchElevationProfile(geometryCoords, routeFeature.properties._id);
   }
 
-  // 2. Day-hike spurs: one direction, branch point → spur end.
-  for (const leg of spurLegs) {
-    const coords = leg.coords.map(round6);
-    const spurName = deriveRouteName([leg]);
-    const props = {
-      type: "dayhike_spur",
-      route_index: routeIdx,
-      name: spurName,
-      segments: [segmentRecord(leg, [0, coords.length - 1])],
-    };
-    if (spurName) props.name_auto = true;
-    if (routing) props.routing = routing;
-    const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
-    if (leg.gap) gapMemo.set(`${TripManager.currentTrip.features[idx].properties._id}:0`, leg.gap);
-  }
-
-  // 3. Point features for special points (camp/dayhike/rest)
-  const tripDates = getTripDateRange();
-  let dateIndex = 0;
-  verts.forEach((v, i) => {
-    if (v.type === "route") return;
-    const pointProps = {
-      type: v.type,
-      point_type: v.type,
-      route_index: routeIdx,
-      route_vertex_index: i,
-      date: tripDates[dateIndex] || "",
-      name: "",
-      notes: "",
-    };
-    if (v.type === "camp") {
-      pointProps.water_nearby = false;
-      pointProps.water_notes = "";
-      dateIndex++; // camp advances to next day
-    } else if (v.type === "rest") {
-      dateIndex++; // rest day consumes a day
-    }
-    // dayhike does NOT advance the date (same-day activity)
-    TripManager.addFeature({ type: "Point", coordinates: round6(v.coord) }, pointProps);
-  });
-
   TripManager.render(); // picks up the gap pins memoized above
+  resetRouteDrawing();
+  cancelDrawing();
+}
+
+/** A day hike from a stop: one spur feature, branch point → spur end. */
+function finishSpur(drawn) {
+  const trip = TripManager.currentTrip;
+  const coords = [];
+  const segments = [];
+  for (const leg of drawn) {
+    const pts = leg.coords.map(round6);
+    let start = coords.length - 1;
+    if (start < 0 || !samePos(coords[start], pts[0])) { start = coords.length; coords.push(pts[0]); }
+    for (let k = 1; k < pts.length; k++) coords.push(pts[k]);
+    segments.push(segmentRecord(leg, [start, coords.length - 1]));
+  }
+  if (coords.length < 2) coords.push([...coords[0]]);
+  const route = mainRoute(trip);
+  const routing = routingInfo();
+  const spurName = deriveRouteName(drawn);
+  const props = {
+    type: "dayhike_spur",
+    route_index: route ? trip.features.indexOf(route) : 0,
+    name: spurName,
+    segments,
+  };
+  if (drawOpts.fromStop) props.from_stop = drawOpts.fromStop;
+  if (spurName) props.name_auto = true;
+  if (routing) props.routing = routing;
+  snapshot("add a day hike");
+  const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
+  drawn.forEach((leg, k) => leg.gap && gapMemo.set(`${trip.features[idx].properties._id}:${k}`, leg.gap));
+  if (route) {
+    route.properties.dayhike_distance_mi = trip.features.filter((f) => f.properties.type === "dayhike_spur")
+      .reduce((sum, f) => sum + (2 * lineLength(f.geometry.coordinates)) / MI, 0);
+  }
+  TripManager.render();
+  TripManager.save();
   resetRouteDrawing();
   cancelDrawing();
 }
@@ -428,7 +492,9 @@ function resetRouteDrawing() {
   pendingMove = null;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
-  currentPointType = "route";
+  drawOpts = { mode: "line" };
+  rejoinHover = null;
+  updateGhost();
   map.doubleClickZoom.enable();
   map.boxZoom.enable();
   map.getCanvas().style.cursor = "";
@@ -439,7 +505,6 @@ function resetRouteDrawing() {
   flashUntil = 0;
   clearTimeout(flashTimer);
   hideRouteModal();
-  hidePointTypeSelector();
   updateDrawingPreview(null);
 
   if (_routeMouseMoveHandler) {
@@ -474,14 +539,22 @@ function runPreview() {
   const { lngLat, shift, point } = pendingMove;
   const zoom = map.getZoom();
   const snap = shift ? null : snapPoint(lngLat, zoom);
-  const cursor = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, type: currentPointType, snap };
+  let cursor = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, snap };
+  // Redraw: hovering the faint old line previews the rejoin there.
+  const rj = rejoinAt(lngLat, zoom);
+  if ((rj?.m ?? null) !== (rejoinHover?.m ?? null)) { rejoinHover = rj; updateGhost(); }
+  if (rj) {
+    const g = ctx?.graph;
+    const s2 = !shift && g && g.contains(...rj.coord) ? g.snap(rj.coord[0], rj.coord[1], 25) : null;
+    cursor = { coord: rj.coord, snapped: true, snap: s2 };
+  }
 
   previewLeg = null;
   let routeMs = 0;
   if (verts.length) {
-    const from = lastMainIndex(verts.length - 1);
+    const from = verts.length - 1;
     const A = verts[from];
-    const key = snap && !shift ? `${from}|${snap.e}|${Math.round(snap.along / 5)}|${cursor.type === "dayhike"}` : null;
+    const key = cursor.snap && !shift ? `${from}|${cursor.snap.e}|${Math.round(cursor.snap.along / 5)}` : null;
     if (key && previewMemo.has(key)) {
       previewLeg = previewMemo.get(key);
       previewStats.memoHits++;
@@ -492,7 +565,7 @@ function runPreview() {
       if (leg.aborted) {
         // Too slow for a frame: preview straight; the click routes it properly.
         previewStats.aborted++;
-        previewLeg = straightLeg(from, verts.length, A, cursor, cursor.type === "dayhike" ? "spur" : "main", "manual");
+        previewLeg = straightLeg(from, verts.length, A, cursor, legKind(), "manual");
       } else {
         previewLeg = leg;
         if (key) {
@@ -503,7 +576,7 @@ function runPreview() {
     }
   }
   updatePreviewSource(cursor);
-  updateSnapTooltip(snap, point);
+  if (rj) showSnapText("Rejoin your line here", point); else updateSnapTooltip(snap, point);
 
   const frameMs = performance.now() - t0;
   previewStats.frames++;
@@ -563,9 +636,37 @@ function updateRouteDrawing() {
   verts.forEach((v, i) => features.push({
     type: "Feature",
     geometry: { type: "Point", coordinates: v.coord },
-    properties: { vertex: true, snapped: v.snapped, point_type: v.type, index: i },
+    properties: { vertex: true, snapped: v.snapped, point_type: v.seed ? "camp" : "route", index: i },
   }));
   source.setData({ type: "FeatureCollection", features });
+}
+
+/**
+ * Redraw: what the change will remove, drawn over the old line (faded, with
+ * a rust dash) before you commit. From the cut to the end, or to the rejoin
+ * point under the cursor; the part after a rejoin stays as it is.
+ */
+function updateGhost() {
+  const source = map.getSource?.("route-ghost");
+  if (!source) return;
+  const features = [];
+  const d = drawOpts;
+  if (isDrawingRoute && d.mode === "redraw" && d.ix && d.cutM < d.ix.total - 1) {
+    const end = rejoinHover ? rejoinHover.m : d.ix.total;
+    const coords = sliceM(d.ix, d.cutM, end);
+    if (coords.length >= 2) features.push({ type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: { role: "remove" } });
+    if (rejoinHover) features.push({ type: "Feature", geometry: { type: "Point", coordinates: rejoinHover.coord }, properties: { role: "rejoin" } });
+  }
+  source.setData({ type: "FeatureCollection", features });
+}
+
+function showSnapText(text, point) {
+  const el = document.getElementById("snapTooltip");
+  if (!el || !point) return;
+  if (el.textContent !== text) el.textContent = text;
+  el.classList.remove("snap-tooltip--unnamed");
+  el.style.transform = `translate(${Math.round(point.x + 14)}px, ${Math.round(point.y + 14)}px)`;
+  el.classList.add("visible");
 }
 
 /** Cursor marker + preview leg (changes per frame). */
@@ -753,6 +854,9 @@ function updateDrawingHint() {
     return hideDrawingHint();
   }
   if (ctx?.graph && map.getZoom() < SNAP_MIN_ZOOM) return showDrawingHint("Zoom in to snap to trails");
+  if (drawOpts.mode === "redraw" && drawOpts.ix && drawOpts.cutM < drawOpts.ix.total - 1) return showDrawingHint("Click the faint line to rejoin it, or double-click to end the trip there.");
+  if (drawOpts.mode === "redraw") return showDrawingHint("Drawing on from the end of your line. Double-click to finish.");
+  if (drawOpts.mode === "spur") return showDrawingHint("Draw the day hike out. Double-click where you turn around.");
   hideDrawingHint();
 }
 
@@ -772,7 +876,6 @@ function notifyDrawingProgress() {
     mainDistanceMi: main / MI,
     dayhikeDistanceMi: spur / MI,
     offTrailMi: off / MI,
-    vertexTypes: verts.map((v) => v.type),
   });
 }
 
@@ -785,15 +888,17 @@ export function cancelDrawing() {
     resetRouteDrawing();
   }
   if (isDeleteMode) exitDeleteMode();
+  cancelStopMove();
+  exitStopTool();
   setActiveToolBtn(null);
   hideDrawingHint();
   hideRouteModal();
-  hidePointTypeSelector();
   document.getElementById("planningToolbar")?.classList.remove("active");
 }
 
 export function startDeleteMode() {
   if (isDrawingRoute) cancelDrawing();
+  exitStopTool();
   isDeleteMode = true;
   map.getCanvas().style.cursor = "crosshair";
   document.getElementById("planningToolbar")?.classList.add("active");
@@ -816,7 +921,7 @@ export function handleDeleteClick(e) {
   const idx = TripManager.currentTrip.features.findIndex(
     f => f.properties._id === clickedId
   );
-  if (idx !== -1) TripManager.removeFeature(idx);
+  if (idx !== -1) { snapshot("delete"); TripManager.removeFeature(idx); }
 }
 
 function setActiveToolBtn(id) {
@@ -839,6 +944,10 @@ function hideDrawingHint() {
   if (el) el.classList.remove("visible");
 }
 
+/** The same hint slot for the other map tools (stops.js). */
+export const showPlanningHint = (text) => showDrawingHint(text);
+export const hidePlanningHint = () => { if (!isDrawingRoute) hideDrawingHint(); };
+
 // ---------------------------------------------------------------------------
 // Route instruction modal
 // ---------------------------------------------------------------------------
@@ -854,37 +963,7 @@ function hideRouteModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Point type selector
-// ---------------------------------------------------------------------------
-
-function showPointTypeSelector() {
-  const el = document.getElementById("pointTypeSelector");
-  if (el) el.classList.add("visible");
-}
-
-function hidePointTypeSelector() {
-  const el = document.getElementById("pointTypeSelector");
-  if (el) el.classList.remove("visible");
-}
-
-function setActivePointType(pointType) {
-  currentPointType = pointType;
-  document.querySelectorAll(".point-type-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.pointType === pointType);
-  });
-}
-
-export function initPointTypeSelector() {
-  document.querySelectorAll(".point-type-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      setActivePointType(btn.dataset.pointType);
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Keyboard: 1-4 switch point type, Backspace / Ctrl-Z / Cmd-Z undo
+// Keyboard: Backspace / Ctrl-Z / Cmd-Z undo
 // (Esc cancel lives in trip-panel.js)
 // ---------------------------------------------------------------------------
 
@@ -900,15 +979,6 @@ function handleRouteKeyDown(e) {
   if (isUndo) {
     e.preventDefault();
     enqueue(undoLastVertex);
-    return;
-  }
-
-  const keyMap = { "1": "route", "2": "camp", "3": "dayhike", "4": "rest" };
-  const pointType = keyMap[e.key];
-  if (pointType) {
-    e.preventDefault();
-    setActivePointType(pointType);
-    schedulePreview(); // dayhike previews a spur from the last main point
   }
 }
 

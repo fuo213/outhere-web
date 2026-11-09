@@ -147,8 +147,8 @@ function paint() {
     fig.innerHTML = `<div class="itin-empty">
       ${drawEmpty(W - 24)}
       <p class="itin-empty-title">Your elevation profile draws itself here.</p>
-      <p class="itin-empty-hint">Draw a route on the map, then drag it into a day.</p>
-      <button type="button" class="btn btn--quiet btn--sm" data-action="draw-route">Draw route</button>
+      <p class="itin-empty-hint">${m.line ? "Draw your line on the map, then drop camps on it." : "Draw a route on the map, then drag it into a day."}</p>
+      <button type="button" class="btn btn--quiet btn--sm" data-action="draw-route">${m.line ? "Draw your line" : "Draw route"}</button>
     </div>`;
   } else {
     const svg = drawProfile(m, W, {
