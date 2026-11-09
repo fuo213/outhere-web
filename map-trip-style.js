@@ -600,13 +600,13 @@ function addRouteArrowLayers() {
   const src = "trip";
   const lane = (v) => ["==", ["get", "lane"], v];
   const isPass = ["==", ["get", "type"], "route_pass"];
-  const size = ["interpolate", ["linear"], ["zoom"], 12, 0.7, 14, 0.85, 17, 1.1];
+  const size = ["interpolate", ["linear"], ["zoom"], 12, 0.85, 14, 1.15, 17, 1.3];
   map.addLayer({
     id: "trip-chart-pass", type: "line", source: src, minzoom: 12, filter: ["all", isPass, lane(1)],
     layout: { "line-cap": "round", "line-join": "round" },
     paint: {
       "line-color": ["case", ["==", ["get", "kind"], "spur"], C.dayhike, C.ink],
-      "line-offset": ["interpolate", ["linear"], ["zoom"], 12, 3.2, 14, 3.8, 17, 5],
+      "line-offset": ["interpolate", ["linear"], ["zoom"], 12, 3.8, 14, 5.2, 17, 5.9],
       "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.7, 17, 1.3],
       "line-opacity": byState(0.7, 0.2, 0.55),
     },
