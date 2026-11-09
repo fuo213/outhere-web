@@ -13,11 +13,11 @@
  */
 
 const RAD = Math.PI / 180;
-const TOL_M = 7;          // within this of an earlier segment = retracing
+const TOL_M = 3.5;         // within this of an earlier segment = retracing
 const MIN_GAP_M = 40;     // ...and at least this far along the path from it
-const MIN_RUN_M = 100;    // overlap runs shorter than this are crossings, not retraces
-const FILL_M = 90;       // gaps shorter than this between overlaps get absorbed
-const MIN_COS = 0.8;      // must run (anti)parallel, so a crossing doesn't count
+const MIN_RUN_M = 150;    // overlap runs shorter than this are crossings, not retraces
+const FILL_M = 60;       // gaps shorter than this between overlaps get absorbed
+const MIN_COS = 0.93;     // must run (anti)parallel, so a crossing doesn't count
 
 export function routePasses(coords) {
   const n = coords.length - 1;
