@@ -24,6 +24,7 @@
 import { map } from "./app.js"; // circular; only used at runtime
 import { isDrawingRoute, isDeleteMode } from "./planning.js"; // circular; runtime only
 import { TripManager } from "./trip-panel.js"; // circular; runtime only
+import { routePasses, spurPasses } from "./route-arrows.js";
 
 /** Layers that carry trip point features (popups, delete mode). */
 export const TRIP_POINT_LAYERS = ["trip-chart-points", "trip-chart-points-minor"];
@@ -317,6 +318,14 @@ function addStaticImages() {
     g.fill(new Path2D(inkStroke([[-4, 4.2], [0, -2.6], [4, 4.4]], { w: 1.7, vary: 0.15, amp: 0.05, seed: 41, taper: 1.5 })));
     addImg("booot-spur-arrow", withHalo(c, S, S, r, 1.2), r);
   }
+  // Direction chevrons (point east: symbol-placement "line" lays x along the line).
+  for (const [id, color, seed] of [["main", C.ink, 51], ["spur", C.dayhike, 53]]) {
+    const S = 14;
+    const [c, g] = canvas(S, S, r);
+    g.translate(S / 2, S / 2); g.fillStyle = color;
+    g.fill(new Path2D(inkStroke([[-2.6, -3.4], [1.8, 0.1], [-2.7, 3.5]], { w: 1.5, vary: 0.2, amp: 0.05, seed, taper: 1.2 })));
+    addImg(`booot-route-arrow-${id}`, withHalo(c, S, S, r, 1.1), r);
+  }
   // Colored-pencil band patterns, one per day tone.
   C.pencil.forEach((color, k) => addImg(`booot-pencil-${k}`, ...pencilPattern(color, 300 + k)));
 }
@@ -512,6 +521,8 @@ export function addTripChartLayers() {
     paint: { "line-color": C.ink, "line-width": 16, "line-opacity": 0 },
   });
 
+  addRouteArrowLayers();
+
   // 5. Labels (below the glyphs in the stack so glyphs are placed first and
   //    labels give way to them). Italic DM Sans images; side chosen per feature.
   const labelLayout = (extra = {}) => ({
@@ -574,6 +585,44 @@ export function addTripChartLayers() {
       "icon-allow-overlap": true,
     },
     paint: { "icon-opacity": byState(1, 0.5, 1) },
+  });
+}
+
+/**
+ * Direction-of-travel arrows (see route-arrows.js). `route_pass` features are
+ * pieces of a route in travel order. lane 1 = a retraced stretch or a spur,
+ * drawn offset to the right of its own direction (a thin ink lane + arrows);
+ * lane 0 = ordinary route, arrows on the line. Screen-pixel offsets, so the
+ * two lanes stay readable at any zoom; hidden below z12 where the single
+ * route line is all that fits.
+ */
+function addRouteArrowLayers() {
+  const src = "trip";
+  const lane = (v) => ["==", ["get", "lane"], v];
+  const isPass = ["==", ["get", "type"], "route_pass"];
+  const size = ["interpolate", ["linear"], ["zoom"], 12, 0.7, 14, 0.85, 17, 1.1];
+  map.addLayer({
+    id: "trip-chart-pass", type: "line", source: src, minzoom: 12, filter: ["all", isPass, lane(1)],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": ["case", ["==", ["get", "kind"], "spur"], C.dayhike, C.ink],
+      "line-offset": ["interpolate", ["linear"], ["zoom"], 12, 3.2, 14, 3.8, 17, 5],
+      "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.7, 17, 1.3],
+      "line-opacity": byState(0.7, 0.2, 0.55),
+    },
+  });
+  map.addLayer({
+    id: "trip-chart-arrows", type: "symbol", source: src, minzoom: 12, filter: isPass,
+    layout: {
+      "symbol-placement": "line",
+      "symbol-spacing": ["interpolate", ["linear"], ["zoom"], 12, 120, 16, 160],
+      "icon-image": ["concat", "booot-route-arrow-", ["get", "kind"]],
+      "icon-size": size,
+      "icon-offset": ["case", lane(1), ["literal", [0, 4.5]], ["literal", [0, 0]]],
+      "icon-rotation-alignment": "map", "icon-pitch-alignment": "map", "icon-keep-upright": false,
+      "icon-allow-overlap": true, "icon-ignore-placement": true,
+    },
+    paint: { "icon-opacity": byState(1, 0.3, 0.9) },
   });
 }
 
@@ -726,6 +775,9 @@ export function tripChartOverlay(trip, legFeatures) {
     if (!withLegs.has(p._id)) push({ type: "Feature", geometry: f.geometry, properties: { type: "route_leg", _id: p._id, leg_mode: "trail", kind } }, day);
     push({ type: "Feature", geometry: f.geometry, properties: { type: "route_line", _id: p._id, kind } }, day);
     if (kind === "spur") spurEnds.push({ coords, day });
+    for (const ps of kind === "spur" ? spurPasses(coords) : routePasses(coords)) {
+      if (ps.coords.length >= 2) push({ type: "Feature", geometry: { type: "LineString", coordinates: ps.coords }, properties: { type: "route_pass", kind, lane: ps.lane } }, day);
+    }
   }
 
   // Ordered main routes: by day, then unassigned in feature order.
