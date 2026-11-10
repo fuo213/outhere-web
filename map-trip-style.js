@@ -24,7 +24,6 @@
 import { map } from "./app.js"; // circular; only used at runtime
 import { isDrawingRoute, isDeleteMode } from "./planning.js"; // circular; runtime only
 import { TripManager } from "./trip-panel.js"; // circular; runtime only
-import { routePasses, spurPasses } from "./route-arrows.js";
 
 /** Layers that carry trip point features (popups, delete mode). */
 export const TRIP_POINT_LAYERS = ["trip-chart-points", "trip-chart-points-minor"];
@@ -318,17 +317,6 @@ function addStaticImages() {
     g.fill(new Path2D(inkStroke([[-4, 4.2], [0, -2.6], [4, 4.4]], { w: 1.7, vary: 0.15, amp: 0.05, seed: 41, taper: 1.5 })));
     addImg("booot-spur-arrow", withHalo(c, S, S, r, 1.2), r);
   }
-  // Travel arrows: a gently arched stroke with a half arrowhead (one barb, on
-  // the side away from the route). Drawn pointing east, so symbol-placement
-  // "line" lays it along the way; the right-hand side of travel is +y.
-  for (const [id, color, seed] of [["main", C.ink, 51], ["spur", C.dayhike, 53]]) {
-    const W = 40, H = 16;
-    const [c, g] = canvas(W, H, r);
-    g.translate(W / 2, 5); g.fillStyle = color;
-    g.fill(new Path2D(inkStroke(chaikin([[-16, 0.2], [-8, 1.4], [0, 1.9], [8, 1.3], [16.5, -0.4]], 2), { w: 1.6, vary: 0.3, amp: 0.18, seed, taper: 7 })));
-    g.fill(new Path2D(inkStroke(chaikin([[16.5, -0.4], [13.6, 2.6], [10.6, 5.6]], 2), { w: 1.5, vary: 0.2, amp: 0.1, seed: seed + 1, taper: 2 })));
-    addImg(`booot-route-arrow-${id}`, withHalo(c, W, H, r, 1.2), r);
-  }
   // Colored-pencil band patterns, one per day tone.
   C.pencil.forEach((color, k) => addImg(`booot-pencil-${k}`, ...pencilPattern(color, 300 + k)));
 }
@@ -516,7 +504,7 @@ export function addTripChartLayers() {
     id: "trip-chart-spur-arrow", type: "symbol", source: src, filter: t("spur_end"),
     layout: {
       "icon-image": "booot-spur-arrow", "icon-rotate": ["get", "bearing"], "icon-rotation-alignment": "map",
-      "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": GLYPH_SIZE,
+      "icon-allow-overlap": true, "icon-ignore-placement": true,
     },
     paint: { "icon-opacity": byState(1, 0.2, 1) },
   });
@@ -526,8 +514,6 @@ export function addTripChartLayers() {
     paint: { "line-color": C.ink, "line-width": 16, "line-opacity": 0 },
   });
 
-  addRouteArrowLayers();
-
   // 5. Labels (below the glyphs in the stack so glyphs are placed first and
   //    labels give way to them). Italic DM Sans images; side chosen per feature.
   const labelLayout = (extra = {}) => ({
@@ -536,8 +522,8 @@ export function addTripChartLayers() {
     // GeoJSON sources stringify array properties, so offsets come from scalars.
     "icon-offset": ["case",
       ["==", ["get", "label_anchor"], "left"],
-      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [20, -7]], ["literal", [14, -7]]],
-      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [-20, -7]], ["literal", [-14, -7]]]],
+      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [24, -7]], ["literal", [17, -7]]],
+      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [-24, -7]], ["literal", [-17, -7]]]],
     "icon-allow-overlap": false,
     "icon-padding": 0,
     ...extra,
@@ -590,34 +576,6 @@ export function addTripChartLayers() {
       "icon-allow-overlap": true, "icon-size": GLYPH_SIZE,
     },
     paint: { "icon-opacity": byState(1, 0.25, 1) },
-  });
-}
-
-/**
- * Direction-of-travel arrows (see route-arrows.js). `route_pass` features are
- * pieces of a route in travel order. lane 1 = a retraced stretch or a spur,
- * drawn offset to the right of its own direction (a thin ink lane + arrows);
- * lane 0 = ordinary route, arrows on the line. Screen-pixel offsets, so the
- * two lanes stay readable at any zoom; hidden below z12 where the single
- * route line is all that fits.
- */
-function addRouteArrowLayers() {
-  const lane = (v) => ["==", ["get", "lane"], v];
-  // The arrow image stroke sits ~1.5 px above its center; icon-offset (px at
-  // size 1) then puts that stroke ~10 px right of the route (~13 where the
-  // route retraces itself, to clear the doubled line).
-  map.addLayer({
-    id: "trip-chart-arrows", type: "symbol", source: "trip", minzoom: 12, filter: ["==", ["get", "type"], "route_pass"],
-    layout: {
-      "symbol-placement": "line",
-      "symbol-spacing": ["interpolate", ["linear"], ["zoom"], 12, 130, 16, 190],
-      "icon-image": ["concat", "booot-route-arrow-", ["get", "kind"]],
-      "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.8, 14, 1, 16, 1.2],
-      "icon-offset": ["case", lane(1), ["literal", [0, 14]], ["literal", [0, 11]]],
-      "icon-rotation-alignment": "map", "icon-pitch-alignment": "map", "icon-keep-upright": false,
-      "icon-allow-overlap": true, "icon-ignore-placement": true,
-    },
-    paint: { "icon-opacity": byState(1, 0.12, 0.9) },
   });
 }
 
@@ -770,9 +728,6 @@ export function tripChartOverlay(trip, legFeatures) {
     if (!withLegs.has(p._id)) push({ type: "Feature", geometry: f.geometry, properties: { type: "route_leg", _id: p._id, leg_mode: "trail", kind } }, day);
     push({ type: "Feature", geometry: f.geometry, properties: { type: "route_line", _id: p._id, kind } }, day);
     if (kind === "spur") spurEnds.push({ coords, day });
-    for (const ps of kind === "spur" ? spurPasses(coords) : routePasses(coords)) {
-      if (ps.coords.length >= 2) push({ type: "Feature", geometry: { type: "LineString", coordinates: ps.coords }, properties: { type: "route_pass", kind, lane: ps.lane } }, day);
-    }
   }
 
   // Ordered main routes: by day, then unassigned in feature order.
@@ -953,8 +908,9 @@ function onActiveDayEvent(e) {
   let index = null;
   if (d.dayId != null) { const k = days.findIndex((x) => x.id === d.dayId); index = k >= 0 ? k : null; }
   else if (Number.isInteger(d.dayIndex)) index = d.dayIndex;
-  setActiveDay(index, { frame: true });
-  if (d.frame && index != null) frameBounds(dayBounds[index], { maxZoom: 15 }); // explicit selection: always
+  // Explicit selection (day band click) always frames, once; passive sync only when off-screen.
+  setActiveDay(index, { frame: !d.frame });
+  if (d.frame && index != null) frameBounds(dayBounds[index], { maxZoom: 15 });
 }
 
 /** Click a day's line → make it the active day (again → clear). */

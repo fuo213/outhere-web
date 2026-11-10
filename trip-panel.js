@@ -1462,19 +1462,30 @@ function buildDateOptions(selectedDate) {
 
 // openFeatureForm / closeFeatureForm replaced by inline tile editing (setTileEditContent / setTileViewContent)
 
-/** A day hike is a spur line plus a stop at its end; selecting either frames both. */
+/**
+ * A day hike is a spur line plus the stop it leaves from; selecting either
+ * frames both. Schema 1.2 spurs name their stop (`from_stop` = stop _id).
+ * Older trips fall back to proximity with a `dayhike` point at the spur's end.
+ */
 function dayhikePair(feature) {
   const kindOf = (p) => (p.type === "waypoint" ? p.subtype : (p.point_type || p.type));
   const all = TripManager.currentTrip?.features || [];
   const near = (a, b) => Math.abs(a[0] - b[0]) < 0.0008 && Math.abs(a[1] - b[1]) < 0.0008;
   const p = feature.properties || {};
-  if (p.type === "dayhike_spur" && feature.geometry.type === "LineString") {
+  const isSpur = (f) => f.properties?.type === "dayhike_spur" && f.geometry?.type === "LineString";
+  if (isSpur(feature)) {
     const cs = feature.geometry.coordinates;
+    const stops = p.from_stop ? all.filter((f) => f.geometry?.type === "Point" && f.properties?._id === p.from_stop) : [];
+    if (stops.length) return [feature, ...stops];
     return [feature, ...all.filter((f) => f.geometry?.type === "Point" && kindOf(f.properties || {}) === "dayhike" && (near(f.geometry.coordinates, cs[0]) || near(f.geometry.coordinates, cs.at(-1))))];
   }
-  if (feature.geometry.type === "Point" && kindOf(p) === "dayhike") {
-    const pt = feature.geometry.coordinates;
-    return [feature, ...all.filter((f) => f.properties?.type === "dayhike_spur" && f.geometry?.type === "LineString" && (near(pt, f.geometry.coordinates[0]) || near(pt, f.geometry.coordinates.at(-1))))];
+  if (feature.geometry.type === "Point") {
+    const linked = p._id ? all.filter((f) => isSpur(f) && f.properties.from_stop === p._id) : [];
+    if (linked.length) return [feature, ...linked];
+    if (kindOf(p) === "dayhike") {
+      const pt = feature.geometry.coordinates;
+      return [feature, ...all.filter((f) => isSpur(f) && !f.properties.from_stop && (near(pt, f.geometry.coordinates[0]) || near(pt, f.geometry.coordinates.at(-1))))];
+    }
   }
   return [feature];
 }
