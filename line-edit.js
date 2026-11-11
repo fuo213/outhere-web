@@ -367,3 +367,20 @@ export function appendReturn(trip) {
   }
   return true;
 }
+
+/**
+ * Move a time stop (camp or break) to metre `m` of the line, on whichever pass
+ * that metre belongs to. The stop keeps its id, name and notes; its pass label
+ * is recomputed by syncLineTrip. Returns false when there is nothing to move.
+ */
+export function moveStopAlong(trip, id, m) {
+  const route = mainRoute(trip);
+  const f = trip.features.find((x) => x.properties?._id === id);
+  if (!route || !f || !isTimeStop(f.properties)) return false;
+  const ix = lineIndex(route);
+  const at = locateM(ix, Math.max(0, Math.min(ix.total, m)));
+  f.properties.attach = { route_id: route.properties._id, ...at };
+  f.geometry = { type: "Point", coordinates: round6(resolveAttach(ix, at).coord) };
+  delete f.properties.pass;
+  return true;
+}

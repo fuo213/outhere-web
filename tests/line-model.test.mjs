@@ -185,3 +185,76 @@ test("conversion: a day hike from a camp leaves from that camp", () => {
   assert.deepEqual(plan.camps.map((c) => c.id), ["BC", "LC"]);
   assert.equal(plan.days.find((d) => d.spurs.length).camp.id, "BC");
 });
+
+// ---- profile metre mapping, moving a camp, same campsite ---------------------
+
+import { moveStopAlong } from "../line-edit.js";
+import { lineSpotAtMile, buildItinerary } from "../itinerary-profile.js";
+
+test("profile mile on an out-and-back names the pass; rest days place nothing", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(point("C1", { type: "camp", nights: 2, attach: attachAt(ix, 3000) }));
+  const view = M.displayTrip(trip);
+  const model = buildItinerary(view);
+  model.line = true;
+  const d0 = model.days[0];
+  assert.equal(d0.fromM, 0);
+  // 1.5 km into day 1 is the way out; the same ground on the day after the rest day is the way back.
+  const out = lineSpotAtMile(model, 1500 / M.MI);
+  near(out.m, 1500, 5, "out pass");
+  const lastDay = model.days.at(-1);
+  const back = lineSpotAtMile(model, lastDay.startMi + 1500 / M.MI); // 1.5 km into the last day = 4.5 km of line
+  near(back.m, 4500, 5, "back pass");
+  assert.ok(back.m > out.m + 2000);
+  const rest = model.days.find((d) => d.empty);
+  const r = lineSpotAtMile(model, (rest.startMi + rest.endMi) / 2);
+  assert.equal(r.rest, true);
+  near(r.m, 3000, 5, "rest day gives its camp");
+  assert.equal(lineSpotAtMile(model, model.total + 5), null);
+});
+
+test("moveStopAlong re-attaches a camp to the pass at that metre and days follow", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(point("C1", { type: "camp", attach: attachAt(ix, 1500) }), point("C2", { type: "camp", attach: attachAt(ix, 4500) }));
+  assert.ok(moveStopAlong(trip, "C1", 4000));
+  const c1 = trip.features.find((f) => f.properties._id === "C1");
+  near(M.resolveAttach(ix, c1.properties.attach).m, 4000, 1);
+  const plan = M.buildPlan(trip);
+  assert.deepEqual(plan.camps.map((c) => c.id), ["C1", "C2"]); // 4000 < 4500
+  assert.ok(moveStopAlong(trip, "C1", 5000));
+  assert.deepEqual(M.buildPlan(trip).camps.map((c) => c.id), ["C2", "C1"]);
+  assert.equal(moveStopAlong(trip, "nope", 100), false);
+});
+
+test("same campsite: candidate only on a later pass; link shares name and notes; stale links drop", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(
+    point("C1", { type: "camp", name: "Lake camp", notes: "wind", attach: attachAt(ix, 1500) }),
+    point("C0", { type: "camp", attach: attachAt(ix, 1550) }),   // same pass, 50 m on: not a candidate
+    point("C2", { type: "camp", attach: attachAt(ix, 4500) }),   // way back, same ground
+  );
+  let plan = M.buildPlan(trip);
+  assert.equal(M.sameSiteCandidate(plan, "C0"), null);
+  const cand = M.sameSiteCandidate(plan, "C2");
+  assert.equal(cand.id, "C1"); // closest earlier camp on another pass (C0 is 50 m off, C1 on the same pass as C0 but closer in space)
+  assert.ok(M.linkSameSite(trip, "C2", cand.id));
+  const c2 = trip.features.find((f) => f.properties._id === "C2").properties;
+  assert.equal(c2.same_place_as, "C1");
+  assert.equal(c2.name, "Lake camp"); assert.equal(c2.notes, "wind");
+  // Editing either shares name and notes.
+  c2.name = "Lake camp (shady)";
+  M.shareCampFields(trip, "C2");
+  assert.equal(trip.features.find((f) => f.properties._id === "C1").properties.name, "Lake camp (shady)");
+  plan = M.buildPlan(trip);
+  assert.equal(plan.camps.find((c) => c.id === "C2").sameAs, plan.camps.find((c) => c.id === "C1").n);
+  assert.deepEqual(M.campGroup(trip, "C2").sort(), ["C1", "C2"]);
+  // Moving it far from the site drops the link.
+  moveStopAlong(trip, "C2", 5500);
+  M.syncLineTrip(trip);
+  assert.equal(trip.features.find((f) => f.properties._id === "C2").properties.same_place_as, undefined);
+  // Deleting the first camp drops it too.
+  moveStopAlong(trip, "C2", 4500); M.linkSameSite(trip, "C2", "C1");
+  trip.features = trip.features.filter((f) => f.properties._id !== "C1");
+  M.syncLineTrip(trip);
+  assert.equal(trip.features.find((f) => f.properties._id === "C2").properties.same_place_as, undefined);
+});

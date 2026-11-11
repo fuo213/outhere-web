@@ -338,3 +338,33 @@ body.is-dragging-feature .itin-day-empty {
 
 /* "Try again" beside the caption when a stretch has no elevation. */
 .itin-retry { font-style: normal; height: 24px; margin-left: var(--space-1); color: var(--accent); }
+
+/* ---- Reading and editing along the profile (1.2 line trips) ----------------
+   A cursor with the mile and elevation under it; tap pins it and offers
+   "Add a camp here". Camps on the profile can be dragged. */
+.itin-profile[data-mode="days"] .itin-profile-art { touch-action: none; cursor: crosshair; }
+.itin-profile .camp-grab { cursor: grab; }
+.itin-profile .camp-grab:active { cursor: grabbing; }
+.itin-scrub { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; z-index: 1; }
+.itin-scrub-line { position: absolute; top: 0; bottom: var(--space-6); left: 0; border-left: 1px dashed var(--text-secondary); }
+.itin-scrub-chip {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  white-space: nowrap;
+  font: var(--weight-regular) var(--text-sm)/1.2 var(--font-ui);
+  color: var(--text);
+}
+.itin-scrub-chip.is-left { left: auto; right: var(--space-2); }
+.itin-scrub-chip.is-pinned { pointer-events: auto; }
+.itin-scrub-num, .itin-scrub-ft { font-family: var(--font-data); }
+.itin-scrub-ft, .itin-scrub-day { color: var(--text-secondary); }
+.itin-scrub-chip .btn { min-height: var(--space-10); }

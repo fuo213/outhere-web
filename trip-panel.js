@@ -38,7 +38,7 @@ import { getActiveRegionId } from "./region-picker.js"; // circular; only used a
 import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
 import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices, canConvertToLine } from "./line-model.js";
 import { renderLineDays } from "./line-panel.js"; // circular; only used at runtime
-import { initStops, closeStopMenu } from "./stops.js"; // circular; only used at runtime
+import { initStops, closeStopMenu, addCampAtM, moveStopAlongLine, openStopMenu } from "./stops.js"; // circular; only used at runtime
 import { initRouteEdit, closeLineMenu, snapshot, showToast } from "./route-edit.js"; // circular; only used at runtime
 
 // ---------------------------------------------------------------------------
@@ -1827,6 +1827,9 @@ export function initTripPanel() {
     tail: document.getElementById("itineraryTail"),
     onDrawRoute: () => startRouteDrawing(),
     onRetryElevation: (routeId) => retryElevation(routeId),
+    onAddCamp: (m) => addCampAtM(m),
+    onMoveCamp: (id, m) => moveStopAlongLine(id, m),
+    onOpenStop: (id) => { frameFeature(id); openStopMenu(id); },
   });
   // Drawing a route: collapse the profile to a strip so the map leads.
   const toolbarEl = document.getElementById("planningToolbar");

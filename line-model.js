@@ -29,6 +29,11 @@ export const OVERLAP_M = 30;
  *  line (switchbacks beside a spring) are one visit; an out-and-back's two
  *  passes, further apart than this, are two (see visitsNear). */
 export const SEPARATE_VISIT_M = 1000;
+/** A later camp this close to an earlier one (and on a different pass) may be
+ *  the same campsite: the app asks "Same as Camp 1?". Past SAME_SITE_KEEP_M
+ *  apart (a camp was moved) the link is dropped. */
+export const SAME_SITE_M = 100;
+export const SAME_SITE_KEEP_M = 150;
 
 const RAD = Math.PI / 180;
 const R = 6371008.8;
@@ -255,6 +260,14 @@ export function buildPlan(trip) {
   timed.sort((a, b) => a.m - b.m);
   plan.camps = timed.filter((t) => t.kind === "camp").map((t, k) => ({ ...t, n: k + 1, nights: Math.max(1, parseInt(t.f.properties.nights, 10) || 1) }));
   const campNo = new Map(plan.camps.map((c) => [c.id, c.n]));
+  // Same campsite used twice (`same_place_as`): each linked camp knows the
+  // number of the camp it repeats; the first one knows which camps repeat it.
+  for (const c of plan.camps) {
+    const root = c.f.properties.same_place_as;
+    c.sameAs = root && campNo.has(root) && root !== c.id ? campNo.get(root) : null;
+    c.again = [];
+  }
+  for (const c of plan.camps) if (c.sameAs) plan.camps.find((x) => x.n === c.sameAs).again.push(c.n);
   plan.campLabel = (id) => (campNo.has(id) ? `Camp ${campNo.get(id)}` : "Camp");
 
   // Days: Start → camp 1 → … → Finish, rest days after multi-night camps.
@@ -340,6 +353,86 @@ export function passLabel(entry) {
 }
 
 // ---------------------------------------------------------------------------
+// The same campsite used twice (`same_place_as`, format 1.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Is the camp `id` (just added) probably the same campsite as an earlier one?
+ * An earlier camp within `radius` metres as the crow flies but on a different
+ * pass of the line (more than SEPARATE_VISIT_M further along): an out-and-back
+ * or a lollipop. A camp that already repeats another is not asked again.
+ * @returns {{ id, n, name, d }|null} the camp to link to (its root when that
+ *   one repeats an even earlier camp), n = its camp number.
+ */
+export function sameSiteCandidate(plan, id, radius = SAME_SITE_M) {
+  const me = plan.camps.find((c) => c.id === id);
+  if (!me || me.f.properties.same_place_as) return null;
+  let best = null;
+  for (const c of plan.camps) {
+    if (c.id === id || c.m >= me.m - SEPARATE_VISIT_M) continue;
+    const d = hav(c.coord, me.coord);
+    if (d <= radius && (!best || d < best.d)) best = { c, d };
+  }
+  if (!best) return null;
+  const root = best.c.sameAs ? plan.camps.find((x) => x.n === best.c.sameAs) || best.c : best.c;
+  return { id: root.id, n: root.n, name: root.f.properties.name || "", d: best.d };
+}
+
+/** Ids of the camps that are one campsite with `id` (itself included). */
+export function campGroup(trip, id) {
+  const camps = trip.features.filter((f) => f.properties?.type === "camp");
+  const me = camps.find((f) => f.properties._id === id);
+  if (!me) return [];
+  const rootId = me.properties.same_place_as && camps.some((f) => f.properties._id === me.properties.same_place_as) ? me.properties.same_place_as : id;
+  return camps.filter((f) => f.properties._id === rootId || f.properties.same_place_as === rootId).map((f) => f.properties._id);
+}
+
+/** Say camp `id` is the same campsite as `rootId`; it takes the root's name and notes. */
+export function linkSameSite(trip, id, rootId) {
+  const f = trip.features.find((x) => x.properties?._id === id && x.properties.type === "camp");
+  const root = trip.features.find((x) => x.properties?._id === rootId && x.properties.type === "camp");
+  if (!f || !root || id === rootId) return false;
+  f.properties.same_place_as = rootId;
+  f.properties.name = root.properties.name || "";
+  f.properties.notes = root.properties.notes || "";
+  return true;
+}
+
+/** Make a camp its own campsite again (name and notes stay as they are). */
+export function unlinkSameSite(trip, id) {
+  const f = trip.features.find((x) => x.properties?._id === id);
+  if (!f || !f.properties.same_place_as) return false;
+  delete f.properties.same_place_as;
+  return true;
+}
+
+/** After editing name / notes of camp `id`: the rest of its campsite group gets the same. */
+export function shareCampFields(trip, id) {
+  const src = trip.features.find((x) => x.properties?._id === id);
+  if (!src) return;
+  for (const gid of campGroup(trip, id)) {
+    if (gid === id) continue;
+    const g = trip.features.find((x) => x.properties._id === gid);
+    g.properties.name = src.properties.name || "";
+    g.properties.notes = src.properties.notes || "";
+  }
+}
+
+/**
+ * Drop links that stopped being true: the camp it repeats is gone, is off the
+ * route, comes later along the line, or is now more than SAME_SITE_KEEP_M away.
+ */
+export function reconcileSameSite(trip, plan) {
+  const byId = new Map(plan.camps.map((c) => [c.id, c]));
+  for (const f of trip.features) {
+    const p = f.properties;
+    if (p?.type !== "camp" || !p.same_place_as) continue;
+    const me = byId.get(p._id), root = byId.get(p.same_place_as);
+    if (!root || (me && (root.m >= me.m || hav(root.coord, me.coord) > SAME_SITE_KEEP_M))) delete p.same_place_as;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Keeping trip.days (mobile reads it) and stop geometry in step with the plan
 // ---------------------------------------------------------------------------
 
@@ -350,6 +443,13 @@ export function passLabel(entry) {
  */
 export function syncLineTrip(trip, plan = buildPlan(trip)) {
   if (!isLineTrip(trip)) return plan;
+  // A link that stopped being true (moved, deleted) is dropped; the plan's
+  // sameAs / again follow it.
+  if (trip.features.some((f) => f.properties?.same_place_as)) {
+    reconcileSameSite(trip, plan);
+    for (const c of plan.camps) if (c.sameAs && !c.f.properties.same_place_as) c.sameAs = null;
+    for (const c of plan.camps) c.again = plan.camps.filter((x) => x.sameAs === c.n).map((x) => x.n);
+  }
   const old = trip.days || [];
   const byKey = new Map(old.filter((d) => d._key).map((d) => [d._key, d]));
   const routeId = plan.route?.properties._id;
@@ -466,7 +566,7 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
     for (const s of d.stops) if (!ids.includes(s.id)) ids.push(s.id);
     for (const s of d.spurs) ids.push(s.id);
     return {
-      id: trip.days?.[i]?.id || d.key, date: d.date, features: ids, notes: "",
+      id: trip.days?.[i]?.id || d.key, date: d.date, features: ids, notes: "", _fromM: d.fromM,
       _stops: d.stops.map((s) => ({ id: s.id, kind: s.kind === "break" ? "rest" : s.kind, name: s.f.properties.name || "", notes: s.f.properties.notes || "", dayMi: Math.max(0, s.dayM) / MI })),
     };
   });

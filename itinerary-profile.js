@@ -151,6 +151,7 @@ export function buildItinerary(trip) {
     mi0 += width;
     return {
       i: g.i, n: g.i + 1, id: g.d.id ?? null, date: g.d.date ?? null, loose: !!g.loose,
+      fromM: Number.isFinite(g.d._fromM) ? g.d._fromM : null, // 1.2: metres along the line where the day starts
       startMi, endMi: mi0, routeMiles: off, empty: !g.pieces.length, pieces: g.pieces, stops, spurs, gaps,
     };
   });
@@ -197,6 +198,37 @@ export function buildItinerary(trip) {
 }
 
 // ---------------------------------------------------------------------------
+// Reading the drawing back: a pixel on the profile is a metre of the line
+// ---------------------------------------------------------------------------
+
+/** Horizontal layout shared by drawProfile and the pointer code. */
+export function profileX(m, W) {
+  const L = 6, Rr = W < 420 ? 8 : 12, plotW = W - L - Rr;
+  return { L, plotW, X: (mi) => L + (mi / (m.total || 1)) * plotW, mi: (x) => Math.max(0, Math.min(m.total, ((x - L) / plotW) * (m.total || 1))) };
+}
+
+/**
+ * The spot on the line under a profile mile. The profile is the days laid end
+ * to end (rest days take a little room), so the day under the mile says which
+ * pass of an out-and-back is meant. Null when the model has no line metres
+ * (a 1.1 trip) or the mile is on no day. A rest day gives its camp's metre
+ * with `rest: true` (nothing to place there).
+ * @returns {{ m: number, mi: number, ft: number|null, day: object, rest: boolean }|null}
+ */
+export function lineSpotAtMile(model, mi) {
+  if (!model || model.mode !== "days") return null;
+  const days = model.days.filter((d) => d.endMi > d.startMi && d.fromM != null);
+  let day = days.find((d) => mi >= d.startMi && mi <= d.endMi);
+  if (!day) return null;
+  // A mile exactly on a boundary belongs to the day that starts there (unless it is the last).
+  const next = days.find((d) => d !== day && d.startMi === mi);
+  if (next) day = next;
+  const rest = day.empty;
+  const m = rest ? day.fromM : day.fromM + (Math.max(day.startMi, Math.min(day.endMi, mi)) - day.startMi) * MI;
+  return { m, mi, ft: model.elevAt(mi), day, rest };
+}
+
+// ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 
@@ -228,7 +260,8 @@ function tickStep(total, plotW, minPx) {
 export function drawProfile(m, W, { height = 220, compact = false, active = null, failedIds = new Set(), reveal = new Set() } = {}) {
   const narrow = W < 420;
   const H = compact ? 46 : height;
-  const L = 6, Rr = narrow ? 8 : 12;
+  const { L, plotW: _pw } = profileX(m, W);
+  const Rr = narrow ? 8 : 12;
   const top = compact ? 12 : narrow ? 60 : 66;
   const base = compact ? H - 6 : H - 30;
   const plotW = W - L - Rr;
@@ -502,9 +535,17 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
     else noteAbove(x, flatY - 8, t);
   }
 
+  // Camps on a 1.2 line can be grabbed and dragged along the profile.
+  let grabs = "";
+  if (m.line) {
+    for (const d of m.days) for (const s of d.stops) {
+      if (d.empty || s.kind !== "camp") continue;
+      grabs += `<circle class="camp-grab" data-id="${esc(s.id)}" cx="${X(s.mi).toFixed(1)}" cy="${yAt(s.mi).toFixed(1)}" r="16" fill="transparent"><title>${esc(s.name || "Camp")}: drag to move</title></circle>`;
+    }
+  }
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(ariaSummary(m))}">
     <defs>${defs}</defs>
-    ${bands}${dividers}${axis}${ink}${marks}${tags}${notes}${hits}
+    ${bands}${dividers}${axis}${ink}${marks}${tags}${notes}${hits}${grabs}
   </svg>`;
 }
 

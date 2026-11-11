@@ -160,6 +160,8 @@ function stopRow(s, plan, d) {
     notes.push([src, rel].filter(Boolean).join(", "));
   }
   if (camp && camp.nights > 1) notes.push(`${camp.nights} nights`);
+  if (camp?.sameAs) notes.push(`Same site as Camp ${camp.sameAs}`);
+  else if (camp?.again?.length) notes.push(`Used again at Camp ${camp.again.join(", ")}`);
   const pl = passLabel(s);
   if (pl === "out") notes.push("On the way out");
   else if (pl === "back") notes.push("On the way back");

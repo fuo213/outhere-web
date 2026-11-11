@@ -22,8 +22,10 @@ import { glyphIcon } from "./sketch.js";
 import { offRouteConsequence } from "./line-panel.js"; // circular; runtime only
 import {
   isLineTrip, mainRoute, lineIndex, choosePass, locateM, nearestOnLine, passesNear, resolveAttach,
-  buildPlan, stopKind, round6, OVERLAP_M, MI,
+  buildPlan, stopKind, round6, OVERLAP_M, MI, pointAtM,
+  sameSiteCandidate, linkSameSite, unlinkSameSite, shareCampFields,
 } from "./line-model.js";
+import { moveStopAlong } from "./line-edit.js";
 
 export const STOP_KINDS = [
   { kind: "camp", label: "Camp", key: "1" },
@@ -45,6 +47,8 @@ let active = false;
 let kind = "camp";
 let moving = null; // stop _id being moved: the next click places it
 let keyHandler = null;
+/** Camps just added next to an earlier camp: their menu asks "Same as Camp N?" until answered. */
+const askSame = new Set();
 
 export const isStopToolActive = () => active;
 
@@ -168,9 +172,36 @@ export function addStopAt(k, pt, { zoom, atM = null } = {}) {
   if (attach) props.attach = attach;
   TripManager.addFeature({ type: "Point", coordinates: round6(coord) }, props);
   const id = props._id;
+  if (k === "camp" && attach) {
+    const trip2 = TripManager.currentTrip;
+    if (sameSiteCandidate(buildPlan(trip2), id)) askSame.add(id);
+  }
   if ((k === "camp" || k === "break") && !attach && mainRoute(trip)) showToast(`That ${k} is off your route. Click on the line to attach it.`, { undoable: true, warn: true });
   openStopMenu(id);
   return id;
+}
+
+/** A camp at metre m of the line (the elevation profile uses this): same camp as the map menu's "Add a camp here". */
+export function addCampAtM(m) {
+  const route = mainRoute(TripManager.currentTrip);
+  if (!route) return null;
+  return addStopAt("camp", pointAtM(lineIndex(route), m), { atM: m });
+}
+
+/** Move a camp (or break) along the line to metre m: one undo step, days follow. */
+export function moveStopAlongLine(id, m) {
+  const trip = TripManager.currentTrip;
+  const f = findStop(id);
+  if (!trip || !f) return;
+  const k = stopKind(f.properties);
+  snapshot(`move ${KIND_LABEL[k].toLowerCase()}`);
+  if (!moveStopAlong(trip, id, m)) return;
+  askSame.delete(id);
+  TripManager.render();
+  TripManager.save();
+  const plan = buildPlan(TripManager.currentTrip);
+  const c = plan.camps.find((x) => x.id === id);
+  showToast(`Moved ${c ? `Camp ${c.n}` : `the ${KIND_LABEL[k].toLowerCase()}`} to mile ${(m / MI).toFixed(1)}`, { undoable: true });
 }
 
 function moveStopTo(id, pt, zoom) {
@@ -225,6 +256,13 @@ export function openStopMenu(id, { fly = false } = {}) {
     passHTML = `<div class="stop-menu__row"><span class="stop-menu__label">On the way</span><span class="seg" role="group" aria-label="Which pass">${labels.map((l, i) => `<button type="button" class="seg__btn" data-pass="${i}" aria-pressed="${entry.pass === i}">${l}</button>`).join("")}</span></div>`;
   }
   const nights = Math.max(1, parseInt(p.nights, 10) || 1);
+  // "Same as Camp 1?" for a camp added beside an earlier one (an out-and-back's second night there).
+  const cand = k === "camp" && plan && askSame.has(id) ? sameSiteCandidate(plan, id) : null;
+  if (k === "camp" && askSame.has(id) && !cand) askSame.delete(id);
+  const sameHTML = cand
+    ? `<div class="stop-menu__ask" role="group" aria-label="Same campsite?"><span class="stop-menu__ask-q">Same as Camp ${cand.n}${cand.name ? `, ${escapeHTML(cand.name)}` : ""}?</span><span class="stop-menu__ask-btns"><button type="button" class="btn btn--quiet btn--sm" data-same="yes">Yes, same site</button><button type="button" class="btn btn--ghost btn--sm" data-same="no">No</button></span></div>`
+    : camp?.sameAs ? `<div class="stop-menu__row"><span class="stop-menu__label">Same site as Camp ${camp.sameAs}</span><button type="button" class="btn btn--ghost btn--sm" data-same="unlink">Separate</button></div>`
+      : camp?.again?.length ? `<p class="stop-menu__note">You sleep here again at Camp ${camp.again.join(", ")}. Name and notes are shared.</p>` : "";
   const sel = (name, opts, val) => `<select class="input input--sm" data-field="${name}">${opts.map((o) => `<option value="${o}"${o === val ? " selected" : ""}>${cap(o)}</option>`).join("")}</select>`;
   const html = `
     <form class="stop-menu" data-kind="${escapeAttr(k)}" autocomplete="off">
@@ -233,6 +271,7 @@ export function openStopMenu(id, { fly = false } = {}) {
         <span class="stop-menu__title">${escapeHTML(title)}</span>
         ${mi ? `<span class="stop-menu__at">${escapeHTML(mi)}</span>` : ""}
       </div>
+      ${sameHTML}
       ${offRoute ? `<p class="stop-menu__warn">Off your route. ${escapeHTML(offRouteConsequence(k))}</p>` : ""}
       <input class="input input--sm" data-field="name" type="text" value="${escapeAttr(p.name || "")}" placeholder="Name (optional)" aria-label="Name" />
       ${k === "camp" ? `<div class="stop-menu__row"><span class="stop-menu__label">Nights</span><span class="stepper"><button type="button" class="stepper__btn" data-step="-1" aria-label="One night fewer"${nights <= 1 ? " disabled" : ""}>−</button><span class="stepper__num" aria-live="polite">${nights}</span><button type="button" class="stepper__btn" data-step="1" aria-label="One more night">+</button></span></div>` : ""}
@@ -258,6 +297,7 @@ export function openStopMenu(id, { fly = false } = {}) {
   const edit = (fn) => {
     if (!changed) { snapshot(`edit ${title.toLowerCase()}`); changed = true; }
     fn(f.properties);
+    if (k === "camp") shareCampFields(TripManager.currentTrip, id); // name and notes follow the same campsite
     TripManager.render();
     TripManager.save();
   };
@@ -274,6 +314,8 @@ export function openStopMenu(id, { fly = false } = {}) {
       openStopMenu(id); // redraw with the new number (and Camp numbering)
       return;
     }
+    const same = e.target.closest("[data-same]")?.dataset.same;
+    if (same) { answerSameSite(id, same, cand); return; }
     const pass = e.target.closest("[data-pass]");
     if (pass) { choosePassFor(id, +pass.dataset.pass); return; }
     const act = e.target.closest("[data-act]")?.dataset.act;
@@ -282,6 +324,26 @@ export function openStopMenu(id, { fly = false } = {}) {
     else if (act === "spur") startSpurFrom(id);
     else if (act === "unspur") deleteSpursOf(id);
   });
+}
+
+function answerSameSite(id, answer, cand) {
+  const trip = TripManager.currentTrip;
+  askSame.delete(id);
+  if (answer === "yes" && cand) {
+    snapshot("same campsite");
+    changed = true;
+    linkSameSite(trip, id, cand.id);
+    TripManager.render();
+    TripManager.save();
+    showToast(`Camp ${buildPlan(trip).camps.find((c) => c.id === id)?.n || ""} is the same site as Camp ${cand.n}. Name and notes are shared.`, { undoable: true });
+  } else if (answer === "unlink") {
+    snapshot("separate campsites");
+    changed = true;
+    unlinkSameSite(trip, id);
+    TripManager.render();
+    TripManager.save();
+  }
+  openStopMenu(id);
 }
 
 /** Re-attach a time stop to pass i of the line at its spot (Out / Back). */
