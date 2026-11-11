@@ -32,7 +32,8 @@ import {
   metersPerPixel, lineLength, haversine,
 } from "./routing.js";
 import { deriveNameFromRuns } from "./route-names.js";
-import { sampleByDistance, buildProfile, gainLoss } from "./elevation.js";
+import { sampleByDistance, buildProfile, fetchElevations, gainLoss } from "./elevation.js";
+import { profileForRoute } from "./elevation-dem.js";
 import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
 import { exitStopTool, cancelStopMove } from "./stops.js"; // circular; runtime only
 import { startExtend, snapshot } from "./route-edit.js"; // circular; runtime only
@@ -996,16 +997,45 @@ const elevationBusy = new Set();  // feature _ids with a fetch in flight
 const elevationFailed = new Map();
 
 /**
- * Fetch elevation for a route from Open-Meteo, then patch the feature in
- * TripManager with elevation_profile (ft, evenly spaced by distance, about
- * one sample per 100 m), elevation_gain_ft and elevation_loss_ft.
- * - All or nothing: if a chunk fails, or the line changes while chunks are
- *   in flight, nothing is written.
- * - `reuse` (from line-edit.js redrawLine): stretches the edit didn't touch
- *   are read from the old profile; only the drawn legs are fetched.
- * - A linked out-and-back fetches the way out and mirrors it.
- * - On failure the window gets `booot:elevation-failed` ({ id }); the
- *   profile's "Try again" calls retryElevation().
+ * Elevation for a route from our own USGS 3DEP data (elevation-dem.js), when
+ * the route has trail legs in a region whose graph ships an elevation
+ * sidecar. Open-Meteo fills only the stretches the sidecar can't answer
+ * (straight and manual legs), through the same chunked, retried fetch as the
+ * fallback. null → use Open-Meteo for the whole route (buildProfile).
+ * @returns {Promise<null | {profile_ft, gain_ft, loss_ft, spacing_m, source, coverage}>}
+ */
+async function demProfileForFeature(feature, fetchOpts) {
+  const p = feature?.properties;
+  const regionId = String(p?.routing?.graph || "").split("/")[1];
+  if (!regionId || !p.segments?.some((s) => s.mode === "trail")) return null;
+  const info = graphInfoForRegion(findRegionById(regionId));
+  if (!info) return null;
+  try {
+    const graph = await loadGraph(info);
+    // A fill that fails makes profileForRoute return null: the fallback then
+    // fails the same way and the profile offers "Try again".
+    const fill = (pts) => fetchElevations(pts, fetchOpts).catch(() => null);
+    return await profileForRoute(feature, graph, { fill });
+  } catch (err) {
+    console.warn("[elevation] 3DEP profile failed:", err.message);
+    return null;
+  }
+}
+
+/**
+ * Patch a route in TripManager with elevation_profile (ft, evenly spaced by
+ * distance), elevation_gain_ft, elevation_loss_ft and elevation_source.
+ * 1. Our 3DEP data where the route follows trails in a region that has it
+ *    (demProfileForFeature): no API call for trail legs, one sample per 25 m,
+ *    gain/loss as counted there (smoothed 10 m series).
+ * 2. Otherwise Open-Meteo (elevation.js): about one sample per 100 m.
+ *    - `reuse` (from line-edit.js): stretches an edit didn't touch are read
+ *      from the old profile; only the drawn legs are fetched.
+ *    - A linked out-and-back fetches the way out and mirrors it.
+ * All or nothing: if a chunk fails, or the line changes while work is in
+ * flight, nothing is written. On failure the window gets
+ * `booot:elevation-failed` ({ id }); the profile's "Try again" calls
+ * retryElevation().
  *
  * @param {number[][]} coords - the route's geometry.coordinates (the array itself)
  * @param {string} featureId - the feature's _id property
@@ -1023,13 +1053,28 @@ export async function fetchElevationProfile(coords, featureId, { reuse = null } 
   try {
     const feature = find();
     if (!feature || isStale()) return;
+    const fetchOpts = { isStale };
+    if (elevationDebug.fetchFn) fetchOpts.fetchFn = elevationDebug.fetchFn;
+    if (elevationDebug.retryDelays) fetchOpts.retryDelays = elevationDebug.retryDelays;
+
+    const dem = await demProfileForFeature(feature, fetchOpts);
+    if (isStale()) return;
+    if (dem) {
+      const p = find().properties;
+      p.elevation_profile = dem.profile_ft;
+      p.elevation_gain_ft = dem.gain_ft;
+      p.elevation_loss_ft = dem.loss_ft;
+      p.elevation_source = dem.source;
+      elevationDebug.last = { source: dem.source, samples: dem.profile_ft.length, spacing_m: dem.spacing_m, coverage: dem.coverage, fetched: 0, reused: 0 };
+      TripManager.render();
+      TripManager.save();
+      return;
+    }
+
     const ix = lineIndex(feature);
     const link = returnLink(feature.properties.segments);
     // The way back of a linked out-and-back is the way out reversed.
     const total = link.linked ? ix.legs[link.firstMirror].startM : ix.total;
-    const fetchOpts = { isStale };
-    if (elevationDebug.fetchFn) fetchOpts.fetchFn = elevationDebug.fetchFn;
-    if (elevationDebug.retryDelays) fetchOpts.retryDelays = elevationDebug.retryDelays;
     const built = await buildProfile({ total, pointAt: (m) => pointAtM(ix, m), reuse, fetchOpts });
     if (!built || isStale()) return;
     const profileFt = link.linked ? [...built.profile, ...[...built.profile].reverse().slice(1)] : built.profile;
@@ -1038,7 +1083,8 @@ export async function fetchElevationProfile(coords, featureId, { reuse = null } 
     p.elevation_profile = profileFt;
     p.elevation_gain_ft = gain;
     p.elevation_loss_ft = loss;
-    elevationDebug.last = { samples: profileFt.length, fetched: built.fetched, reused: built.profile.length - built.fetched };
+    p.elevation_source = "open-meteo";
+    elevationDebug.last = { source: "open-meteo", samples: profileFt.length, fetched: built.fetched, reused: built.profile.length - built.fetched };
 
     TripManager.render();
     TripManager.save();
@@ -1072,8 +1118,9 @@ export function retryElevation(featureId) {
 }
 
 /**
- * Debug/verification handle (window.__outhere.elevation). `fetchFn` and
- * `retryDelays` override the network for tests (scenes simulate an outage).
+ * Debug/verification handle (window.__outhere.elevation): what the last
+ * profile came from. `fetchFn` and `retryDelays` override the network for
+ * tests (scenes simulate an outage).
  */
 export const elevationDebug = { last: null, fetchFn: null, retryDelays: null };
 

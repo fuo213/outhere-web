@@ -67,7 +67,7 @@ export function initItineraryPanel({ figure, scroll, tail, onDrawRoute, onRetryE
     if (e.target.closest("[data-action='draw-route']")) { S.onDrawRoute?.(); return; }
     if (e.target.closest("[data-action='retry-elevation']")) { retryFailed(); return; }
     const hit = e.target.closest(".day-hit");
-    if (hit) scrollToDay(+hit.dataset.i, "panel");
+    if (hit) scrollToDay(+hit.dataset.i, "panel", { frame: true });
   });
 
   window.addEventListener(ACTIVE_DAY_EVENT, (e) => {
@@ -232,14 +232,14 @@ function pickActive() {
   setActive(idx, "panel");
 }
 
-function setActive(i, source) {
-  if (i === S.active) return;
+function setActive(i, source, frame = false) {
+  if (i === S.active && !frame) return;
   S.active = i;
   applyActive();
   if (source === "panel") {
     const day = i == null ? null : S.model?.days?.[i];
     window.dispatchEvent(new CustomEvent(ACTIVE_DAY_EVENT, {
-      detail: { dayIndex: i, dayId: day?.id ?? null, source: "panel" },
+      detail: { dayIndex: i, dayId: day?.id ?? null, source: "panel", ...(frame ? { frame: true } : {}) },
     }));
   }
 }
@@ -254,12 +254,12 @@ function applyActive() {
 }
 
 /** Scroll so day i sits just under the profile, and make it active. */
-export function scrollToDay(i, source = "panel") {
+export function scrollToDay(i, source = "panel", { frame = false } = {}) {
   const sec = S.sections[i];
   if (!sec) return;
   clearTimeout(S.lockTimer);
   S.lock = i;
-  setActive(i, source);
+  setActive(i, source, frame);
   const target = S.scroll.scrollTop + sec.getBoundingClientRect().top - S.scroll.getBoundingClientRect().top - S.lineY + 6;
   const smooth = !reduceMotion();
   S.scroll.scrollTo({ top: Math.max(0, target), behavior: smooth ? "smooth" : "auto" });

@@ -434,6 +434,8 @@ function onImageMissing(e) {
 // Layers
 // ---------------------------------------------------------------------------
 
+/** Trip glyphs and numerals grow about 20% from z13 up (unchanged below). */
+const GLYPH_SIZE = ["interpolate", ["linear"], ["zoom"], 12, 1, 13, 1, 15, 1.2, 17, 1.25];
 const fs = (name) => ["boolean", ["feature-state", name], false];
 /** active ? a : muted ? m : n */
 const byState = (a, m, n) => ["case", fs("active"), a, fs("muted"), m, n];
@@ -462,7 +464,7 @@ export function addTripChartLayers() {
   map.addLayer({
     id: "trip-chart-casing", type: "line", source: src, filter: t("route_line"),
     layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": C.paper, "line-width": zoomWidth(casingW(INK_W), { active: 1.2 }), "line-opacity": byState(0.95, 0.6, 0.9) },
+    paint: { "line-color": C.paper, "line-width": zoomWidth(casingW(INK_W), { active: 1.2 }), "line-opacity": byState(0.95, 0.35, 0.9) },
   });
   // 2. Colored-pencil band under each day's stretch (unassigned routes get none).
   map.addLayer({
@@ -472,31 +474,31 @@ export function addTripChartLayers() {
     paint: {
       "line-pattern": ["case", ["==", ["get", "tone"], 1], "booot-pencil-1", "booot-pencil-0"],
       "line-width": zoomWidth(BAND_W, { active: 1.15, muted: 0.9 }),
-      "line-opacity": byState(1, 0.3, 0.92),
+      "line-opacity": byState(1, 0.12, 0.92),
     },
   });
   // 3. Ink: trail legs solid; Shift legs dashed; real OSM gaps dotted rust.
   map.addLayer({
     id: "trip-chart-ink", type: "line", source: src, filter: inkLine,
     layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": C.ink, "line-width": zoomWidth(INK_W, { active: 1.15, muted: 0.85 }), "line-opacity": byState(1, 0.5, 1) },
+    paint: { "line-color": ["case", fs("muted"), C.ink300, C.ink], "line-width": zoomWidth(INK_W, { active: 1.15, muted: 0.7 }), "line-opacity": byState(1, 0.3, 1) },
   });
   map.addLayer({
     id: "trip-chart-ink-manual", type: "line", source: src, filter: ["all", t("route_leg"), main, ["==", mode, "manual"]],
     layout: { "line-join": "round" },
-    paint: { "line-color": C.ink, "line-width": zoomWidth(INK_W, { active: 1.15, muted: 0.85 }), "line-dasharray": [2.2, 1.6], "line-opacity": byState(1, 0.5, 1) },
+    paint: { "line-color": ["case", fs("muted"), C.ink300, C.ink], "line-width": zoomWidth(INK_W, { active: 1.15, muted: 0.7 }), "line-dasharray": [2.2, 1.6], "line-opacity": byState(1, 0.3, 1) },
   });
   map.addLayer({
     id: "trip-chart-ink-gap", type: "line", source: src, filter: ["all", t("route_leg"), ["==", mode, "straight"]],
     layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": C.accent, "line-width": zoomWidth(INK_W.map(([z, w]) => [z, w * 1.15])), "line-dasharray": [0, 2], "line-opacity": byState(1, 0.5, 1) },
+    paint: { "line-color": C.accent, "line-width": zoomWidth(INK_W.map(([z, w]) => [z, w * 1.15])), "line-dasharray": [0, 2], "line-opacity": byState(1, 0.25, 1) },
   });
   // 4. Day-hike spurs: dashed teal ink, an arrowhead where they end.
   map.addLayer({
     id: "trip-chart-spur", type: "line", source: src,
     filter: ["all", t("route_leg"), ["==", ["get", "kind"], "spur"], ["!=", mode, "straight"]],
     layout: { "line-cap": "round", "line-join": "round" },
-    paint: { "line-color": C.dayhike, "line-width": zoomWidth(INK_W.map(([z, w]) => [z, w * 0.85]), { active: 1.15 }), "line-dasharray": [2, 1.6], "line-opacity": byState(1, 0.45, 1) },
+    paint: { "line-color": C.dayhike, "line-width": zoomWidth(INK_W.map(([z, w]) => [z, w * 0.85]), { active: 1.15 }), "line-dasharray": [2, 1.6], "line-opacity": byState(1, 0.2, 1) },
   });
   map.addLayer({
     id: "trip-chart-spur-arrow", type: "symbol", source: src, filter: t("spur_end"),
@@ -504,7 +506,7 @@ export function addTripChartLayers() {
       "icon-image": "booot-spur-arrow", "icon-rotate": ["get", "bearing"], "icon-rotation-alignment": "map",
       "icon-allow-overlap": true, "icon-ignore-placement": true,
     },
-    paint: { "icon-opacity": byState(1, 0.45, 1) },
+    paint: { "icon-opacity": byState(1, 0.2, 1) },
   });
   // Wide invisible line: an easy target for clicking a day.
   map.addLayer({
@@ -520,8 +522,8 @@ export function addTripChartLayers() {
     // GeoJSON sources stringify array properties, so offsets come from scalars.
     "icon-offset": ["case",
       ["==", ["get", "label_anchor"], "left"],
-      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [20, -7]], ["literal", [14, -7]]],
-      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [-20, -7]], ["literal", [-14, -7]]]],
+      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [24, -7]], ["literal", [17, -7]]],
+      ["case", ["==", ["get", "label_kind"], "camp"], ["literal", [-24, -7]], ["literal", [-17, -7]]]],
     "icon-allow-overlap": false,
     "icon-padding": 0,
     ...extra,
@@ -530,13 +532,13 @@ export function addTripChartLayers() {
     id: "trip-chart-labels-minor", type: "symbol", source: src, minzoom: 12.5,
     filter: ["all", ["==", ["get", "chart_point"], true], ["!=", ["get", "label_kind"], "camp"], ["has", "name"], ["!=", ["get", "name"], ""]],
     layout: labelLayout({ "symbol-sort-key": ["get", "label_rank"] }),
-    paint: { "icon-opacity": byState(1, 0.35, 1) },
+    paint: { "icon-opacity": byState(1, 0.15, 1) },
   });
   map.addLayer({
     id: "trip-chart-labels", type: "symbol", source: src, minzoom: 10.5,
     filter: ["all", ["==", ["get", "chart_point"], true], ["==", ["get", "label_kind"], "camp"], ["has", "name"], ["!=", ["get", "name"], ""]],
     layout: labelLayout(),
-    paint: { "icon-opacity": byState(1, 0.35, 1) },
+    paint: { "icon-opacity": byState(1, 0.15, 1) },
   });
 
   // 6. Pins and glyphs, always shown (a navigation map never drops a camp).
@@ -546,8 +548,8 @@ export function addTripChartLayers() {
   });
   map.addLayer({
     id: "trip-chart-rings", type: "symbol", source: src, filter: t("trip_ring"),
-    layout: { "icon-image": ["concat", "booot-g-", ["get", "ring"]], "icon-allow-overlap": true },
-    paint: { "icon-opacity": byState(1, 0.5, 1) },
+    layout: { "icon-image": ["concat", "booot-g-", ["get", "ring"]], "icon-allow-overlap": true, "icon-size": GLYPH_SIZE },
+    paint: { "icon-opacity": byState(1, 0.25, 1) },
   });
   // Minor glyphs (viewpoints, hazards, other waypoints) wait for z12: at
   // trip scale they're noise next to camps and water.
@@ -558,10 +560,10 @@ export function addTripChartLayers() {
       "icon-image": ["concat", "booot-g-", ["get", "glyph"]],
       "icon-anchor": ["case", ["in", ["get", "glyph"], ["literal", ["rest", "dot"]]], "center", "bottom"],
       "icon-offset": ["case", ["in", ["get", "glyph"], ["literal", ["rest", "dot"]]], ["literal", [0, 0]], ["literal", [0, PAD]]],
-      "icon-allow-overlap": true,
+      "icon-allow-overlap": true, "icon-size": GLYPH_SIZE,
       "symbol-sort-key": ["get", "glyph_rank"],
     },
-    paint: { "icon-opacity": byState(1, 0.45, 1) },
+    paint: { "icon-opacity": byState(1, 0.22, 1) },
   });
   pointLayer("trip-chart-points-minor", ["in", ["get", "glyph"], MINOR], { minzoom: 12 });
   pointLayer("trip-chart-points", ["!", ["in", ["get", "glyph"], MINOR]]);
@@ -571,9 +573,9 @@ export function addTripChartLayers() {
     layout: {
       "icon-image": ["concat", "booot-day-", ["to-string", ["get", "n"]]],
       "icon-offset": ["match", ["get", "dir"], ...DIRS.flatMap((d, k) => [k, ["literal", d]]), ["literal", DIRS[0]]],
-      "icon-allow-overlap": true,
+      "icon-allow-overlap": true, "icon-size": GLYPH_SIZE,
     },
-    paint: { "icon-opacity": byState(1, 0.5, 1) },
+    paint: { "icon-opacity": byState(1, 0.25, 1) },
   });
 }
 
@@ -843,10 +845,8 @@ function setActiveDay(index, { frame = false } = {}) {
   if (frame && activeDay != null) frameDayIfOffscreen(activeDay);
 }
 
-/** Ease to the day only when most of it is off-screen (beside the panel). */
-function frameDayIfOffscreen(i) {
-  const b = dayBounds[i];
-  if (!b) return;
+/** Width of the map area not covered by the open trip panel. */
+function mapRight() {
   const box = map.getContainer().getBoundingClientRect();
   let right = box.width;
   const panel = document.getElementById("tripPanel");
@@ -854,17 +854,41 @@ function frameDayIfOffscreen(i) {
     const pr = panel.getBoundingClientRect();
     if (pr.left > box.left + 240 && pr.left < box.right) right = pr.left - box.left;
   }
+  return { box, right };
+}
+
+/**
+ * Always fit `bounds` ([w, s, e, n]) in the map area beside the trip panel.
+ * For explicit selections (a day hike, a stop, a day clicked in the panel or
+ * profile). Exported for trip-panel.js.
+ */
+export function frameBounds(b, { maxZoom = 16, pad = 64 } = {}) {
+  if (!b) return;
+  const { box, right } = mapRight();
+  map.fitBounds([[b[0], b[1]], [b[2], b[3]]], {
+    padding: { top: pad, bottom: pad, left: pad, right: pad + (box.width - right) },
+    maxZoom,
+    duration: reducedMotion() ? 0 : 700,
+  });
+}
+
+/** Bounds [w, s, e, n] of a list of [lng, lat] coordinates. */
+export function boundsOf(coords) {
+  if (!coords.length) return null;
+  return coords.reduce((bb, [x, y]) => [Math.min(bb[0], x), Math.min(bb[1], y), Math.max(bb[2], x), Math.max(bb[3], y)], [coords[0][0], coords[0][1], coords[0][0], coords[0][1]]);
+}
+
+/** Passive sync (scrolling): ease to the day only when most of it is off-screen. */
+function frameDayIfOffscreen(i) {
+  const b = dayBounds[i];
+  if (!b) return;
+  const { box, right } = mapRight();
   const p0 = map.project([b[0], b[3]]), p1 = map.project([b[2], b[1]]);
   const area = Math.max(1, (p1.x - p0.x) * (p1.y - p0.y));
   const ix = Math.max(0, Math.min(p1.x, right) - Math.max(p0.x, 0));
   const iy = Math.max(0, Math.min(p1.y, box.height) - Math.max(p0.y, 0));
   if ((ix * iy) / area >= 0.5) return;
-  const pad = 64;
-  map.fitBounds([[b[0], b[1]], [b[2], b[3]]], {
-    padding: { top: pad, bottom: pad, left: pad, right: pad + (box.width - right) },
-    maxZoom: 15,
-    duration: reducedMotion() ? 0 : 700,
-  });
+  frameBounds(b, { maxZoom: 15 });
 }
 
 const emitted = new WeakSet();
@@ -884,7 +908,9 @@ function onActiveDayEvent(e) {
   let index = null;
   if (d.dayId != null) { const k = days.findIndex((x) => x.id === d.dayId); index = k >= 0 ? k : null; }
   else if (Number.isInteger(d.dayIndex)) index = d.dayIndex;
-  setActiveDay(index, { frame: true });
+  // Explicit selection (day band click) always frames, once; passive sync only when off-screen.
+  setActiveDay(index, { frame: !d.frame });
+  if (d.frame && index != null) frameBounds(dayBounds[index], { maxZoom: 15 });
 }
 
 /** Click a day's line → make it the active day (again → clear). */

@@ -177,7 +177,7 @@ export function redrawLine(trip, { cutM, rejoinM = null, newLegs, routing }) {
   route.geometry = built.geometry;
   Object.assign(rp, built.props);
   const oldProfile = Array.isArray(rp.elevation_profile) && rp.elevation_profile.length >= 2 ? rp.elevation_profile : null;
-  delete rp.elevation_profile; delete rp.elevation_gain_ft; delete rp.elevation_loss_ft;
+  delete rp.elevation_profile; delete rp.elevation_gain_ft; delete rp.elevation_loss_ft; delete rp.elevation_source;
   if (routing) rp.routing = routing;
   if (recs.some((r) => Number.isInteger(r.seg.mirror_of))) rp.return_same_way = true; else delete rp.return_same_way;
   const nix = lineIndex(route);
@@ -251,7 +251,11 @@ export function appendReturn(trip) {
   rp.return_same_way = true;
   if (Array.isArray(prof) && prof.length >= 2) {
     rp.elevation_profile = [...prof, ...[...prof].reverse().slice(1)];
-    const { gain, loss } = gainLoss(rp.elevation_profile);
+    // 3DEP figures were counted on a finer series than the stored profile:
+    // the way back climbs what the way out lost, so both become their sum.
+    const dem = rp.elevation_source === "usgs-3dep" || rp.elevation_source === "mixed";
+    const sum = (rp.elevation_gain_ft || 0) + (rp.elevation_loss_ft || 0);
+    const { gain, loss } = dem ? { gain: sum, loss: sum } : gainLoss(rp.elevation_profile);
     rp.elevation_gain_ft = gain; rp.elevation_loss_ft = loss;
   }
   return true;
