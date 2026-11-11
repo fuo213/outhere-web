@@ -36,7 +36,7 @@ import { TripsStore, hideTripsHome, showTripsHome } from "./trips-home.js"; // c
 import { frameBounds, boundsOf } from "./map-trip-style.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
 import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
-import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices, canConvertToLine } from "./line-model.js";
+import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices, canConvertToLine, hasTransport, mainRoute } from "./line-model.js";
 import { renderLineDays } from "./line-panel.js"; // circular; only used at runtime
 import { initStops, closeStopMenu, addCampAtM, moveStopAlongLine, openStopMenu } from "./stops.js"; // circular; only used at runtime
 import { initRouteEdit, closeLineMenu, snapshot, showToast } from "./route-edit.js"; // circular; only used at runtime
@@ -55,7 +55,8 @@ import { initRouteEdit, closeLineMenu, snapshot, showToast } from "./route-edit.
 // trips keep the day-assignment model and export as 1.1.
 const TRIP_SCHEMA_VERSION = "1.1";
 const LINE_SCHEMA_VERSION = "1.2";
-const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1", "1.2"];
+const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1", "1.2", "1.3"];
+// 1.3 (transport legs) is written only when the line has one; every other line trip stays 1.2.
 
 /** The current line plan (1.2 trips), rebuilt on every render. */
 let linePlan = null;
@@ -387,7 +388,7 @@ export const TripManager = {
 export function buildTripExport(trip) {
   if (!trip) return null;
   const out = JSON.parse(JSON.stringify(trip));
-  out.properties.schema_version = isLineTrip(trip) ? LINE_SCHEMA_VERSION : TRIP_SCHEMA_VERSION;
+  out.properties.schema_version = isLineTrip(trip) ? (hasTransport(mainRoute(trip)) ? "1.3" : LINE_SCHEMA_VERSION) : TRIP_SCHEMA_VERSION;
   for (const d of out.days || []) delete d._key; // internal: which camp a day ends at
   // The UI edits `readme`; write `notes` from the same value for mobile.
   out.properties.notes = out.properties.readme || "";

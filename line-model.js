@@ -59,7 +59,14 @@ export function stopKind(p) {
 export const isTimeStop = (p) => p?.type === "camp" || p?.type === "break";
 
 /** A 1.2 (line + stops) trip. Older trips keep the day-assignment model. */
-export const isLineTrip = (trip) => trip?.properties?.schema_version === "1.2";
+export const isLineTrip = (trip) => ["1.2", "1.3"].includes(trip?.properties?.schema_version);
+
+/** Transport legs (format 1.3): a segment with mode "transport" is drawn, not hiked. */
+export const TRANSPORT_KINDS = ["boat", "shuttle", "drive"];
+export const isTransportSeg = (seg) => seg?.mode === "transport";
+export const hasTransport = (route) => !!route?.properties?.segments?.some(isTransportSeg);
+export const TRANSPORT_LABEL = { boat: "Boat", shuttle: "Shuttle", drive: "Drive" };
+export const transportLabel = (seg) => TRANSPORT_LABEL[seg?.transport_kind] || "Transport";
 
 export function mainRoute(trip) {
   return (trip?.features || []).find((f) => f.properties?.type === "route" && f.geometry?.type === "LineString" && f.geometry.coordinates.length >= 2) || null;
@@ -283,6 +290,22 @@ export function buildPlan(trip) {
     if (c) for (let r = 1; r < c.nights; r++) plan.days.push({ kind: "rest", key: `rest:${c.id}:${r}`, fromM: c.m, toM: c.m, from: b, to: b, camp: c });
   }
   plan.days.forEach((d, i) => { d.i = i; d.n = i + 1; d.date = start ? addDays(start, i) : null; d.stops = []; d.spurs = []; });
+  // Transport legs (boat, shuttle, drive) inside each walking day: listed as
+  // their own rows and left out of the hiked distance.
+  for (const d of plan.days) {
+    d.transport = []; d.transportM = 0;
+    if (d.kind !== "move") continue;
+    for (const leg of ix.legs) {
+      const seg = route.properties.segments?.[leg.k];
+      if (!isTransportSeg(seg)) continue;
+      const a = Math.max(d.fromM, leg.startM), b = Math.min(d.toM, leg.endM);
+      if (b - a < 0.05) continue;
+      d.transport.push({ leg: leg.k, seg, kind: seg.transport_kind || null, fromM: a, toM: b, m: a, len: b - a });
+      d.transportM += b - a;
+    }
+    d.hikedM = Math.max(0, d.toM - d.fromM - d.transportM);
+  }
+  plan.hikedM = plan.days.reduce((a, d) => a + (d.kind === "move" ? d.hikedM : 0), 0);
   const moveDayAt = (m) => plan.days.find((d) => d.kind === "move" && m >= d.fromM - 1e-6 && m < d.toM - 1e-6) ||
     plan.days.filter((d) => d.kind === "move").at(-1) || plan.days[0];
   const arrivalDay = (campId) => plan.days.find((d) => d.kind === "move" && d.camp?.id === campId);
@@ -433,6 +456,47 @@ export function reconcileSameSite(trip, plan) {
 }
 
 // ---------------------------------------------------------------------------
+// Hiked totals: transport legs don't count
+// ---------------------------------------------------------------------------
+
+/** Metre intervals [a, b] of the line that are hiked (every leg that is not transport). */
+export function hikedIntervals(route) {
+  const ix = lineIndex(route), segs = route.properties.segments || [];
+  const out = [];
+  for (const leg of ix.legs) {
+    if (isTransportSeg(segs[leg.k])) continue;
+    const last = out.at(-1);
+    if (last && Math.abs(last[1] - leg.startM) < 0.01) last[1] = leg.endM; else out.push([leg.startM, leg.endM]);
+  }
+  return out;
+}
+
+/**
+ * Keep the route's own totals honest: main_route_distance_mi and the
+ * elevation gain/loss count hiked stretches only (format 1.3). With no
+ * transport on the line nothing is touched, unless `reset` asks for the
+ * whole-line figures back (a transport leg was just cleared).
+ */
+export function refreshHikedStats(route, { reset = false } = {}) {
+  const rp = route.properties;
+  const transport = hasTransport(route);
+  if (!transport && !reset) return;
+  const ix = lineIndex(route);
+  const prof = rp.elevation_profile;
+  const ivs = transport ? hikedIntervals(route) : [[0, ix.total]];
+  rp.main_route_distance_mi = ivs.reduce((a, [x, y]) => a + (y - x), 0) / MI;
+  if (Array.isArray(prof) && prof.length >= 2) {
+    let gain = 0, loss = 0;
+    for (const [x, y] of ivs) {
+      const sl = sliceProfile(prof, ix.total, x, y);
+      if (!sl) continue;
+      const g = gainLoss(sl); gain += g.gain; loss += g.loss;
+    }
+    rp.elevation_gain_ft = gain; rp.elevation_loss_ft = loss;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Keeping trip.days (mobile reads it) and stop geometry in step with the plan
 // ---------------------------------------------------------------------------
 
@@ -475,6 +539,7 @@ export function syncLineTrip(trip, plan = buildPlan(trip)) {
       if (r) f.geometry = { type: "Point", coordinates: round6(r.coord) };
     }
   }
+  if (plan.route) refreshHikedStats(plan.route);
   if (plan.route) {
     const spurMi = plan.days.reduce((a, d) => a + d.spurs.reduce((b, s) => b + s.rt, 0), 0);
     if (spurMi > 0) plan.route.properties.dayhike_distance_mi = spurMi; else delete plan.route.properties.dayhike_distance_mi;
@@ -540,7 +605,17 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
     }
     if (coords.length < 2) continue;
     const ep = sliceProfile(prof, ix.total, d.fromM, d.toM);
-    const { gain, loss } = ep ? gainLoss(ep) : { gain: 0, loss: 0 };
+    // Elevation gain and loss count hiked stretches only.
+    let gain = 0, loss = 0;
+    if (ep && !d.transport?.length) ({ gain, loss } = gainLoss(ep));
+    else if (ep) {
+      let from = d.fromM;
+      const spans = [...d.transport.map((t) => [t.fromM, t.toM]), [d.toM, d.toM]];
+      for (const [a, b] of spans) {
+        if (a - from > 0.5) { const sl = sliceProfile(prof, ix.total, from, a); if (sl) { const g = gainLoss(sl); gain += g.gain; loss += g.loss; } }
+        from = Math.max(from, b);
+      }
+    }
     const id = `${rp._id}~${d.i}`;
     pieces.set(d.i, id);
     features.push({
@@ -548,7 +623,7 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
       geometry: { type: "LineString", coordinates: coords },
       properties: {
         type: "route", _id: id, name: rp.name, segments, routing: rp.routing,
-        main_route_distance_mi: (d.toM - d.fromM) / MI,
+        main_route_distance_mi: (d.hikedM ?? d.toM - d.fromM) / MI,
         ...(ep ? { elevation_profile: ep, elevation_gain_ft: gain, elevation_loss_ft: loss } : {}),
       },
     });

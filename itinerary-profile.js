@@ -93,8 +93,11 @@ export function buildItinerary(trip) {
       const coords = f.geometry.coordinates, cum = cumMiles(coords);
       const prof = f.properties.elevation_profile;
       routeMiles += cum.at(-1);
+      const segs = Array.isArray(f.properties.segments) ? f.properties.segments : [];
+      // Transport legs (format 1.3) are drawn but not hiked.
+      const transportMi = segs.reduce((a, s) => (s.mode === "transport" && Array.isArray(s.coord_range) ? a + (cum[s.coord_range[1]] ?? 0) - (cum[s.coord_range[0]] ?? 0) : a), 0);
       return {
-        id: f.properties._id, coords, cum, miles: cum.at(-1),
+        id: f.properties._id, coords, cum, miles: cum.at(-1), hikedMiles: Math.max(0, cum.at(-1) - transportMi), transportMiles: transportMi,
         profile: Array.isArray(prof) && prof.length >= 2 && prof.every(Number.isFinite) ? prof : null,
         segments: Array.isArray(f.properties.segments) ? f.properties.segments : [],
         gain: f.properties.elevation_gain_ft || 0, loss: f.properties.elevation_loss_ft || 0,
@@ -152,7 +155,7 @@ export function buildItinerary(trip) {
     return {
       i: g.i, n: g.i + 1, id: g.d.id ?? null, date: g.d.date ?? null, loose: !!g.loose,
       fromM: Number.isFinite(g.d._fromM) ? g.d._fromM : null, // 1.2: metres along the line where the day starts
-      startMi, endMi: mi0, routeMiles: off, empty: !g.pieces.length, pieces: g.pieces, stops, spurs, gaps,
+      startMi, endMi: mi0, routeMiles: g.pieces.reduce((a, p) => a + p.hikedMiles, 0), empty: !g.pieces.length, pieces: g.pieces, stops, spurs, gaps,
     };
   });
 
@@ -188,7 +191,7 @@ export function buildItinerary(trip) {
     return null;
   };
   return {
-    mode, days, total: mi0, routeMiles, hi, lo, elevAt,
+    mode, days, total: mi0, routeMiles: days.reduce((a, d) => a + d.routeMiles, 0), hi, lo, elevAt,
     gain: days.reduce((a, d) => a + d.pieces.reduce((b, p) => b + p.gain, 0), 0),
     loss: days.reduce((a, d) => a + d.pieces.reduce((b, p) => b + p.loss, 0), 0),
     hasElevation: hasAny, complete: hasAll,

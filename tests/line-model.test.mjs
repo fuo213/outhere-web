@@ -258,3 +258,52 @@ test("same campsite: candidate only on a later pass; link shares name and notes;
   M.syncLineTrip(trip);
   assert.equal(trip.features.find((f) => f.properties._id === "C2").properties.same_place_as, undefined);
 });
+
+// ---- transport legs (format 1.3) ----------------------------------------------
+
+import { setSectionTransport } from "../line-edit.js";
+
+test("transport legs: marked sections leave hiked miles, climb and the day total; way back follows; cleared restores", () => {
+  const route = makeLine([[0, 0], [1, 0], [2, 0], [3, 0]]);
+  route.properties.elevation_profile = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]; // 3 km climbing steadily
+  const trip = makeTrip([route]);
+  assert.ok(M.isLineTrip(trip));
+  M.syncLineTrip(trip);
+  const rp = route.properties;
+  assert.equal(M.hasTransport(route), false);
+  assert.deepEqual(setSectionTransport(trip, 1, "boat"), [1]);
+  assert.equal(rp.segments[1].mode, "transport");
+  assert.equal(rp.segments[1].transport_kind, "boat");
+  const plan = M.buildPlan(trip);
+  assert.equal(plan.days.length, 1);
+  near(plan.days[0].transportM, 1000, 15, "transport m");
+  near(plan.days[0].hikedM, 2000, 25, "hiked m");
+  near(rp.main_route_distance_mi, 2000 / M.MI, 0.02, "route miles are hiked miles");
+  near(rp.elevation_gain_ft, 667, 25, "gain leaves the boat leg out"); // 2/3 of 1000 ft
+  const view = M.displayTrip(trip, plan);
+  const day = view.features.find((f) => f.properties.type === "route");
+  near(day.properties.main_route_distance_mi, 2000 / M.MI, 0.02);
+  near(day.properties.elevation_gain_ft, 667, 25);
+  assert.equal(day.properties.segments.filter((s) => s.mode === "transport").length, 1);
+  // Clearing makes it hiked again, back to a straight manual leg (no OSM ways known) and the whole line's totals.
+  assert.deepEqual(setSectionTransport(trip, 1, null), [1]);
+  assert.equal(rp.segments[1].mode, "manual");
+  near(rp.main_route_distance_mi, 3000 / M.MI, 0.03);
+  assert.equal(setSectionTransport(trip, 1, null), null); // nothing to clear
+  assert.equal(setSectionTransport(trip, 1, "teleport"), null);
+});
+
+test("transport on the way out marks the linked way back too, and survives appendReturn", () => {
+  const route = makeLine([[0, 0], [1, 0], [2, 0]]);
+  const trip = makeTrip([route]);
+  setSectionTransport(trip, 0, "shuttle");
+  appendReturn(trip);
+  const segs = route.properties.segments;
+  assert.equal(segs.length, 4);
+  assert.equal(segs[3].mode, "transport");            // mirrored with its kind
+  assert.equal(segs[3].transport_kind, "shuttle");
+  setSectionTransport(trip, 0, "drive");              // changing the way out changes the way back
+  assert.equal(segs[3].transport_kind, "drive");
+  setSectionTransport(trip, 3, null);                 // clearing from the way back clears both
+  assert.ok(segs.every((s) => s.mode !== "transport"));
+});

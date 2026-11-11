@@ -216,6 +216,7 @@ body.is-dragging-feature .unassigned-pool:not(.has-items) .pool-empty { display:
 .stop-name.is-water { color: var(--type-water-text); }
 .stop-name.is-dayhike { color: var(--type-dayhike-text); }
 .stop-name.is-rest { color: var(--type-rest-text); }
+.stop-name.is-transport { color: var(--text-secondary); font-style: italic; }
 .stop-at {
   font: var(--weight-regular) var(--text-sm)/1.6 var(--font-data);
   color: var(--text-secondary);
