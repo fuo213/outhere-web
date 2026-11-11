@@ -15,6 +15,8 @@
  * that pass when the line is edited.
  */
 
+import { gainLoss } from "./elevation.js";
+
 export const MI = 1609.344;
 /** "Within the snap distance" for checks that have no zoom (listing place
  *  stops on passes, re-attaching stops after a redraw). Matches the drawing
@@ -438,8 +440,7 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
     }
     if (coords.length < 2) continue;
     const ep = sliceProfile(prof, ix.total, d.fromM, d.toM);
-    let gain = 0, loss = 0;
-    if (ep) for (let k = 1; k < ep.length; k++) { const df = ep[k] - ep[k - 1]; if (df > 0) gain += df; else loss -= df; }
+    const { gain, loss } = ep ? gainLoss(ep) : { gain: 0, loss: 0 };
     const id = `${rp._id}~${d.i}`;
     pieces.set(d.i, id);
     features.push({

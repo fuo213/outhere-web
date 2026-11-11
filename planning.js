@@ -990,7 +990,10 @@ function handleRouteKeyDown(e) {
 
 export { sampleByDistance };
 
-const elevationRun = new Map(); // feature _id → latest fetch number (older ones are dropped)
+const elevationRun = new Map();   // feature _id → latest fetch number (older ones are dropped)
+const elevationBusy = new Set();  // feature _ids with a fetch in flight
+/** feature _id → { coords, reuse } of a fetch that failed, so "Try again" asks only for what is missing. */
+const elevationFailed = new Map();
 
 /**
  * Fetch elevation for a route from Open-Meteo, then patch the feature in
@@ -1001,6 +1004,8 @@ const elevationRun = new Map(); // feature _id → latest fetch number (older on
  * - `reuse` (from line-edit.js redrawLine): stretches the edit didn't touch
  *   are read from the old profile; only the drawn legs are fetched.
  * - A linked out-and-back fetches the way out and mirrors it.
+ * - On failure the window gets `booot:elevation-failed` ({ id }); the
+ *   profile's "Try again" calls retryElevation().
  *
  * @param {number[][]} coords - the route's geometry.coordinates (the array itself)
  * @param {string} featureId - the feature's _id property
@@ -1009,10 +1014,12 @@ const elevationRun = new Map(); // feature _id → latest fetch number (older on
 export async function fetchElevationProfile(coords, featureId, { reuse = null } = {}) {
   const run = (elevationRun.get(featureId) || 0) + 1;
   elevationRun.set(featureId, run);
+  elevationFailed.delete(featureId);
   const find = () => TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
   // Stale when a newer fetch started, the trip closed, or the line was redrawn.
   const isStale = () => elevationRun.get(featureId) !== run || find()?.geometry.coordinates !== coords;
 
+  elevationBusy.add(featureId);
   try {
     const feature = find();
     if (!feature || isStale()) return;
@@ -1020,7 +1027,10 @@ export async function fetchElevationProfile(coords, featureId, { reuse = null } 
     const link = returnLink(feature.properties.segments);
     // The way back of a linked out-and-back is the way out reversed.
     const total = link.linked ? ix.legs[link.firstMirror].startM : ix.total;
-    const built = await buildProfile({ total, pointAt: (m) => pointAtM(ix, m), reuse, fetchOpts: { isStale } });
+    const fetchOpts = { isStale };
+    if (elevationDebug.fetchFn) fetchOpts.fetchFn = elevationDebug.fetchFn;
+    if (elevationDebug.retryDelays) fetchOpts.retryDelays = elevationDebug.retryDelays;
+    const built = await buildProfile({ total, pointAt: (m) => pointAtM(ix, m), reuse, fetchOpts });
     if (!built || isStale()) return;
     const profileFt = link.linked ? [...built.profile, ...[...built.profile].reverse().slice(1)] : built.profile;
     const { gain, loss } = gainLoss(profileFt);
@@ -1035,11 +1045,37 @@ export async function fetchElevationProfile(coords, featureId, { reuse = null } 
   } catch (err) {
     elevationDebug.last = { error: err.message };
     console.warn("[elevation] fetch failed:", err.message);
+    if (!isStale()) {
+      // Remember what was reusable, so trying again fetches only the rest.
+      elevationFailed.set(featureId, { coords, reuse });
+      window.dispatchEvent(new CustomEvent("booot:elevation-failed", { detail: { id: featureId } }));
+    }
+  } finally {
+    if (elevationRun.get(featureId) === run) elevationBusy.delete(featureId);
   }
 }
 
-/** Debug/verification handle (window.__outhere.elevation). */
-export const elevationDebug = { last: null };
+/**
+ * "Try again" on a route with no elevation: fetch what is missing. After a
+ * failed fetch that followed an edit, that is only the drawn legs (the kept
+ * stretches still come from the old profile); otherwise the whole line.
+ * @returns {boolean} a fetch was started
+ */
+export function retryElevation(featureId) {
+  const feature = TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
+  if (!feature || feature.geometry?.type !== "LineString" || elevationBusy.has(featureId)) return false;
+  if (Array.isArray(feature.properties.elevation_profile)) return false;
+  const coords = feature.geometry.coordinates;
+  const failed = elevationFailed.get(featureId);
+  fetchElevationProfile(coords, featureId, { reuse: failed && failed.coords === coords ? failed.reuse : null });
+  return true;
+}
+
+/**
+ * Debug/verification handle (window.__outhere.elevation). `fetchFn` and
+ * `retryDelays` override the network for tests (scenes simulate an outage).
+ */
+export const elevationDebug = { last: null, fetchFn: null, retryDelays: null };
 
 export function getTripDateRange() {
   if (!TripManager.currentTrip) return [];

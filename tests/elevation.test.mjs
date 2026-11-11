@@ -2,6 +2,7 @@
 // dense profile still draws quickly.
 import { test, assert, near, pt, makeLine, makeTrip, point } from "./helpers.mjs";
 import * as E from "../elevation.js";
+import * as G from "../gpx-core.js";
 import * as M from "../line-model.js";
 import { appendReturn } from "../line-edit.js";
 import { buildItinerary, drawProfile } from "../itinerary-profile.js";
@@ -97,8 +98,57 @@ test("a fetch for a line that changed meanwhile resolves null", async () => {
   assert.deepEqual(api.calls, [100]);
 });
 
-test("gain and loss: every step counted (the existing method)", () => {
-  assert.deepEqual(E.gainLoss([100, 110, 105, 120, 90]), { gain: 25, loss: 35 });
+test("gain and loss use the 3 m hysteresis GPX imports use (one shared function)", () => {
+  assert.equal(G.hysteresisGainLoss, E.hysteresisGainLoss, "gpx-core re-exports elevation.js, no copy");
+  assert.equal(G.HYSTERESIS_M, 3);
+  // A steady 1,000 ft climb with +/- 6 ft of DEM noise on every sample.
+  const noisy = Array.from({ length: 201 }, (_, k) => 5000 + k * 5 + (k % 2 ? 6 : -6));
+  let everyStep = 0;
+  for (let k = 1; k < noisy.length; k++) everyStep += Math.max(0, noisy[k] - noisy[k - 1]);
+  const { gain, loss } = E.gainLoss(noisy);
+  assert.ok(everyStep > 1600, `summing every step counts the noise: ${everyStep}`);
+  near(gain, 1000, 15, "hysteresis gain");
+  assert.equal(loss, 0, "wiggles under 3 m (9.8 ft) are not descents");
+  // Real swings count in full: up 100, down 40, up 60.
+  assert.deepEqual(E.gainLoss([1000, 1050, 1100, 1080, 1060, 1090, 1120]), { gain: 160, loss: 40 });
+  assert.deepEqual(E.gainLoss([1000]), { gain: 0, loss: 0 });
+});
+
+test("each day's slice and a mirrored return get hysteresis gain, from the full-density profile", () => {
+  const route = makeLine([[0, 0], [10, 0]]);
+  // 100 m spacing: a 1,000 ft climb to halfway, then flat, +/- 3 ft noise throughout.
+  const prof = Array.from({ length: 101 }, (_, k) => 5000 + Math.min(k, 50) * 20 + (k % 2 ? 3 : -3));
+  route.properties.elevation_profile = prof;
+  const trip = makeTrip([route]);
+  const ix = M.lineIndex(route);
+  trip.features.push(point("C", { type: "camp", attach: { route_id: "R", ...M.locateM(ix, ix.total / 2) } }));
+  const pieces = () => M.displayTrip(trip, M.buildPlan(trip)).features.filter((f) => f.properties.type === "route").map((f) => f.properties);
+  let [d1, d2] = pieces();
+  near(d1.elevation_gain_ft, 1000, 15, "day 1 climbs");
+  assert.ok(d2.elevation_gain_ft <= 12 && d2.elevation_loss_ft <= 12, `day 2 is flat, not ${d2.elevation_gain_ft} ft of noise`);
+  assert.equal(d1.elevation_profile.length + d2.elevation_profile.length, 102, "slices keep every sample");
+  assert.equal(route.properties.elevation_profile.length, 101, "the stored profile is untouched");
+
+  appendReturn(trip);
+  const rp = route.properties;
+  assert.equal(rp.elevation_profile.length, 201);
+  near(rp.elevation_gain_ft, 1000, 15); near(rp.elevation_loss_ft, 1000, 15);
+  const days = pieces();
+  near(days.reduce((a, d) => a + d.elevation_loss_ft, 0), 1000, 30, "the descent shows up on the way back");
+});
+
+test("trying again after a failed fetch asks only for what is missing", async () => {
+  // After an edit: 0..4 km and 7..11 km still have elevation, the 3 km detour doesn't.
+  const reuse = { profile: Array.from({ length: 101 }, (_, k) => k * 10), total: 10000, spans: [{ n0: 0, n1: 4000, o0: 0, o1: 4000 }, { n0: 7000, n1: 11000, o0: 6000, o1: 10000 }] };
+  const job = (fetchFn) => E.buildProfile({ total: 11000, pointAt: (m) => pt(m / 1000, 0), reuse, fetchOpts: { fetchFn, retryDelays: [1] } });
+  const down = fakeApi({ failOn: () => true });
+  await assert.rejects(job(down.fetchFn), /HTTP 429/);
+  assert.deepEqual(down.calls, [29, 29], "the outage only ever saw the missing samples");
+  const up = fakeApi();
+  const built = await job(up.fetchFn); // what "Try again" runs: same line, same reuse
+  assert.deepEqual(up.calls, [29]);
+  assert.deepEqual([built.profile.length, built.fetched], [111, 29]);
+  assert.ok(built.profile.every(Number.isFinite), "a whole profile, no holes");
 });
 
 test("a dense profile (1,599 samples, 6 days) builds and draws in the panel", () => {

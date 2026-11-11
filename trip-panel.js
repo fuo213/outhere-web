@@ -26,6 +26,7 @@ import {
   buildRoutingOverlay,
   prefetchRoutingGraph,
   isDrawingRoute,
+  retryElevation,
 } from "./planning.js";
 import { buildItinerary, kindOf, ruleSVG, mentionsMeal } from "./itinerary-profile.js";
 import { initItineraryPanel, updateItinerary, setItineraryCompact } from "./itinerary-panel.js";
@@ -1793,6 +1794,7 @@ export function initTripPanel() {
     scroll: document.getElementById("notebookPanel"),
     tail: document.getElementById("itineraryTail"),
     onDrawRoute: () => startRouteDrawing(),
+    onRetryElevation: (routeId) => retryElevation(routeId),
   });
   // Drawing a route: collapse the profile to a strip so the map leads.
   const toolbarEl = document.getElementById("planningToolbar");

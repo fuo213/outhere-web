@@ -515,11 +515,12 @@ function ariaSummary(m) {
 }
 
 /** One-line caption under the drawing. */
-export function captionFor(m) {
+export function captionFor(m, { failed = false } = {}) {
   const { gain, loss } = m;
   const parts = [];
   if (m.mode === "loose") parts.push("This route isn’t in a day yet. Drag it into a day to split the profile.");
   else if (m.hasElevation) parts.push(`Elevation, ${fmt.gain(gain)} / ${fmt.loss(loss)} ft over ${fmt.mi(m.routeMiles)}. Vertical scale exaggerated.`);
+  else if (failed) parts.push(`${fmt.mi(m.routeMiles)} drawn. Elevation didn\u2019t load.`);
   else parts.push(`${fmt.mi(m.routeMiles)} drawn. Elevation fills in once it loads.`);
   if (m.looseCount) parts.push(`${m.looseCount} route${m.looseCount === 1 ? "" : "s"} not in a day yet.`);
   return parts.join(" ");

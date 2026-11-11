@@ -40,7 +40,7 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `planning.js` | Drawing the line (clicks only guide snapping; Shift = straight leg, Esc cancels, double-click finishes). Modes: new line, `redraw` (seeded at a cut, rejoins the faint old line), `spur` (day hike from a stop). Live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
 | `line-model.js` | Pure 1.2 model: line index (legs, metres), attach resolve/locate, passes and visits near a point, `buildPlan` (camps → days, stops per day/visit), `syncLineTrip` (trip.days for mobile), `displayTrip` (the line cut per day for the chart + profile), `canConvertToLine` / `convertTypedVertices` (the opt-in 1.1 → 1.2 switch) |
 | `line-edit.js` | Pure line edits: `redrawLine` (stitch a drawn path in, shift / re-attach / flag stops, regenerate a linked way back, say which stretches keep their elevation), `appendReturn`, `returnLink` |
-| `elevation.js` | Pure elevation sampling: density rule (~1 sample / 100 m, max 800), `fetchElevations` (sequential chunks of ≤100 to Open-Meteo, backoff, all or nothing), `buildProfile` (reuses the old profile on unchanged stretches), `gainLoss` |
+| `elevation.js` | Pure elevation sampling: density rule (~1 sample / 100 m, max 800), `fetchElevations` (sequential chunks of ≤100 to Open-Meteo, backoff, all or nothing), `buildProfile` (reuses the old profile on unchanged stretches), `gainLoss` / `hysteresisGainLoss` (3 m hysteresis, shared with gpx-core.js) |
 | `tests/` | Plain-node unit tests for the three pure modules above: `node tests/run.mjs` (no dependencies) |
 | `stops.js` | Stop tool (keys 1-6: camp, break, water, hazard, viewpoint, note) and the stop menu (name, nights, water source/reliability, Out/Back, day hike, move, delete) |
 | `route-edit.js` | The UI side of line edits: starts "Redraw from here" / draw-on-from-the-end, commits through `line-edit.js`, the line menu, trip-level undo (snapshots) + the edit toast |
@@ -163,8 +163,16 @@ separate Point features:
   without a rejoin, regenerates the whole way back; a way back edited by
   hand is never regenerated and the toast says so.
 - **Elevation** is one profile on the route (feet, evenly spaced, ~100 m);
-  `displayTrip` slices it per day at the same density. Gain/loss is the sum
-  of every step, so on the 90 m DEM it over-counts in steep terrain.
+  `displayTrip` slices it per day at the same density. Gain/loss
+  (`gainLoss` in elevation.js: whole route, each day's slice, a mirrored
+  return) uses the 3 m hysteresis GPX imports use (one shared function).
+  It still over-counts in cliffy terrain: Open-Meteo's DEM error along a
+  canyon trail is tens of metres, far above any sensible threshold (West
+  Rim reads about +3,400 ft against a published ~1,200). Fixing that needs
+  a better DEM (USGS 3DEP), not a different sum.
+- A failed elevation fetch writes nothing and fires `booot:elevation-failed`;
+  the profile caption then offers "Try again" (`retryElevation`), which
+  fetches only what is missing (after an edit: the drawn legs).
 - **Old trips never convert on open.** 1.0/1.1 trips keep the
   day-assignment model. Trips with exactly one routed line get a quiet offer
   under the days ("Switch to line and stops", undoable): typed vertices

@@ -37,15 +37,20 @@ const S = {
   reveal: new Set(),
   failTimer: 0,
   onDrawRoute: null,
+  onRetryElevation: null,
+  failedNow: new Set(), // route ids whose fetch reported a failure (no need to wait out the timer)
   paintedW: 0, paintedH: 0,
 };
 
 /** Wire the figure + scroll container once (trip-panel.js initTripPanel). */
-export function initItineraryPanel({ figure, scroll, tail, onDrawRoute }) {
+export function initItineraryPanel({ figure, scroll, tail, onDrawRoute, onRetryElevation }) {
   S.fig = figure;
   S.scroll = scroll;
   S.tail = tail;
   S.onDrawRoute = onDrawRoute;
+  S.onRetryElevation = onRetryElevation;
+  // A fetch that failed says so: show "Try again" now instead of after the timer.
+  window.addEventListener("booot:elevation-failed", (e) => { if (e.detail?.id) { S.failedNow.add(e.detail.id); paint(); } });
 
   new ResizeObserver(() => {
     const w = S.fig.clientWidth, h = S.scroll.clientHeight;
@@ -60,6 +65,7 @@ export function initItineraryPanel({ figure, scroll, tail, onDrawRoute }) {
 
   figure.addEventListener("click", (e) => {
     if (e.target.closest("[data-action='draw-route']")) { S.onDrawRoute?.(); return; }
+    if (e.target.closest("[data-action='retry-elevation']")) { retryFailed(); return; }
     const hit = e.target.closest(".day-hit");
     if (hit) scrollToDay(+hit.dataset.i, "panel");
   });
@@ -94,6 +100,8 @@ export function updateItinerary(trip, sections, model = buildItinerary(trip)) {
   for (const [id] of S.pendingSince) {
     if (!pending.has(id)) { S.pendingSince.delete(id); S.reveal.add(id); }
   }
+  const pendingRoutes = new Set([...pending].map(routeIdOf));
+  for (const id of S.failedNow) if (!pendingRoutes.has(id)) S.failedNow.delete(id);
   for (const id of pending) if (!S.pendingSince.has(id)) S.pendingSince.set(id, now);
   clearTimeout(S.failTimer);
   if (pending.size) {
@@ -121,10 +129,27 @@ export function getActiveDayIndex() {
 
 // ---------------------------------------------------------------------------
 
+/** The route behind a drawn piece (1.2 trips draw the line cut per day: `<route>~<day>`). */
+const routeIdOf = (pieceId) => String(pieceId).split("~")[0];
+
 function failedIds() {
   const now = Date.now(), out = new Set();
-  for (const [id, t] of S.pendingSince) if (now - t >= FAILED_AFTER_MS) out.add(id);
+  for (const [id, t] of S.pendingSince) if (now - t >= FAILED_AFTER_MS || S.failedNow.has(routeIdOf(id))) out.add(id);
   return out;
+}
+
+/** "Try again": ask for the missing elevation and show those stretches as loading again. */
+function retryFailed() {
+  const ids = new Set([...failedIds()].map(routeIdOf));
+  const now = Date.now();
+  for (const id of ids) {
+    S.failedNow.delete(id);
+    if (S.onRetryElevation?.(id) === false) continue;
+    for (const piece of S.pendingSince.keys()) if (routeIdOf(piece) === id) S.pendingSince.set(piece, now);
+  }
+  clearTimeout(S.failTimer);
+  S.failTimer = setTimeout(() => paint(), FAILED_AFTER_MS + 50);
+  paint();
 }
 
 function profileHeight(narrow) {
@@ -151,14 +176,18 @@ function paint() {
       <button type="button" class="btn btn--quiet btn--sm" data-action="draw-route">${m.line ? "Draw your line" : "Draw route"}</button>
     </div>`;
   } else {
+    const failed = failedIds();
     const svg = drawProfile(m, W, {
       height: profileHeight(W < 420),
       compact: S.compact,
       active: S.active,
-      failedIds: failedIds(),
+      failedIds: failed,
       reveal: reduceMotion() ? new Set() : S.reveal,
     });
-    fig.innerHTML = `<div class="itin-profile-art">${svg}</div>${S.compact ? "" : `<p class="itin-caption">${captionFor(m)}</p>`}`;
+    // Where a stretch has no elevation, the caption offers to ask again.
+    const retry = failed.size ? ` <button type="button" class="btn btn--ghost btn--sm itin-retry" data-action="retry-elevation">Try again</button>` : "";
+    const caption = failed.size && m.hasElevation ? `${captionFor(m)} No elevation for one stretch.` : captionFor(m, { failed: failed.size > 0 });
+    fig.innerHTML = `<div class="itin-profile-art">${svg}</div>${S.compact ? "" : `<p class="itin-caption">${caption}${retry}</p>`}`;
   }
   applyActive();
   // Layout settles after innerHTML; measure on the next frame.

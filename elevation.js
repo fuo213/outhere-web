@@ -149,12 +149,41 @@ export async function buildProfile({ total, pointAt, reuse = null, fetchOpts = {
   return { profile, fetched: missing.length };
 }
 
-/** Cumulative gain and loss (the units of the profile): sum of every step. */
-export function gainLoss(profile) {
+/** Swings smaller than this from the last turning point are noise, not climbing. */
+export const HYSTERESIS_M = 3;
+
+/**
+ * Total gain and loss of an elevation series (any unit) counting only swings
+ * of at least `h` from the last turning point.
+ */
+export function hysteresisGainLoss(series, h) {
   let gain = 0, loss = 0;
-  for (let i = 1; i < profile.length; i++) {
-    const d = profile[i] - profile[i - 1];
-    if (d > 0) gain += d; else loss -= d;
+  if (series.length < 2) return { gain, loss };
+  let dir = 0, ext = series[0], base = series[0];
+  for (let i = 1; i < series.length; i++) {
+    const e = series[i];
+    if (dir >= 0 && e > ext) ext = e;
+    else if (dir <= 0 && e < ext) ext = e;
+    if (dir === 0) {
+      if (e - base >= h) { dir = 1; ext = e; }
+      else if (base - e >= h) { dir = -1; ext = e; }
+    } else if (dir === 1 && ext - e >= h) { gain += ext - base; base = ext; dir = -1; ext = e; }
+    else if (dir === -1 && e - ext >= h) { loss += base - ext; base = ext; dir = 1; ext = e; }
   }
+  if (dir === 1) gain += ext - base;
+  else if (dir === -1) loss += base - ext;
+  return { gain, loss };
+}
+
+/** Fill gaps in an elevation series by linear interpolation. null if too few values. */
+
+/**
+ * Gain and loss (feet) of a route's profile in feet, with the 3 m hysteresis
+ * (the same rule GPX imports use). Summing every step instead counts DEM
+ * noise as climbing: about three times too much on a dense profile in steep
+ * terrain. Used for the whole route, each day's slice and a mirrored return.
+ */
+export function gainLoss(profileFt) {
+  const { gain, loss } = hysteresisGainLoss(profileFt, HYSTERESIS_M * FT);
   return { gain: Math.round(gain), loss: Math.round(loss) };
 }

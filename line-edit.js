@@ -22,6 +22,7 @@ import {
   mainRoute, lineIndex, sliceM, locateM, resolveAttach, passesNear, buildPlan,
   isTimeStop, round6, hav, MI, NEAR_M, OVERLAP_M,
 } from "./line-model.js";
+import { gainLoss } from "./elevation.js";
 
 const samePos = (a, b) => a[0] === b[0] && a[1] === b[1];
 const len = (c) => { let s = 0; for (let i = 1; i < c.length; i++) s += hav(c[i - 1], c[i]); return s; };
@@ -250,8 +251,8 @@ export function appendReturn(trip) {
   rp.return_same_way = true;
   if (Array.isArray(prof) && prof.length >= 2) {
     rp.elevation_profile = [...prof, ...[...prof].reverse().slice(1)];
-    const g = rp.elevation_gain_ft || 0, l = rp.elevation_loss_ft || 0;
-    rp.elevation_gain_ft = g + l; rp.elevation_loss_ft = g + l;
+    const { gain, loss } = gainLoss(rp.elevation_profile);
+    rp.elevation_gain_ft = gain; rp.elevation_loss_ft = loss;
   }
   return true;
 }
