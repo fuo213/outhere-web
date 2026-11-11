@@ -346,10 +346,10 @@ body.is-dragging-feature .itin-day-empty {
 .itin-profile .camp-grab { cursor: grab; }
 .itin-profile .camp-grab:active { cursor: grabbing; }
 .itin-scrub { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; z-index: 1; }
-.itin-scrub-line { position: absolute; top: 0; bottom: var(--space-6); left: 0; border-left: 1px dashed var(--text-secondary); }
+.itin-scrub-line { position: absolute; top: var(--space-8); bottom: var(--space-6); left: 0; border-left: 1px dashed var(--text-secondary); }
 .itin-scrub-chip {
   position: absolute;
-  top: var(--space-1);
+  bottom: 0; /* over the mile ticks, clear of the day tags */
   left: var(--space-2);
   display: flex;
   align-items: center;
