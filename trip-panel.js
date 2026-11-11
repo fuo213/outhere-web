@@ -614,7 +614,7 @@ function validateTripExport(trip) {
   return problems;
 }
 
-const SEGMENT_MODES = ["trail", "straight", "manual", "imported"];
+const SEGMENT_MODES = ["trail", "straight", "manual", "imported", "transport"]; // transport: 1.3
 const SEGMENT_REASONS = ["no_path", "no_graph", "cross_region"];
 const isIndex = (n) => Number.isInteger(n) && n >= 0;
 
@@ -630,6 +630,7 @@ function validateRoutingProvenance(f, where, push) {
         const at = `${where}.segments[${k}]`;
         if (!seg || typeof seg !== "object") { push(`${at}: not an object`); return; }
         if (!SEGMENT_MODES.includes(seg.mode)) push(`${at}: mode "${seg.mode}" not one of ${SEGMENT_MODES.join("|")}`);
+        if (seg.transport_kind !== undefined && (seg.mode !== "transport" || !["boat", "shuttle", "drive"].includes(seg.transport_kind))) push(`${at}: transport_kind needs mode "transport" and one of boat|shuttle|drive`);
         if (seg.reason !== undefined && !SEGMENT_REASONS.includes(seg.reason)) push(`${at}: reason "${seg.reason}" not one of ${SEGMENT_REASONS.join("|")}`);
         if (!isIndex(seg.from_vertex) || !isIndex(seg.to_vertex)) push(`${at}: from_vertex/to_vertex must be non-negative integers`);
         if (seg.coord_range !== undefined) {

@@ -39,7 +39,7 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `sketch.js` | The drawing kit: ink strokes, pencil hatching, paper grain, the hand-drawn glyph family (also used as stop icons) |
 | `planning.js` | Drawing the line (clicks only guide snapping; Shift = straight leg, Esc cancels, double-click finishes). Modes: new line, `redraw` (seeded at a cut, rejoins the faint old line), `spur` (day hike from a stop). Live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
 | `line-model.js` | Pure 1.2 model: line index (legs, metres), attach resolve/locate, passes and visits near a point, `buildPlan` (camps → days, stops per day/visit), `syncLineTrip` (trip.days for mobile), `displayTrip` (the line cut per day for the chart + profile), `canConvertToLine` / `convertTypedVertices` (the opt-in 1.1 → 1.2 switch) |
-| `line-edit.js` | Pure line edits: `redrawLine` (stitch a drawn path in, shift / re-attach / flag stops, regenerate a linked way back, say which stretches keep their elevation), `appendReturn`, `returnLink` |
+| `line-edit.js` | Pure line edits (also `moveStopAlong`, `setSectionTransport`): `redrawLine` (stitch a drawn path in, shift / re-attach / flag stops, regenerate a linked way back, say which stretches keep their elevation), `appendReturn`, `returnLink` |
 | `elevation.js` | Pure elevation sampling: density rule (~1 sample / 100 m, max 800), `fetchElevations` (sequential chunks of ≤100 to Open-Meteo, backoff, all or nothing), `buildProfile` (reuses the old profile on unchanged stretches), `gainLoss` / `hysteresisGainLoss` (3 m hysteresis, shared with gpx-core.js) |
 | `tests/` | Plain-node unit tests for the three pure modules above: `node tests/run.mjs` (no dependencies) |
 | `stops.js` | Stop tool (keys 1-6: camp, break, water, hazard, viewpoint, note) and the stop menu (name, nights, water source/reliability, Out/Back, day hike, move, delete) |
@@ -165,6 +165,37 @@ separate Point features:
   return leg mirrors an outbound leg), any redraw of the way out, with or
   without a rejoin, regenerates the whole way back; a way back edited by
   hand is never regenerated and the toast says so.
+- **Camps on the elevation profile** (itinerary-panel.js `initScrub`,
+  itinerary-profile.js `lineSpotAtMile` / `profileX`). On a 1.2 line the
+  profile reads back: hover (mouse) or press/drag (touch) shows a cursor with
+  mile, elevation and day; a tap pins it and offers "Add a camp here"
+  (`addCampAtM` in stops.js, same camp as the map menu's). The profile is the
+  days laid end to end, so the day under the pointer says which pass of an
+  out-and-back is meant (`displayTrip` days carry `_fromM`; rest days place
+  nothing). A camp's invisible `.camp-grab` circle drags it along the line
+  (`moveStopAlongLine` -> `moveStopAlong`, one undo step, days renumber); a
+  tap on it opens its menu. Tapping the drawing still scrolls to that day.
+- **Same campsite** (`same_place_as`, format 1.2): adding a camp within
+  `SAME_SITE_M` (100 m) of an earlier camp on another pass (more than
+  `SEPARATE_VISIT_M` further along) makes its menu ask "Same as Camp N?"
+  (`sameSiteCandidate`, `askSame` in stops.js). Yes = `linkSameSite`: it takes
+  the earlier camp's name and notes and from then on editing either shares
+  them (`shareCampFields`); the plan says "Same site as Camp 1" / "Used again
+  at Camp 2". `syncLineTrip` drops a link that stopped being true (camp
+  deleted, moved more than 150 m away, order swapped). "Separate" in the menu
+  unlinks.
+- **Transport legs** (format **1.3**, line-edit.js `setSectionTransport`,
+  route-edit.js `setTransport`). Select a section (click the line), then the
+  line menu's "Not hiked" Boat / Shuttle / Drive (press the active one to
+  clear it). The segment becomes `mode: "transport"` + `transport_kind`
+  (osm_way_ids kept so clearing restores a trail leg, else a straight
+  `manual` one); on a linked out-and-back the mirrored leg follows. Drawn
+  dash-dot (`trip-chart-ink-transport`), its own row in the day (`d.transport`),
+  and left out of hiked miles (`d.hikedM`, `route.main_route_distance_mi`),
+  elevation gain/loss (`refreshHikedStats`, `displayTrip`) and the profile's
+  mile labels. There is no time estimate anywhere in the planner, so nothing
+  to exclude there. The trip stays internally "1.2"; `buildTripExport` writes
+  "1.3" only when the line has a transport leg.
 - **Delete on the line** (route-edit.js selection + line-edit.js
   `sectionAt` / `deleteSection` / `deleteLine`, tested in
   `tests/line-delete.test.mjs`). Clicking the line selects the section under
