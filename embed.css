@@ -107,4 +107,5 @@ html.embed .embed-open .visually-hidden {
   html.embed .modal-header { padding: var(--space-3) var(--space-4) 0; }
   html.embed .embed-open { right: var(--space-3); }
   html.embed .maplibregl-ctrl-bottom-right { right: 0; }
+  html.embed .maplibregl-ctrl-scale { display: none; } /* it collides with the attribution at this width */
 }
