@@ -42,3 +42,7 @@ Thumbs.db
 # ======================
 design/fixtures/local/
 *.gpx
+
+# Local dev data for ?graph= / ?places= overrides
+dev-graphs/
+dev-places/
