@@ -7,6 +7,7 @@
  */
 
 import { map } from "./app.js"; // circular; runtime only
+import { MAP_FONT } from "./config.js";
 import { TripManager, escapeHTML } from "./trip-panel.js"; // circular; runtime only
 import { startRouteDrawing, isDrawingRoute, isDeleteMode, fetchElevationProfile, routeBetween } from "./planning.js"; // circular; runtime only
 import { isStopToolActive, addStopAt } from "./stops.js"; // circular; runtime only
@@ -212,7 +213,58 @@ export function deleteSelection() {
     return;
   }
   clearSelection();
+  const ends = sec.where === "middle" ? sectionEnds(route, sel.leg) : null;
   commitDelete(sec.where === "middle" ? "delete a section" : sec.where === "only" ? "delete the line" : "trim the line", () => deleteSection(trip, sel.leg));
+  if (ends) {
+    // Keyed by the anchors as the edited line stores them.
+    const r2 = mainRoute(trip), vc = r2?.properties.vertex_coords || [];
+    if (vc[sel.leg] && vc[sel.leg + 1]) deletedGaps.add(gapKey(vc[sel.leg], vc[sel.leg + 1]));
+    paintRedrawPoints();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Redraw points: after a middle section is deleted, the anchor where the gap
+// starts is marked on the map. Drawing only runs forward along the trip, so
+// that is the one place a redraw of the gap can start; a tap on it starts it.
+// Session memory only (the trip format has no field for "this gap was a
+// delete"): after a reload the gap's menu still offers "Redraw this section".
+// ---------------------------------------------------------------------------
+
+const RP_SRC = "line-redraw-points", RP_DOT = "line-redraw-dot", RP_LABEL = "line-redraw-label";
+const deletedGaps = new Set(); // "lon,lat|lon,lat" of the two anchors of a gap a delete left
+const gapKey = (a, b) => `${a[0].toFixed(6)},${a[1].toFixed(6)}|${b[0].toFixed(6)},${b[1].toFixed(6)}`;
+let rpPainted = "";
+
+function redrawPointFeatures() {
+  const trip = TripManager.currentTrip;
+  const route = isLineTrip(trip) && !isDrawingRoute ? mainRoute(trip) : null;
+  if (!route || !deletedGaps.size) return [];
+  const vc = route.properties.vertex_coords || [];
+  return (route.properties.segments || []).flatMap((seg, k) =>
+    isGapSection(route, k) && vc[k] && vc[k + 1] && deletedGaps.has(gapKey(vc[k], vc[k + 1]))
+      ? [{ type: "Feature", properties: { leg: k }, geometry: { type: "Point", coordinates: vc[k] } }]
+      : []);
+}
+
+/** Draw (or clear) the redraw points. Cheap; runs on idle so undo, redraw and trip switches all keep it right. */
+function paintRedrawPoints() {
+  if (!map.getStyle()) return;
+  const features = redrawPointFeatures();
+  const key = JSON.stringify(features);
+  const src = map.getSource(RP_SRC);
+  if (src) { if (key !== rpPainted) { rpPainted = key; src.setData({ type: "FeatureCollection", features }); } return; }
+  if (!features.length) return;
+  rpPainted = key;
+  const cs = getComputedStyle(document.documentElement);
+  const tok = (n) => cs.getPropertyValue(n).trim();
+  map.addSource(RP_SRC, { type: "geojson", data: { type: "FeatureCollection", features } });
+  map.addLayer({ id: RP_DOT, type: "circle", source: RP_SRC, paint: { "circle-radius": 7, "circle-color": tok("--surface-raised"), "circle-stroke-color": tok("--accent"), "circle-stroke-width": 3 } });
+  map.addLayer({
+    id: RP_LABEL, type: "symbol", source: RP_SRC,
+    layout: { "text-field": "Redraw from here", "text-font": MAP_FONT, "text-size": 13, "text-anchor": "left", "text-offset": [1, 0], "text-allow-overlap": true, "text-ignore-placement": true },
+    paint: { "text-color": tok("--text-primary"), "text-halo-color": tok("--surface-raised"), "text-halo-width": 2 },
+  });
 }
 
 /** A section that is a straight line, not a trail: an off-trail leg or the gap a delete left. */
@@ -266,7 +318,7 @@ function commitDelete(label, run, headline = null) {
   TripManager.render();
   TripManager.save();
   if (res.removed !== "line") fetchElevationProfile(route.geometry.coordinates, id, { reuse: res.reuse });
-  const parts = [headline || { line: "Deleted the line", first: "Trimmed the start of the line", last: "Trimmed the end of the line", middle: "Deleted a section. A straight line bridges the gap: click it to redraw it" }[res.removed]];
+  const parts = [headline || { line: "Deleted the line", first: "Trimmed the start of the line", last: "Trimmed the end of the line", middle: "Deleted a section. Tap the marked point to redraw it" }[res.removed]];
   if (res.lost.length) {
     const names = res.lost.map((l) => l.name || l.label);
     parts.push(`${names.join(", ")} ${names.length === 1 ? "is" : "are"} off your route now`);
@@ -282,6 +334,12 @@ function onLineClick(e) {
   const trip = TripManager.currentTrip;
   if (!isLineTrip(trip) || isDrawingRoute || isDeleteMode || isStopToolActive()) return;
   const pad = 4, bbox = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]];
+  // A redraw point starts the redraw of its gap.
+  const rp = map.getLayer(RP_DOT) ? map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], { layers: [RP_DOT, RP_LABEL] })[0] : null;
+  if (rp) {
+    const L = lineIndex(mainRoute(trip)).legs[rp.properties.leg];
+    if (L) { closeLineMenu(); clearSelection(); startRedraw(L.startM); return; }
+  }
   // Stops and day numerals have their own clicks.
   const pointLayers = ["trip-chart-points", "trip-chart-points-minor", "trip-chart-days", "trip-gap-pins"].filter((id) => map.getLayer(id));
   if (map.queryRenderedFeatures(bbox, { layers: pointLayers }).length) return;
@@ -350,6 +408,11 @@ export function initRouteEdit() {
   inited = true;
   map.on("click", onLineClick);
   map.on("styledata", () => { if (selection && !map.getSource(SEL_SRC)) paintSelection(); });
+  map.on("idle", paintRedrawPoints);
+  for (const id of [RP_DOT, RP_LABEL]) {
+    map.on("mouseenter", id, () => { if (!isDrawingRoute) map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", id, () => { if (!isDrawingRoute) map.getCanvas().style.cursor = ""; });
+  }
   document.addEventListener("keydown", (e) => {
     if (isDrawingRoute) return; // the drawing has its own undo
     const t = e.target;

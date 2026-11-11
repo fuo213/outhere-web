@@ -178,7 +178,11 @@ separate Point features:
   items instead of "Redraw from here": "Redraw this section" (redraw seeded at
   its first anchor; click the line further on to rejoin) and "Snap to trails"
   (`routeBetween` in planning.js + `replaceSection`; says why when it can't).
-  Delete on a middle section that is already straight only shows a hint. All of it goes through `redrawLine` (it accepts empty
+  Delete on a middle section that is already straight only shows a hint. A gap
+  left by a delete also gets a **redraw point** on the map (ring + "Redraw from
+  here" at the gap's first anchor, route-edit.js `paintRedrawPoints`; session
+  memory only): drawing runs forward only, so that is where the redraw starts,
+  and a tap on it starts it. All of it goes through `redrawLine` (it accepts empty
   `newLegs` for a trim), so stops, elevation reuse and a linked way back behave
   as for "Redraw from here": a stop whose stretch is gone re-attaches if the
   new line passes within 120 m, else goes off route (never deleted). "Select
