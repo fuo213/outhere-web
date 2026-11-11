@@ -36,6 +36,13 @@ change tokens or principles. Propose, then log.
   `reference/paper-extraction-2026-03.md`.)
 - **2026-03 · Playfair Display for the trip title.** Gives it cartographic
   character.
+- **2026-11-11 · Delete on the line, and the redraw point.** Click selects a
+  section; Delete trims an end or leaves a straight gap in the middle. The
+  gap's first anchor gets a rust ring on paper with a "Redraw from here" map
+  label (tap to redraw forward from there); a straight section's menu offers
+  "Redraw this section" and "Snap to trails". Vincent: "working perfect".
+  *Why:* drawing only runs forward along the trip, so the map has to show
+  where a redraw starts.
 
 ## Trying
 
