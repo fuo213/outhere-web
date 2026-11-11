@@ -22,6 +22,8 @@ import {
   loadGraph, peekGraph, pickGraphRegion, graphInfoForRegion,
   metersPerPixel, lineLength, haversine,
 } from "./routing.js";
+import { reportedAt, openReportDialog } from "./report-ui.js";
+import { osmEditUrl, formatReportDate } from "./osm-report.js";
 import { deriveNameFromRuns } from "./route-names.js";
 import { profileForRoute } from "./elevation-dem.js";
 import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
@@ -140,6 +142,7 @@ function straightLeg(from, to, A, B, kind, mode, reason, { preview = false } = {
       ? ctx.graph.gapFor(A.coord, B.coord, A.snap, B.snap)
       : { lon: (A.coord[0] + B.coord[0]) / 2, lat: (A.coord[1] + B.coord[1]) / 2 };
     leg.gap = [gap.lon, gap.lat];
+    if (gap.ways) leg.gapInfo = { ways: gap.ways, gap_m: gap.dist_m };
   }
   return leg;
 }
@@ -233,7 +236,7 @@ export function handleMapClickForRoute(e) {
   if (!isDrawingRoute) return;
   // A click on a gap pin explains that leg instead of placing a point.
   const pinLeg = gapLegAt(e.point);
-  if (pinLeg) { showGapCard(pinLeg); return; }
+  if (pinLeg) { showGapCard({ gap: pinLeg.gap, reason: pinLeg.reason, length_m: pinLeg.length_m, gap_m: pinLeg.gapInfo?.gap_m, ways: pinLeg.gapInfo?.ways }); return; }
   const lngLat = [e.lngLat.lng, e.lngLat.lat];
   const shift = e.originalEvent.shiftKey;
   const zoom = map.getZoom();
@@ -330,7 +333,7 @@ function finishRouteDrawing() {
   // Remember computed gap pins so the saved route shows them in the same place.
   const routeFeature = TripManager.currentTrip?.features[routeIdx];
   if (routeFeature) {
-    mainLegs.forEach((leg, k) => leg.gap && gapMemo.set(`${routeFeature.properties._id}:${k}`, leg.gap));
+    mainLegs.forEach((leg, k) => leg.gap && rememberGap(`${routeFeature.properties._id}:${k}`, leg));
     fetchElevationProfile(geometryCoords, routeFeature.properties._id);
   }
 
@@ -347,7 +350,7 @@ function finishRouteDrawing() {
     if (spurName) props.name_auto = true;
     if (routing) props.routing = routing;
     const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
-    if (leg.gap) gapMemo.set(`${TripManager.currentTrip.features[idx].properties._id}:0`, leg.gap);
+    if (leg.gap) rememberGap(`${TripManager.currentTrip.features[idx].properties._id}:0`, leg);
   }
 
   // 3. Point features for special points (camp/dayhike/rest)
@@ -590,6 +593,11 @@ function updatePreviewSource(cursor = null) {
 // ---------------------------------------------------------------------------
 
 const gapMemo = new Map(); // `${featureId}:${segmentIndex}` → [lon, lat]
+const gapInfoMemo = new Map(); // same key → {ways, gap_m} for "report this gap"
+function rememberGap(key, leg) {
+  gapMemo.set(key, leg.gap);
+  if (leg.gapInfo) gapInfoMemo.set(key, leg.gapInfo);
+}
 
 /**
  * Extra features for the "trip" map source: each saved route/spur with
@@ -615,10 +623,12 @@ export function buildRoutingOverlay(trip) {
       });
       if (seg.mode === "straight" && (seg.reason || "no_path") === "no_path") {
         const gap = savedGap(p, k, legCoords);
+        const info = gapInfoMemo.get(`${p._id}:${k}`);
         out.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: gap },
-          properties: { type: "route_gap", _id: p._id, reason: seg.reason || "no_path", length_m: seg.length_m ?? lineLength(legCoords) },
+          // GeoJSON sources stringify objects: ways travel as JSON text.
+          properties: { type: "route_gap", _id: p._id, reason: seg.reason || "no_path", length_m: seg.length_m ?? lineLength(legCoords), gap_m: info?.gap_m ?? null, gap_ways: JSON.stringify(info?.ways || []) },
         });
       }
     });
@@ -638,7 +648,7 @@ function savedGap(props, k, legCoords) {
     const sa = g.snap(A[0], A[1], 15), sb = g.snap(B[0], B[1], 15);
     const p = g.gapFor(A, B, sa, sb);
     gap = [p.lon, p.lat];
-    gapMemo.set(key, gap);
+    rememberGap(key, { gap, gapInfo: { ways: p.ways, gap_m: p.dist_m } });
   }
   return gap;
 }
@@ -662,30 +672,43 @@ const GAP_COPY = {
   cross_region: "Routes can’t cross between map regions yet.",
 };
 
-const osmEditUrl = (lon, lat) => `https://www.openstreetmap.org/edit?editor=id#map=19/${lat.toFixed(6)}/${lon.toFixed(6)}`;
-
 function formatMiles(m) {
   const mi = m / MI;
   return mi < 0.1 ? `${Math.round(m * 3.28084)} ft` : `${mi.toFixed(1)} mi`;
 }
 
 /** Open the explanation card for a straight leg at its gap pin. */
-export function showGapCard({ gap, reason, length_m }) {
+export function showGapCard({ gap, reason, length_m, gap_m, ways = [] }) {
   if (!gap) return;
   gapPopup?.remove();
-  const link = reason === "no_path"
-    ? `<a class="gap-card__link" href="${escapeAttr(osmEditUrl(gap[0], gap[1]))}" target="_blank" rel="noopener">Fix it in OpenStreetMap</a>`
-    : "";
+  const [lon, lat] = gap;
+  let actions = "";
+  if (reason === "no_path") {
+    const done = reportedAt(lat, lon);
+    const editUrl = osmEditUrl({ lat, lon, wayId: ways[0]?.osmId });
+    actions = `
+      <div class="gap-card__actions">
+        ${done
+          ? `<p class="gap-card__reported">Reported on <span class="gap-card__num">${escapeHTML(formatReportDate(done.date))}</span> \u00b7 <a class="gap-card__link" href="${escapeAttr(done.url)}" target="_blank" rel="noopener">View note</a></p>`
+          : `<button type="button" class="btn btn--primary btn--sm" data-gap-report>Report this gap</button>`}
+        <a class="gap-card__link" href="${escapeAttr(editUrl)}" target="_blank" rel="noopener">Open in the OSM editor</a>
+      </div>`;
+  }
   const html = `
     <div class="gap-card" role="note">
       <p class="gap-card__text">${escapeHTML(GAP_COPY[reason] || GAP_COPY.no_path)}</p>
       <p class="gap-card__meta">Drawn straight for <span class="gap-card__num">${escapeHTML(formatMiles(length_m || 0))}</span></p>
-      ${link}
+      ${actions}
     </div>`;
   gapPopup = new maplibregl.Popup({ className: "gap-popup", closeButton: true, closeOnClick: true, maxWidth: "260px", offset: 10 })
     .setLngLat(gap)
     .setHTML(html)
     .addTo(map);
+  const popup = gapPopup;
+  popup.getElement().querySelector("[data-gap-report]")?.addEventListener("click", () => {
+    popup.remove();
+    openReportDialog({ kind: "gap", lat, lon, gap: { ways, gapM: gap_m, legM: length_m } });
+  });
 }
 
 function updateSnapTooltip(snap, point) {

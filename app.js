@@ -8,6 +8,7 @@
  */
 
 import { TILE_URL, MAP_CONFIG, LAYER_GROUPS, MAP_FONT } from "./config.js";
+import { initReport, isReportPicking } from "./report-ui.js";
 import { LayerStyleManager, buildStyleControls, toggleStyleControls } from "./layer-styles.js";
 import {
   isDrawingRoute,
@@ -312,6 +313,12 @@ map.addControl(makeMapControl("homeBtn", "My Trips", homeIconSvg), "top-left");
 map.addControl(makeMapControl("planBtn", "Trip Planning", planIconSvg), "top-left");
 map.addControl(makeMapControl("layersBtn", "Map Layers", layersIconSvg), "top-left");
 
+const reportIconSvg = `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+  <line x1="5" y1="3" x2="5" y2="17"/>
+  <path d="M5 4 h9 l-2 3.2 l2 3.2 h-9"/>
+</svg>`;
+map.addControl(makeMapControl("reportBtn", "Report a map problem", reportIconSvg), "top-left");
+
 // ---------------------------------------------------------------------------
 // Loading state
 // ---------------------------------------------------------------------------
@@ -470,7 +477,10 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   // Click handlers for route drawing + trip features
   // -------------------------------------------------------------------
+  initReport(map, { canReport: () => !isDrawingRoute && !isDeleteMode });
+
   map.on("click", (e) => {
+    if (isReportPicking()) return; // report-ui.js handles this click
     if (isDeleteMode) {
       handleDeleteClick(e);
       return;
@@ -489,9 +499,11 @@ map.on("load", () => {
 
   // Gap pins on saved routes explain the straight leg (and link to the OSM fix).
   map.on("click", "trip-gap-pins", (e) => {
-    if (isDrawingRoute || isDeleteMode) return;
+    if (isDrawingRoute || isDeleteMode || isReportPicking()) return;
     const f = e.features[0];
-    showGapCard({ gap: f.geometry.coordinates, reason: f.properties.reason, length_m: f.properties.length_m });
+    let ways = [];
+    try { ways = JSON.parse(f.properties.gap_ways || "[]"); } catch { /* pin without way info */ }
+    showGapCard({ gap: f.geometry.coordinates, reason: f.properties.reason, length_m: f.properties.length_m, gap_m: f.properties.gap_m, ways });
   });
   map.on("mouseenter", "trip-gap-pins", () => { if (!isDrawingRoute && !isDeleteMode) map.getCanvas().style.cursor = "pointer"; });
   map.on("mouseleave", "trip-gap-pins", () => { if (!isDrawingRoute && !isDeleteMode) map.getCanvas().style.cursor = ""; });
