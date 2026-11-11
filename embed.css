@@ -10,7 +10,7 @@
 
 html.embed {
   --embed-panel-w: 380px;   /* desktop panel; the 520px app panel is too much of a ~16:10 frame */
-  --embed-sheet-h: 46%;     /* phone: the panel stacks under the map as a sheet this tall */
+  --embed-sheet-h: 42%;     /* phone: the panel stacks under the map as a sheet this tall */
 }
 
 /* ---- Chrome that makes no sense on a marketing page ---------------------- */
@@ -105,6 +105,7 @@ html.embed .embed-open .visually-hidden {
     box-shadow: var(--shadow-3);
   }
   html.embed .modal-header { padding: var(--space-3) var(--space-4) 0; }
+  html.embed .trip-title-input { font-size: var(--text-xl); } /* the 28px title eats the sheet */
   html.embed .embed-open { right: var(--space-3); }
   html.embed .maplibregl-ctrl-bottom-right { right: 0; }
   html.embed .maplibregl-ctrl-scale { display: none; } /* it collides with the attribution at this width */
