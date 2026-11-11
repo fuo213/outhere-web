@@ -95,6 +95,15 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
+- 2026-11-11 · **Embedded planner on the landing hero** (`?embed=1`): the
+  planner as a read-only demo in an iframe. Panel narrowed to 380 px on
+  desktop and stacked under the map as a 46%-tall sheet on phones (the app's
+  full-screen phone panel would hide the map); all editing and file chrome
+  hidden; one quiet "Open the planner" pill (paper, `--shadow-2`, `--text-sm`)
+  where the region switcher normally sits; scroll never trapped (wheel needs
+  a click into the map or Ctrl/Cmd, two fingers on touch). No new tokens ·
+  `outhere-web.pages.dev/?embed=1`, `embed.css` · a visitor sees the real
+  product working instead of a screenshot of it.
 - 2026-11-08 · **Trip chart on the real map** (direction B carried onto the
   planner map): the route is a clean ink line (`--ink-900`, ~2.4 px at z13,
   round caps/joins) on a thin `--surface-raised` casing; each day's stretch

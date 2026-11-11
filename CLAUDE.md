@@ -46,6 +46,8 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
 | `ui-motion.js` | Motion wiring: `confirm` shiver on exports (delegated clicks) |
+| `embed.css` | Embed mode (`?embed=1`) only: every rule scoped to `html.embed`; hides app chrome, narrows the panel, phone sheet layout, the "Open the planner" pill |
+| `_headers` | Cloudflare Pages headers: CSP `frame-ancestors` (see Embed mode) |
 | `design/` | The Booot design system (below) |
 
 Modules import each other circularly (`app.js` exports `map`; the others
@@ -118,6 +120,35 @@ window.dispatchEvent(new CustomEvent("booot:active-day", {
   `source` to avoid loops. `dayId` wins over `dayIndex` when both are given.
 - "Show on map" in a day's edit row is separate: it zooms to the day and dims
   the other days (`setActiveDayHighlight`).
+
+## Embed mode (`?embed=1`)
+
+The landing page (booot.org) frames `https://outhere-web.pages.dev/?embed=1`
+as its hero. Without the parameter nothing changes.
+
+- `config.js` exports `EMBED` and `appStorage`. **All app state goes through
+  `appStorage`** (trips, active region, catalog cache, layer styles): real
+  localStorage normally, a throwaway in-memory store in embed mode, so the
+  embed never reads or writes the visitor's saved trips. New persistence must
+  use `appStorage`, not `localStorage`.
+- Opens straight on the public demo (`spanish-bottom`, region `maze-district`)
+  via `loadDemoTripFromURL`, panel open, framed. No trips home, onboarding,
+  drawing, import/export. The inline script in `index.html`'s head adds
+  `html.embed` before first paint; `embed.css` does the hiding. Drawing is
+  off (its toolbar and entry points are hidden); drag/inline edits are hidden
+  too and anything that slips through only changes the in-memory copy.
+- Scroll: MapLibre `cooperativeGestures` (4.7.1 supports it). Wheel zooms only
+  with Ctrl/Cmd or after a mouse click into the map (`map.cooperativeGestures
+  .disable()` on pointerdown, re-enabled on window blur); touch is two-finger.
+- Ready signal: once the demo is on screen and the map is idle (6 s cap) the
+  embed does `window.parent.postMessage({ type: "booot-embed-ready" }, "*")`;
+  the landing page fades its poster on it. The payload carries no data.
+- "Open the planner" (`#embedOpen`) opens `./?demo=spanish-bottom` in a new tab.
+- `_headers`: `Content-Security-Policy: frame-ancestors 'self' booot.org
+  www.booot.org booot-landing.pages.dev *.booot-landing.pages.dev
+  localhost:* 127.0.0.1:*`. Add an origin there to embed from somewhere new.
+- Verify: `node design/tools/shoot.mjs --base https://<branch>.outhere-web.pages.dev
+  --scenes <file>` with path `/?embed=1` (1120x700 and 390x560).
 
 ## Trip format
 
