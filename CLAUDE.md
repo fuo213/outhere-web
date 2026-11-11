@@ -68,6 +68,9 @@ MapLibre demotiles for glyphs/sprite, and the free Open-Meteo elevation API
 (`fetchElevationProfile` in `planning.js`), which is only the fallback: where
 a region's graph ships an elevation sidecar, trail legs get their profile
 from it with no API call (see "Elevation" below). Keep new dependencies open and
+Runtime network calls: tiles.booot.org (catalog, PMTiles range requests and
+map glyphs under `fonts/`), and the free Open-Meteo elevation API
+(`fetchElevationProfile` in `planning.js`). Keep new dependencies open and
 free (see product principles in `../CLAUDE.md`); pin exact versions.
 
 ## Tiles, regions and style

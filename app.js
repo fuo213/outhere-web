@@ -7,7 +7,7 @@
  * CDN globals (classic scripts in index.html): maplibregl, pmtiles, turf.
  */
 
-import { TILE_URL, MAP_CONFIG, LAYER_GROUPS } from "./config.js";
+import { TILE_URL, MAP_CONFIG, LAYER_GROUPS, MAP_FONT } from "./config.js";
 import { LayerStyleManager, buildStyleControls, toggleStyleControls } from "./layer-styles.js";
 import {
   isDrawingRoute,
@@ -50,8 +50,12 @@ export function buildStyle(region) {
   return {
     version: 8,
     name: region?.name ? `${region.name} Hiking` : "OutHere Hiking",
-    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-    sprite: "https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite",
+    // Our own glyphs on R2 (same convention as the pipeline style and the
+    // phone). Only "Open Sans Regular" is hosted, so every text layer must
+    // pin "text-font" to it: MapLibre's default stack would ask for a
+    // combined "Open Sans Regular,Arial Unicode MS Regular" that isn't there.
+    // No sprite: every icon is drawn at runtime with map.addImage.
+    glyphs: "https://tiles.booot.org/fonts/{fontstack}/{range}.pbf",
     sources: {
       [source]: {
         type: "vector",
@@ -148,6 +152,7 @@ export function buildStyle(region) {
         layout: {
           "symbol-placement": "line",
           "text-field": ["concat", ["to-string", ["get", "elevation_ft"]], "ft"],
+          "text-font": MAP_FONT,
           "text-size": 9,
           "text-max-angle": 25,
           "text-padding": 50,
@@ -217,6 +222,7 @@ export function buildStyle(region) {
         minzoom: 12,
         layout: {
           "text-field": ["get", "name"],
+          "text-font": MAP_FONT,
           "text-size": 11,
           "text-offset": [0, 1.2],
           "text-anchor": "top",
@@ -393,7 +399,7 @@ function addRoutedAreasLayers(C) {
   map.addLayer({
     id: "routed-areas-label", type: "symbol", source: "routed-areas",
     filter: ["==", ["geometry-type"], "Point"],
-    layout: { ...hidden, "text-field": ["get", "name"], "text-size": 12, "text-anchor": "top-left", "text-offset": [0.4, 0.4], "text-allow-overlap": true },
+    layout: { ...hidden, "text-field": ["get", "name"], "text-font": MAP_FONT, "text-size": 12, "text-anchor": "top-left", "text-offset": [0.4, 0.4], "text-allow-overlap": true },
     paint: { "text-color": C.accent, "text-halo-color": C.surfaceRaised, "text-halo-width": 1.5 },
   }, before);
 }

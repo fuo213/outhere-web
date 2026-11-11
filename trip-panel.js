@@ -33,6 +33,7 @@ import { initItineraryPanel, updateItinerary, setItineraryCompact } from "./itin
 import { glyphIcon, glyphDefsSVG } from "./sketch.js";
 import { confirm as confirmMotion } from "./design/motion.js";
 import { TripsStore, hideTripsHome, showTripsHome } from "./trips-home.js"; // circular; only used at runtime
+import { frameBounds, boundsOf } from "./map-trip-style.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
 import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
 
@@ -1100,8 +1101,7 @@ function fitToFeatures(features) {
     else if (g?.type === "LineString") coords.push(...g.coordinates);
   }
   if (!coords.length || !map) return;
-  const bounds = coords.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
-  map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 800 });
+  frameBounds(boundsOf(coords), { maxZoom: 15 });
 }
 
 // ---------------------------------------------------------------------------
@@ -1462,20 +1462,46 @@ function buildDateOptions(selectedDate) {
 
 // openFeatureForm / closeFeatureForm replaced by inline tile editing (setTileEditContent / setTileViewContent)
 
+/**
+ * A day hike is a spur line plus the stop it leaves from; selecting either
+ * frames both. Schema 1.2 spurs name their stop (`from_stop` = stop _id).
+ * Older trips fall back to proximity with a `dayhike` point at the spur's end.
+ */
+function dayhikePair(feature) {
+  const kindOf = (p) => (p.type === "waypoint" ? p.subtype : (p.point_type || p.type));
+  const all = TripManager.currentTrip?.features || [];
+  const near = (a, b) => Math.abs(a[0] - b[0]) < 0.0008 && Math.abs(a[1] - b[1]) < 0.0008;
+  const p = feature.properties || {};
+  const isSpur = (f) => f.properties?.type === "dayhike_spur" && f.geometry?.type === "LineString";
+  if (isSpur(feature)) {
+    const cs = feature.geometry.coordinates;
+    const stops = p.from_stop ? all.filter((f) => f.geometry?.type === "Point" && f.properties?._id === p.from_stop) : [];
+    if (stops.length) return [feature, ...stops];
+    return [feature, ...all.filter((f) => f.geometry?.type === "Point" && kindOf(f.properties || {}) === "dayhike" && (near(f.geometry.coordinates, cs[0]) || near(f.geometry.coordinates, cs.at(-1))))];
+  }
+  if (feature.geometry.type === "Point") {
+    const linked = p._id ? all.filter((f) => isSpur(f) && f.properties.from_stop === p._id) : [];
+    if (linked.length) return [feature, ...linked];
+    if (kindOf(p) === "dayhike") {
+      const pt = feature.geometry.coordinates;
+      return [feature, ...all.filter((f) => isSpur(f) && !f.properties.from_stop && (near(pt, f.geometry.coordinates[0]) || near(pt, f.geometry.coordinates.at(-1))))];
+    }
+  }
+  return [feature];
+}
+
+/** Explicit selection from the panel: always frame it beside the panel. */
 function zoomToFeature(index) {
   const feature = TripManager.currentTrip?.features[index];
-  if (!feature) return;
-
-  const geom = feature.geometry;
-  if (geom.type === "Point") {
-    map.flyTo({ center: geom.coordinates, zoom: 13, duration: 800 });
-  } else if (geom.type === "LineString" && geom.coordinates.length > 0) {
-    const bounds = geom.coordinates.reduce(
-      (b, c) => b.extend(c),
-      new maplibregl.LngLatBounds(geom.coordinates[0], geom.coordinates[0])
-    );
-    map.fitBounds(bounds, { padding: 60, duration: 800 });
+  if (!feature?.geometry || !map) return;
+  const coords = [];
+  for (const f of dayhikePair(feature)) {
+    const g = f.geometry;
+    if (g.type === "Point") coords.push(g.coordinates);
+    else if (g.type === "LineString") coords.push(...g.coordinates);
   }
+  if (!coords.length) return;
+  frameBounds(boundsOf(coords), { maxZoom: coords.length === 1 ? 14.5 : 16 });
 }
 
 // ---------------------------------------------------------------------------
