@@ -282,11 +282,11 @@ function paintScrub() {
   const sp = lineSpotAtMile(S.model, S.scrub.mi);
   if (!sp) return;
   const x = geo.X(S.scrub.mi);
-  const ft = sp.ft == null ? "" : ` <span class="itin-scrub-ft">${fmt.ft(sp.ft)}</span>`;
+  const ft = sp.ft == null ? "" : ` · <span class="itin-scrub-ft">${fmt.ft(sp.ft)}</span>`;
   const dragging = S.scrub.dragId ? S.model.days.flatMap((d) => d.stops).find((st) => st.id === S.scrub.dragId) : null;
   let body;
   if (dragging) body = `<span class="itin-scrub-text">${sp.rest ? "Not on a rest day" : `${escapeText(dragging.name || "Camp")} to mile`} ${sp.rest ? "" : `<span class="itin-scrub-num">${(sp.m / 1609.344).toFixed(1)}</span>`}</span>`;
-  else body = `<span class="itin-scrub-text">Mile <span class="itin-scrub-num">${(sp.m / 1609.344).toFixed(1)}</span>${ft}${sp.rest ? "" : ` <span class="itin-scrub-day">Day ${sp.day.n}</span>`}</span>`;
+  else body = `<span class="itin-scrub-text">Mile <span class="itin-scrub-num">${(sp.m / 1609.344).toFixed(1)}</span>${ft}${sp.rest ? "" : ` · <span class="itin-scrub-day">Day ${sp.day.n}</span>`}</span>`;
   const add = S.scrub.pinned && !S.scrub.dragId && !sp.rest ? `<button type="button" class="btn btn--quiet btn--sm" data-action="add-camp">Add a camp here</button>` : "";
   const flip = x > W / 2;
   el.insertAdjacentHTML("beforeend", `<div class="itin-scrub" style="left:${x.toFixed(1)}px">
