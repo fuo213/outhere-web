@@ -210,7 +210,7 @@ export async function routeBetween(a, b, { aSnapped = true, bSnapped = true } = 
   try {
     const pick = pickGraphRegion(getActiveRegion(), getCatalogRegions(), b);
     if (!pick?.info) return straight("straight", "no_graph");
-    const g = peekGraph(pick.info) || await loadGraph(pick.info);
+    const g = await (peekGraph(pick.info) || loadGraph(pick.info)); // the cache holds promises
     if (!g.contains(...a) || !g.contains(...b)) return straight("straight", "cross_region");
     const A = g.snap(a[0], a[1], 30), B = g.snap(b[0], b[1], 30);
     if (!A || !B) return straight("manual");
