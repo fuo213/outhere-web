@@ -16,6 +16,7 @@
  */
 
 import { map } from "./app.js"; // circular with app.js; only used at runtime
+import { EMBED } from "./config.js";
 import {
   cancelDrawing,
   initPointTypeSelector,
@@ -1561,8 +1562,10 @@ function handleFileUpload(file) {
 
 /** Map padding used to keep the visible map centered next to the open panel. */
 function panelMapPadding() {
-  // On mobile the panel overlays the full map — don't pad.
-  return window.innerWidth <= 640 ? 0 : 520;
+  // On mobile the panel overlays the full map — don't pad. (The embed's panel
+  // is narrower and stacks under the map on phones; see embed.css.)
+  if (window.innerWidth <= 640) return 0;
+  return EMBED ? document.getElementById("tripPanel").offsetWidth : 520;
 }
 
 /** Re-align the floating planning toolbar with the Plan map control. */

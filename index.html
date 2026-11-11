@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="description" content="Booot: plan multi-day backpacking trips on an open topo map of trails, contours and water, then export them for your phone.">
   <title>Booot — Hiking map</title>
+  <!-- ?embed=1: mark the page before first paint so embed.css hides app chrome without a flash -->
+  <script>if (/[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add("embed");</script>
 
   <!-- Boot emoji favicon (matches booot-landing) -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🥾</text></svg>">
@@ -30,6 +32,7 @@
   <link rel="stylesheet" href="design/components.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="design/itinerary.css">
+  <link rel="stylesheet" href="embed.css">
 </head>
 <body>
 
@@ -85,6 +88,13 @@
       <!-- Populated by region-picker.js -->
     </div>
   </div>
+
+  <!-- Embed only (?embed=1, see embed.css): the one way out to the full app. Same demo trip, in a new tab. -->
+  <a class="embed-open" id="embedOpen" href="./?demo=spanish-bottom" target="_blank" rel="noopener">
+    Open the planner
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5H2.5v7h7v-2M7 2.5h2.5V5M9.5 2.5L5.5 6.5"/></svg>
+    <span class="visually-hidden">(opens in a new tab)</span>
+  </a>
 
   <!-- Trips home — the state when no trip is open (multi-trip management) -->
   <div class="trips-home-overlay" id="tripsHomeOverlay" hidden>

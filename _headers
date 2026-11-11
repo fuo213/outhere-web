@@ -1,0 +1,6 @@
+# Cloudflare Pages response headers.
+# Framing: the planner may be embedded (?embed=1) by booot.org, its Pages
+# previews and local dev, and by itself. Nobody else. CSP frame-ancestors is
+# the modern X-Frame-Options (which can't express a list), so no XFO is sent.
+/*
+  Content-Security-Policy: frame-ancestors 'self' https://booot.org https://www.booot.org https://booot-landing.pages.dev https://*.booot-landing.pages.dev http://localhost:* http://127.0.0.1:*

@@ -6,7 +6,7 @@
  * MapLibre's setPaintProperty() for instant, no-rebuild updates.
  */
 
-import { DASH_PRESETS, LAYER_STYLE_DEFAULTS } from "./config.js";
+import { DASH_PRESETS, LAYER_STYLE_DEFAULTS, appStorage } from "./config.js";
 import { map } from "./app.js"; // circular with app.js; only used at runtime
 
 const STYLE_STORAGE_KEY = "outhere_layer_styles";
@@ -19,7 +19,7 @@ export const LayerStyleManager = {
   overrides: {},
 
   load() {
-    const saved = localStorage.getItem(STYLE_STORAGE_KEY);
+    const saved = appStorage.getItem(STYLE_STORAGE_KEY);
     if (saved) {
       try { this.overrides = JSON.parse(saved); }
       catch (_) { this.overrides = {}; }
@@ -27,7 +27,7 @@ export const LayerStyleManager = {
   },
 
   save() {
-    localStorage.setItem(STYLE_STORAGE_KEY, JSON.stringify(this.overrides));
+    appStorage.setItem(STYLE_STORAGE_KEY, JSON.stringify(this.overrides));
   },
 
   getValue(layerId, prop) {

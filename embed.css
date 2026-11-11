@@ -1,0 +1,110 @@
+/* ==========================================================================
+   Embed mode (?embed=1): the planner as a demo inside an iframe on booot.org.
+   Loaded last; every rule is scoped to html.embed (set by an inline script in
+   index.html's head), so the normal app is untouched. Tokens only.
+
+   The visitor sees a finished multi-day trip with the trip panel open and can
+   pan, zoom, click days and stops. Everything that edits, saves, imports,
+   exports or opens a file picker is hidden. Drawing is off.
+   ========================================================================== */
+
+html.embed {
+  --embed-panel-w: 380px;   /* desktop panel; the 520px app panel is too much of a ~16:10 frame */
+  --embed-sheet-h: 46%;     /* phone: the panel stacks under the map as a sheet this tall */
+}
+
+/* ---- Chrome that makes no sense on a marketing page ---------------------- */
+html.embed #homeBtn,
+html.embed #planBtn,
+html.embed #layersBtn,
+html.embed #regionSwitcher,
+html.embed #layerPanel,
+html.embed #planningToolbar,
+html.embed #drawingHint,
+html.embed #snapTooltip,
+html.embed #routeInstructions,
+html.embed #tripsHomeOverlay,
+html.embed #onboardingOverlay,
+html.embed #demoBanner,
+html.embed #sidebarCollapseBtn,
+html.embed #unassignedPool,
+html.embed .trip-actions-section,
+html.embed .trip-panel-divider,
+html.embed .overview-header-actions,
+html.embed .add-day-row,
+html.embed .tile-edit-btn,
+html.embed .tile-drag-handle,
+html.embed .day-map-btn ~ [data-act],
+html.embed [data-act="draw"],
+html.embed [data-act="notes"],
+html.embed .import-note {
+  display: none !important;
+}
+
+/* The title is a heading here, not a text field. */
+html.embed .trip-title-input {
+  cursor: default;
+}
+
+/* ---- Desktop: map left, a narrower panel right ---------------------------- */
+html.embed .trip-panel {
+  width: var(--embed-panel-w);
+  transform: translateX(var(--embed-panel-w));
+}
+html.embed .trip-panel.open { transform: translateX(0); }
+html.embed .modal-header { padding: var(--space-5) var(--space-5) 0; }
+/* Attribution (OSM license) must stay visible: sit it left of the panel. */
+html.embed .maplibregl-ctrl-bottom-right { right: var(--embed-panel-w); }
+
+/* ---- The one way out ------------------------------------------------------ */
+.embed-open { display: none; }
+html.embed .embed-open {
+  position: absolute;
+  top: var(--space-3);
+  right: calc(var(--embed-panel-w) + var(--space-3));
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font: var(--weight-semi) var(--text-sm)/1 var(--font-ui);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    transform var(--dur-base) var(--ease-spring),
+    background-color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out);
+}
+html.embed .embed-open:hover { background: var(--surface-sunken); border-color: var(--border-strong); }
+html.embed .embed-open:active { transform: scale(var(--press-scale)); transition-duration: var(--dur-instant); }
+html.embed .embed-open:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+html.embed .embed-open svg { color: var(--text-secondary); flex: none; }
+html.embed .embed-open .visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---- Phone: map on top, the trip as a sheet underneath -------------------- */
+@media (max-width: 640px) {
+  html.embed #map { inset: 0 0 var(--embed-sheet-h) 0; }
+  html.embed .trip-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: var(--embed-sheet-h);
+    transform: none;
+    border-top: 1px solid var(--border);
+    box-shadow: var(--shadow-3);
+  }
+  html.embed .modal-header { padding: var(--space-3) var(--space-4) 0; }
+  html.embed .embed-open { right: var(--space-3); }
+  html.embed .maplibregl-ctrl-bottom-right { right: 0; }
+}

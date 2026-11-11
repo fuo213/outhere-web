@@ -7,7 +7,7 @@
  * CDN globals (classic scripts in index.html): maplibregl, pmtiles, turf.
  */
 
-import { TILE_URL, MAP_CONFIG, LAYER_GROUPS, MAP_FONT } from "./config.js";
+import { TILE_URL, MAP_CONFIG, LAYER_GROUPS, MAP_FONT, EMBED } from "./config.js";
 import { LayerStyleManager, buildStyleControls, toggleStyleControls } from "./layer-styles.js";
 import {
   isDrawingRoute,
@@ -253,7 +253,32 @@ export const map = new maplibregl.Map({
   minZoom: MAP_CONFIG.minZoom,
   maxZoom: MAP_CONFIG.maxZoom,
   maxBounds: regionMaxBounds(initialRegion),
+  // Embed: never trap the page's scroll. Wheel zooms only with Ctrl/Cmd (or
+  // after a click into the map, see below); on touch one finger scrolls the
+  // page and two move the map. Copy is ours, not MapLibre's defaults.
+  ...(EMBED ? {
+    cooperativeGestures: true,
+    locale: {
+      "CooperativeGesturesHandler.WindowsHelpText": "Click the map, or hold Ctrl and scroll, to zoom",
+      "CooperativeGesturesHandler.MacHelpText": "Click the map, or hold \u2318 and scroll, to zoom",
+      "CooperativeGesturesHandler.MobileHelpText": "Use two fingers to move the map",
+    },
+  } : {}),
 });
+
+if (EMBED) {
+  // Clicking into the map (mouse or pen) turns the wheel on; leaving the frame
+  // for the page (window blur) turns the guard back on. Touch keeps two-finger
+  // gestures. Reads the handler's own enable/disable (MapLibre >= 4).
+  const canvas = map.getCanvasContainer();
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") map.cooperativeGestures.disable();
+  });
+  window.addEventListener("blur", () => map.cooperativeGestures.enable());
+  const tripTitle = document.getElementById("tripTitle");
+  tripTitle?.setAttribute("contenteditable", "false");
+  tripTitle?.removeAttribute("role"); // a heading now, not a textbox
+}
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
@@ -268,14 +293,16 @@ map.addControl(
   "bottom-left"
 );
 
-// Geolocation button
-map.addControl(
-  new maplibregl.GeolocateControl({
-    positionOptions: { enableHighAccuracy: true },
-    trackUserLocation: true,
-  }),
-  "top-left"
-);
+// Geolocation button (not in the embed: it would ask a marketing-page visitor for their location)
+if (!EMBED) {
+  map.addControl(
+    new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+    }),
+    "top-left"
+  );
+}
 
 // Helper: create a single-button MapLibre custom control
 function makeMapControl(id, label, svgHtml) {
@@ -465,7 +492,7 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   const regionsReady = initRegionPicker();
   initTripsHome();
-  loadDemoTripFromURL(regionsReady); // dev only: ?demo=maze
+  loadDemoTripFromURL(regionsReady); // ?demo=spanish-bottom, ?embed=1 (always the demo), dev only ?demo=maze
 
   // -------------------------------------------------------------------
   // Click handlers for route drawing + trip features
