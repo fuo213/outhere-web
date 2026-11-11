@@ -17,6 +17,7 @@ import {
   handleMapDblClickForRoute,
   showGapCard,
   routingDebug,
+  elevationDebug,
 } from "./planning.js";
 import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
 import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
@@ -250,7 +251,7 @@ export const map = new maplibregl.Map({
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
-window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug };
+window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug, elevation: elevationDebug };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");

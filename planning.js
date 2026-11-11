@@ -23,6 +23,7 @@ import {
   metersPerPixel, lineLength, haversine,
 } from "./routing.js";
 import { deriveNameFromRuns } from "./route-names.js";
+import { profileForRoute } from "./elevation-dem.js";
 import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
@@ -947,15 +948,64 @@ export function sampleByDistance(coords, maxPoints = 100, minSpacingM = 25) {
   return out;
 }
 
+/** Metres for a few [lng, lat] points from Open-Meteo (one request, ≤100 points). */
+async function openMeteoMetres(points) {
+  const lats = points.map(c => c[1].toFixed(6)).join(",");
+  const lons = points.map(c => c[0].toFixed(6)).join(",");
+  const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data.elevation)) throw new Error("Unexpected response shape");
+  return data.elevation;
+}
+
 /**
- * Fetch elevation for a route's display coords from Open-Meteo, then patch
- * the feature in TripManager with elevation_profile (ft), elevation_gain_ft,
- * and elevation_loss_ft.
+ * Elevation for a route from our own USGS 3DEP data (elevation-dem.js), when
+ * the route has trail legs in a region whose graph ships an elevation
+ * sidecar. Open-Meteo fills only the stretches the sidecar can't answer
+ * (straight and manual legs). null → use Open-Meteo for the whole route.
+ * @returns {Promise<null | {profile_ft, gain_ft, loss_ft, spacing_m, source, coverage}>}
+ */
+async function demProfileForFeature(feature) {
+  const p = feature?.properties;
+  const regionId = String(p?.routing?.graph || "").split("/")[1];
+  if (!regionId || !p.segments?.some((s) => s.mode === "trail")) return null;
+  const info = graphInfoForRegion(findRegionById(regionId));
+  if (!info) return null;
+  try {
+    const graph = await loadGraph(info);
+    return await profileForRoute(feature, graph, { fill: openMeteoMetres });
+  } catch (err) {
+    console.warn("[elevation] 3DEP profile failed:", err.message);
+    return null;
+  }
+}
+
+/**
+ * Patch a route in TripManager with elevation_profile (ft),
+ * elevation_gain_ft and elevation_loss_ft: from our 3DEP data where the
+ * route follows trails in a region that has it (demProfileForFeature),
+ * otherwise from Open-Meteo at the route's display coords.
  *
  * @param {number[][]} coords - [lng, lat] display coords of the route
  * @param {string} featureId - the feature's _id property
  */
 export async function fetchElevationProfile(coords, featureId) {
+  const findFeature = () => TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
+  const dem = await demProfileForFeature(findFeature());
+  if (dem) {
+    const feature = findFeature();
+    if (!feature) return;
+    feature.properties.elevation_profile = dem.profile_ft;
+    feature.properties.elevation_gain_ft = dem.gain_ft;
+    feature.properties.elevation_loss_ft = dem.loss_ft;
+    feature.properties.elevation_source = dem.source;
+    elevationDebug.last = { source: dem.source, samples: dem.profile_ft.length, spacing_m: dem.spacing_m, coverage: dem.coverage };
+    TripManager.render();
+    TripManager.save();
+    return;
+  }
+
   const sampled = sampleByDistance(coords, 100);
   const lats = sampled.map(c => c[1].toFixed(6)).join(",");
   const lons = sampled.map(c => c[0].toFixed(6)).join(",");
@@ -988,6 +1038,8 @@ export async function fetchElevationProfile(coords, featureId) {
     feature.properties.elevation_profile = profileFt;
     feature.properties.elevation_gain_ft = Math.round(gain);
     feature.properties.elevation_loss_ft = Math.round(loss);
+    feature.properties.elevation_source = "open-meteo";
+    elevationDebug.last = { source: "open-meteo", samples: profileFt.length };
 
     TripManager.render();
     TripManager.save();
@@ -995,6 +1047,9 @@ export async function fetchElevationProfile(coords, featureId) {
     console.warn("[elevation] fetch failed:", err.message);
   }
 }
+
+/** Debug/verification handle: what the last elevation profile came from. */
+export const elevationDebug = { last: null };
 
 export function getTripDateRange() {
   if (!TripManager.currentTrip) return [];

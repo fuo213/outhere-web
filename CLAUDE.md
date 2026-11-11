@@ -42,6 +42,7 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `gpx-core.js` / `gpx-import.js` | GPX import. Core is pure (parse via DOMParser, 1.5 m simplification, recorded-elevation profile and gain/loss with a 3 m hysteresis, route feature with `segments: [{mode:"imported"}]` + `source`). Import wires the trip panel: Import GPX (multi-select), drop files on the panel, "Assign by date". Client-side only; recorded elevation beats Open-Meteo for imported routes |
 | `gpx-match.js` / `route-names.js` | Pure. `matchTrack(graph, coords)` map-matches a recording to the routing graph (resample ~17 m, nearest way within 25 m, sticky to the previous way, junction/GPS-gap noise merged) and returns name runs + OSM way ids + a loop flag. `route-names.js` holds the auto-name rules (`deriveNameFromRuns`, `deriveImportedName` with loop names, `isGenericRouteName`), shared by planning.js and GPX import. Test: `FLATBUSH_DIR=<dir with node_modules/flatbush> [ZION_GRAPH=<graph json>] node design/tools/test-gpx-match.mjs` |
 | `routing.js` | Trail routing: loads the region's `booot-trail-graph`, flatbush snapping (meters), A* |
+| `elevation-dem.js` | Pure: elevation for routed legs from our own USGS 3DEP data. Loads the graph's `booot-trail-elev` sidecar (`routing_graph.elevation` in the catalog) and `profileForRoute(route, graph, { fill })` returns `{ profile_ft, gain_ft, loss_ft, spacing_m, source }` or null |
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
 | `ui-motion.js` | Motion wiring: `confirm` shiver on exports (delegated clicks) |
@@ -64,7 +65,9 @@ Classic `<script>` tags in `index.html`, used as globals from the modules:
 
 Runtime network calls: tiles.booot.org (catalog + PMTiles range requests),
 MapLibre demotiles for glyphs/sprite, and the free Open-Meteo elevation API
-(`fetchElevationProfile` in `planning.js`). Keep new dependencies open and
+(`fetchElevationProfile` in `planning.js`), which is only the fallback: where
+a region's graph ships an elevation sidecar, trail legs get their profile
+from it with no API call (see "Elevation" below). Keep new dependencies open and
 free (see product principles in `../CLAUDE.md`); pin exact versions.
 
 ## Tiles, regions and style
@@ -161,6 +164,19 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   "Dominant loop". No graph or under half the track matched: left as is.
 - **Dev override (localhost only):** `?graph=zion:dev-graphs/zion.trails-graph.json`
   maps a region id to a local graph file (keep `dev-graphs/` out of git).
+- **Elevation** (`../SNAPPING_DESIGN.md` §5): order of trust is recorded GPX
+  `<ele>`, then our 3DEP sidecar, then Open-Meteo. `fetchElevationProfile`
+  tries `profileForRoute` first: routes with `trail` legs in a region whose
+  `routing_graph.elevation` is set get a profile sampled every 10 m from the
+  sidecar, smoothed over 100 m, with gain/loss by the same 3 m hysteresis as
+  recordings, stored at one sample per 25 m (up to 1,000). Straight and manual
+  legs on such a route are filled from Open-Meteo (one request);
+  `elevation_source` records which (`usgs-3dep`, `mixed`, `open-meteo`).
+  Anything else (no sidecar, no trail legs) takes the old Open-Meteo path.
+  With the `?graph=` dev override the sidecar is the file next to the graph
+  (`dev-graphs/zion.trails-elev.json`). `window.__outhere.elevation.last`
+  says what the last profile came from. Tests:
+  `FLATBUSH_DIR=<dir with node_modules/flatbush> node design/tools/test-elevation-dem.mjs`.
 - **Demo trip:** "See a demo trip" (trips home and the new-trip dialog) or `?demo=spanish-bottom` opens `design/fixtures/spanish-bottom-2026.trip.geojson` as a throwaway copy (`TripManager.openDemo`: never saved; banner with "Make it your own" / Close). `?demo=maze` stays dev only. Never commit `.gpx` files or `design/fixtures/local/` (git-ignored).
 - **Verify:** `node design/tools/shoot.mjs --scenes design/tools/scenes-routing.json`
   (add `--base https://<branch>.outhere-web.pages.dev` for a Pages preview)
