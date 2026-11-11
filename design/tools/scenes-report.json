@@ -92,6 +92,9 @@
     "wait": 600
    },
    {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
     "wait": 600
    },
    {
@@ -105,6 +108,12 @@
    },
    {
     "shot": "02-gap-dialog"
+   },
+   {
+    "eval": "(() => { if (!document.getElementById('reportSend')) document.querySelector('.report-actions .btn--quiet')?.click(); })()"
+   },
+   {
+    "wait": 300
    },
    {
     "eval": "document.getElementById('reportText')?.value"
@@ -210,9 +219,6 @@
     "eval": "window.__outhere.routing.idle().then(() => undefined)"
    },
    {
-    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
-   },
-   {
     "wait": 600
    },
    {
@@ -234,6 +240,9 @@
     "wait": 600
    },
    {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
     "wait": 600
    },
    {
@@ -241,6 +250,15 @@
    },
    {
     "wait": 2500
+   },
+   {
+    "eval": "document.querySelector('.report-actions .btn--quiet')?.textContent"
+   },
+   {
+    "eval": "document.querySelector('#reportSend') || document.querySelector('.report-actions .btn--quiet').click(); void 0"
+   },
+   {
+    "wait": 300
    },
    {
     "eval": "window.fetch = () => Promise.reject(new TypeError('Failed to fetch')); void 0"
