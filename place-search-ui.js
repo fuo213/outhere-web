@@ -29,7 +29,7 @@ let els = null;
 let sources = [];           // [{ regionId, regionName, info }] for the active region
 let sourceKey = "";
 let entries = null;         // merged decoded records, null until loaded
-let loadState = "idle";     // idle | loading | ready
+let loadState = "idle";     // idle | loading | ready | failed
 let loadToken = 0;
 let results = [];
 let activeIdx = -1;
@@ -82,8 +82,9 @@ async function ensureLoaded() {
   if (token !== loadToken) return; // region changed while loading
   const ok = lists.filter(Boolean);
   if (!ok.length) {
-    // Could not load (offline, 404): act as if there were no index; retry on next focus.
-    loadState = "idle";
+    // Could not load (offline, 404): degrade quietly (no panel, no "Loading…"
+    // forever, no refetch per keystroke); retry on next focus.
+    loadState = "failed";
     entries = null;
     render();
     return;
@@ -145,6 +146,12 @@ function render() {
   els.list.replaceChildren();
   els.empty.hidden = true;
   if (!query.trim()) {
+    results = [];
+    activeIdx = -1;
+    closePanel();
+    return;
+  }
+  if (loadState === "failed") {
     results = [];
     activeIdx = -1;
     closePanel();
@@ -294,6 +301,7 @@ export function initPlaceSearch() {
   els.input.addEventListener("input", onInput);
   els.input.addEventListener("keydown", onKeydown);
   els.input.addEventListener("focus", () => {
+    if (loadState === "failed") loadState = "idle";
     ensureLoaded();
     if (els.input.value.trim()) render();
     els.input.select();
