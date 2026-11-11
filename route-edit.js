@@ -263,7 +263,7 @@ function paintRedrawPoints() {
   map.addLayer({
     id: RP_LABEL, type: "symbol", source: RP_SRC,
     layout: { "text-field": "Redraw from here", "text-font": MAP_FONT, "text-size": 13, "text-anchor": "left", "text-offset": [1, 0], "text-allow-overlap": true, "text-ignore-placement": true },
-    paint: { "text-color": tok("--text-primary"), "text-halo-color": tok("--surface-raised"), "text-halo-width": 2 },
+    paint: { "text-color": tok("--text"), "text-halo-color": tok("--surface-raised"), "text-halo-width": 2 },
   });
 }
 
@@ -335,7 +335,7 @@ function onLineClick(e) {
   if (!isLineTrip(trip) || isDrawingRoute || isDeleteMode || isStopToolActive()) return;
   const pad = 4, bbox = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]];
   // A redraw point starts the redraw of its gap.
-  const rp = map.getLayer(RP_DOT) ? map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], { layers: [RP_DOT, RP_LABEL] })[0] : null;
+  const rp = map.getLayer(RP_DOT) ? map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], { layers: [RP_DOT, RP_LABEL].filter((id) => map.getLayer(id)) })[0] : null;
   if (rp) {
     const L = lineIndex(mainRoute(trip)).legs[rp.properties.leg];
     if (L) { closeLineMenu(); clearSelection(); startRedraw(L.startM); return; }
