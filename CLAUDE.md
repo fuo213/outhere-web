@@ -62,8 +62,8 @@ Classic `<script>` tags in `index.html`, used as globals from the modules:
 - Flatbush 4.4.0: ES-module import from jsDelivr in `routing.js` (spatial index for snapping)
 - Google Fonts: Playfair Display, DM Sans, IBM Plex Mono
 
-Runtime network calls: tiles.booot.org (catalog + PMTiles range requests),
-MapLibre demotiles for glyphs/sprite, and the free Open-Meteo elevation API
+Runtime network calls: tiles.booot.org (catalog, PMTiles range requests and
+map glyphs under `fonts/`), and the free Open-Meteo elevation API
 (`fetchElevationProfile` in `planning.js`). Keep new dependencies open and
 free (see product principles in `../CLAUDE.md`); pin exact versions.
 

@@ -209,3 +209,6 @@ export const LAYER_STYLE_DEFAULTS = {
     hasDataDrivenRadius: true,
   },
 };
+
+// The one font hosted at tiles.booot.org/fonts (see buildStyle in app.js).
+export const MAP_FONT = ["Open Sans Regular"];
