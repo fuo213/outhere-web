@@ -4,6 +4,7 @@
 import { done } from "./helpers.mjs";
 import "./line-model.test.mjs";
 import "./line-edit.test.mjs";
+import "./line-delete.test.mjs";
 import "./elevation.test.mjs";
 
 const { passed, failed } = await done();

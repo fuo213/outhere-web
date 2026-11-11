@@ -95,6 +95,96 @@ export function returnLink(segs) {
 }
 
 /**
+ * A time stop whose stretch of line is gone: it stays where it is, off route
+ * (no `attach`, no `pass`), and is reported so the UI can say so. Shared by
+ * redrawLine and deleteLine; stops are never deleted.
+ */
+function detachStop(f, coord, campNo) {
+  const p = f.properties;
+  delete p.attach;
+  delete p.pass;
+  f.geometry = { type: "Point", coordinates: round6(coord) };
+  return { id: p._id, kind: p.type, name: p.name || "", label: p.type === "camp" ? `Camp ${campNo.get(p._id) || ""}`.trim() : "A break" };
+}
+
+/**
+ * The section (stretch between two adjacent hidden anchors = one leg) under
+ * metre m of the line.
+ * @returns {null | { leg, startM, endM, count, where: "only"|"first"|"last"|"middle" }}
+ */
+export function sectionAt(route, m) {
+  if (!route) return null;
+  const ix = lineIndex(route);
+  const L = ix.legs[locateM(ix, Math.max(0, Math.min(ix.total, m))).leg];
+  if (!L) return null;
+  const n = ix.legs.length;
+  const where = n === 1 ? "only" : L.k === 0 ? "first" : L.k === n - 1 ? "last" : "middle";
+  return { leg: L.k, startM: L.startM, endM: L.endM, count: n, where };
+}
+
+/** Coordinates of a section, for highlighting. */
+export function sectionCoords(route, leg) {
+  const ix = lineIndex(route);
+  const L = ix.legs[leg];
+  return L ? ix.coords.slice(L.a, L.b + 1) : [];
+}
+
+/** The two anchors a section joins: [from, to] ([lon, lat]). */
+export function sectionEnds(route, leg) {
+  const c = sectionCoords(route, leg);
+  return c.length ? [c[0], c.at(-1)] : null;
+}
+
+/**
+ * Delete one section of the line. Mutates the trip. Built on redrawLine so
+ * stops, elevation reuse and a linked way back behave exactly as they do for
+ * "Redraw from here":
+ *   first / last  the line is trimmed to the neighbouring anchor
+ *   middle        the anchors either side are joined by `bridge` (a drawn
+ *                 leg { coords, mode, reason?, wayIds? }; the caller routes it,
+ *                 and a missing bridge is a straight segment)
+ *   only section  the whole line goes (deleteLine)
+ * @returns {null | (redrawLine result & { removed: "first"|"last"|"middle"|"line" })}
+ */
+export function deleteSection(trip, leg, { bridge = null } = {}) {
+  const route = mainRoute(trip);
+  const L = route ? lineIndex(route).legs[leg] : null;
+  if (!L) return null;
+  const sec = sectionAt(route, L.startM);
+  if (sec.leg !== leg) return null; // a zero-length leg can't be picked by metre
+  if (sec.where === "only") { const r = deleteLine(trip); return r && { ...r, removed: "line" }; }
+  let res;
+  if (sec.where === "last") res = redrawLine(trip, { cutM: sec.startM, newLegs: [] });
+  else if (sec.where === "first") res = redrawLine(trip, { cutM: 0, rejoinM: sec.endM, newLegs: [] });
+  else {
+    const ends = sectionEnds(route, leg);
+    res = redrawLine(trip, { cutM: sec.startM, rejoinM: sec.endM, newLegs: [bridge?.coords?.length >= 2 ? bridge : { coords: ends, mode: "manual" }] });
+  }
+  return res && { ...res, removed: sec.where };
+}
+
+/**
+ * Delete the whole line. Its time stops stay where they are as off-route
+ * stops (no `attach`); place stops and spurs are untouched. Mutates the trip.
+ * @returns {null | { lost: [{ id, kind, name, label }], removed: "line" }}
+ */
+export function deleteLine(trip) {
+  const route = mainRoute(trip);
+  if (!route) return null;
+  const rp = route.properties;
+  const ix = lineIndex(route);
+  const campNo = new Map(buildPlan(trip).camps.map((c) => [c.id, c.n]));
+  const lost = [];
+  for (const f of trip.features) {
+    const p = f.properties;
+    if (!isTimeStop(p) || !p.attach || (p.attach.route_id && p.attach.route_id !== rp._id)) continue;
+    lost.push(detachStop(f, resolveAttach(ix, p.attach)?.coord || f.geometry.coordinates, campNo));
+  }
+  trip.features = trip.features.filter((f) => f !== route);
+  return { lost, removed: "line", extending: false, rejoined: false, regenerated: false, returnNote: null, reattached: 0, reuse: null };
+}
+
+/**
  * Replace the line from cutM to the end (or to the rejoin point) with the
  * drawn legs. Mutates the trip.
  * @param {object} trip
@@ -111,7 +201,10 @@ export function returnLink(segs) {
  */
 export function redrawLine(trip, { cutM, rejoinM = null, newLegs, routing }) {
   const route = mainRoute(trip);
-  if (!route || !newLegs?.length) return null;
+  // newLegs may be empty for a trim: drop the line from cutM on (no rejoin), or
+  // up to rejoinM (cutM 0). Nothing to draw and nothing to cut is no edit.
+  if (!route || !Array.isArray(newLegs)) return null;
+  if (!newLegs.length && !(rejoinM != null || (cutM > 0.5 && cutM < lineIndex(route).total - 0.5))) return null;
   const rp = route.properties;
   const ix = lineIndex(route);
   const segs = rp.segments || [];
@@ -154,11 +247,12 @@ export function redrawLine(trip, { cutM, rejoinM = null, newLegs, routing }) {
   // 3. Rejoin: the rest of the old line from there on (when the way back
   //    will be regenerated, only the rest of the way out).
   if (rj) {
-    const last = recs.at(-1);
+    const last = recs.at(-1); // none when the start of the line is trimmed off
     const rjPt = sliceM(ix, rejoinM, rejoinM)[0];
-    if (hav(last.coords.at(-1), rjPt) > 0.5) last.coords.push(rjPt);
+    if (last && hav(last.coords.at(-1), rjPt) > 0.5) last.coords.push(rjPt);
     const L = ix.legs[rj.leg];
-    if (L.len - rj.offset_m > 0.5) { keep(rj.leg, rj.offset_m, L.len); recs.push(oldLeg(ix, segs, rj.leg, rejoinM, L.endM)); }
+    if (rj.offset_m < 0.5) { keep(rj.leg, 0, L.len); recs.push(oldLeg(ix, segs, rj.leg)); } // a joint: the whole leg, links intact
+    else if (L.len - rj.offset_m > 0.5) { keep(rj.leg, rj.offset_m, L.len); recs.push(oldLeg(ix, segs, rj.leg, rejoinM, L.endM)); }
     const stop = regenerate ? outN : ix.legs.length;
     for (let k = rj.leg + 1; k < stop; k++) { keep(k, 0, ix.legs[k].len); recs.push(oldLeg(ix, segs, k)); }
   }
@@ -222,10 +316,7 @@ export function redrawLine(trip, { cutM, rejoinM = null, newLegs, routing }) {
       p.attach = { route_id: rp._id, ...locateM(nix, pick.m) };
       reattached++;
     } else {
-      delete p.attach;
-      delete p.pass;
-      s.f.geometry = { type: "Point", coordinates: round6(s.coord) };
-      lost.push({ id: p._id, kind: p.type, name: p.name || "", label: p.type === "camp" ? `Camp ${campNo.get(p._id) || ""}`.trim() : "A break" });
+      lost.push(detachStop(s.f, s.coord, campNo));
     }
   }
   return { extending, rejoined: !!rj, regenerated: regenerate, returnNote, reattached, lost, reuse };
