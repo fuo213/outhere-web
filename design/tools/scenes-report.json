@@ -210,6 +210,9 @@
     "eval": "window.__outhere.routing.idle().then(() => undefined)"
    },
    {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
     "wait": 600
    },
    {
@@ -287,6 +290,46 @@
    },
    {
     "shot": "07-problem-dialog"
+   }
+  ]
+ },
+ {
+  "name": "report-existing-notes",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); o.map.jumpTo({ center: [-112.9875226,37.1999976], zoom: 16 }); await new Promise((r) => o.map.once('idle', r)); return 1; })()"
+   },
+   {
+    "click": "#reportBtn"
+   },
+   {
+    "mapClickLngLat": [
+     -112.9875226,
+     37.1999976
+    ]
+   },
+   {
+    "wait": 2500
+   },
+   {
+    "shot": "08-existing-notes"
+   },
+   {
+    "click": ".report-actions .btn--quiet"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "shot": "09-different-problem"
    }
   ]
  }

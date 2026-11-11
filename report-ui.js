@@ -35,6 +35,9 @@ function el(tag, props = {}, ...kids) {
   return node;
 }
 
+/** replaceChildren stringifies null, so drop empty slots. */
+const setBody = (body, ...nodes) => body.replaceChildren(...nodes.filter(Boolean));
+
 const extLink = (href, text, cls = "report-link") => el("a", { class: cls, href, target: "_blank", rel: "noopener", text });
 
 // ---------------------------------------------------------------------------
@@ -91,7 +94,7 @@ export function openReportDialog(spot) {
 }
 
 function renderChecking(body) {
-  body.replaceChildren(el("p", { class: "report-status", role: "status", text: "Checking for notes already filed here…" }));
+  setBody(body, el("p", { class: "report-status", role: "status", text: "Checking for notes already filed here…" }));
 }
 
 function sandboxBanner() {
@@ -100,7 +103,7 @@ function sandboxBanner() {
 }
 
 function renderReported(body, rep) {
-  body.replaceChildren(
+  setBody(body, 
     sandboxBanner(),
     el("p", { class: "report-lead" }, "Reported on ", el("span", { class: "report-num", text: formatReportDate(rep.date) }), ". Mappers can see it, and replies show up on the note."),
     el("div", { class: "report-actions" }, extLink(rep.url, "View the note on OpenStreetMap", "btn btn--primary"), el("button", { class: "btn btn--quiet", type: "button", onclick: close, text: "Close" })),
@@ -116,7 +119,7 @@ function renderExisting(body, spot, notes) {
         `Filed ${n.created}, ${n.comments} ${n.comments === 1 ? "comment" : "comments"} · `,
         extLink(noteWebUrl(OSM_API_BASE, n.id), "Open note")));
   }));
-  body.replaceChildren(
+  setBody(body, 
     sandboxBanner(),
     el("p", { class: "report-lead", text: notes.length === 1 ? "Someone already filed a note near here." : `${notes.length} open notes are already filed near here.` }),
     el("p", { class: "report-sub", text: "If one of these is your problem, add a comment there instead of filing a second note." }),
@@ -131,7 +134,7 @@ function renderForm(body, spot, { checkFailed = false } = {}) {
   let probKind = "name";
   const initial = () => (isGap ? gapNoteText(spot.gap || {}) : problemNoteText({ kind: probKind, nearby: spot.nearby }));
 
-  const ta = el("textarea", { class: "report-text input", id: "reportText", rows: "9", "aria-describedby": "reportPublic" });
+  const ta = el("textarea", { class: "report-text input", id: "reportText", rows: "12", "aria-describedby": "reportPublic" });
   ta.value = initial();
   const status = el("p", { class: "report-error", role: "alert", hidden: true });
   const sendBtn = el("button", { class: "btn btn--primary", type: "button", id: "reportSend", text: "Send note to OpenStreetMap" });
@@ -169,7 +172,7 @@ function renderForm(body, spot, { checkFailed = false } = {}) {
   });
   function showError(msg) { status.textContent = msg; status.hidden = false; }
 
-  body.replaceChildren(
+  setBody(body, 
     sandboxBanner(),
     el("p", { class: "report-lead", text: isGap ? "This will tell OpenStreetMap mappers about the gap. Edit the text first if you like." : "Describe what you saw. A volunteer mapper will read it." }),
     checkFailed ? el("p", { class: "report-sub", text: "Couldn’t check for notes already filed here, so it may be a duplicate." }) : null,
@@ -180,13 +183,14 @@ function renderForm(body, spot, { checkFailed = false } = {}) {
     status,
     el("div", { class: "report-actions" }, sendBtn, cancelBtn, el("span", { class: "report-spacer" }), editLink),
   );
-  ta.focus();
+  ta.focus({ preventScroll: true });
   const end = isGap ? ta.value.length : ta.value.indexOf("What I saw: ") + "What I saw: ".length;
   if (!isGap) ta.setSelectionRange(end, end);
+  ta.scrollTop = isGap ? 0 : ta.scrollTop;
 }
 
 function renderSent(body, note) {
-  body.replaceChildren(
+  setBody(body, 
     sandboxBanner(),
     el("p", { class: "report-lead", text: "Sent. Thank you for helping fix the map." }),
     el("p", { class: "report-sub", text: "Mappers will see it. Fixes show up in the map data after the next monthly rebuild." }),
