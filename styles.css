@@ -2517,6 +2517,8 @@ body.is-line-trip .add-day-row { display: none; }
   cursor: pointer;
 }
 .line-menu__item:hover { background: var(--surface-sunken); }
+.line-menu__sep { margin: var(--space-1) 0; border: 0; border-top: 1px solid var(--border); }
+.line-menu__item--danger { color: var(--danger); }
 .line-menu__item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .seg__btn,

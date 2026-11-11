@@ -8,10 +8,10 @@
 
 import { map } from "./app.js"; // circular; runtime only
 import { TripManager, escapeHTML } from "./trip-panel.js"; // circular; runtime only
-import { startRouteDrawing, isDrawingRoute, isDeleteMode, fetchElevationProfile } from "./planning.js"; // circular; runtime only
+import { startRouteDrawing, isDrawingRoute, isDeleteMode, fetchElevationProfile, routeBetween } from "./planning.js"; // circular; runtime only
 import { isStopToolActive, addStopAt } from "./stops.js"; // circular; runtime only
 import { isLineTrip, mainRoute, lineIndex, sliceM, passesNear, nearestOnLine, hav, MI, buildPlan } from "./line-model.js";
-import { redrawLine, appendReturn } from "./line-edit.js";
+import { redrawLine, appendReturn, sectionAt, sectionCoords, sectionEnds, deleteSection, deleteLine } from "./line-edit.js";
 
 /** "Camp 2" for camps a redraw took off the route (session only; the flag
  *  in the itinerary falls back to the camp's name or "A camp"). */
@@ -43,6 +43,7 @@ export function undo() {
   const { label, json } = undoStack.pop();
   TripManager.currentTrip = JSON.parse(json);
   closeLineMenu();
+  clearSelection();
   TripManager.render();
   TripManager.save();
   // A snapshot taken before its elevation arrived has none: ask again.
@@ -154,6 +155,87 @@ export function startExtend() {
 // The line menu: click the line → Redraw from here / Return the same way
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Selection: one section (between two adjacent hidden anchors) or the whole line
+// ---------------------------------------------------------------------------
+
+let selection = null; // null | { leg } | { whole: true }
+const SEL_SRC = "line-selection", SEL_CASING = "line-selection-casing", SEL_LINE = "line-selection-line";
+
+function selectionCoords() {
+  const route = isLineTrip(TripManager.currentTrip) ? mainRoute(TripManager.currentTrip) : null;
+  if (!route || !selection) return null;
+  // The selection belongs to one line: if the geometry was replaced (an edit,
+  // another trip) it is stale and goes.
+  if (selection.ref !== route.geometry.coordinates) { selection = null; return null; }
+  return selection.whole ? route.geometry.coordinates : sectionCoords(route, selection.leg);
+}
+
+/** Draw (or clear) the highlight. Runtime layers vanish with setStyle, so this re-runs on styledata. */
+function paintSelection() {
+  if (!map.getStyle()) return;
+  const coords = selectionCoords();
+  const data = { type: "FeatureCollection", features: coords && coords.length >= 2 ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } }] : [] };
+  const src = map.getSource(SEL_SRC);
+  if (src) { src.setData(data); return; }
+  if (!data.features.length) return;
+  const cs = getComputedStyle(document.documentElement);
+  const accent = cs.getPropertyValue("--accent").trim(), paper = cs.getPropertyValue("--surface-raised").trim();
+  map.addSource(SEL_SRC, { type: "geojson", data });
+  // Above the trip line, below the glyphs and labels.
+  const before = ["trip-chart-hit"].find((id) => map.getLayer(id));
+  map.addLayer({ id: SEL_CASING, type: "line", source: SEL_SRC, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": paper, "line-width": 10, "line-opacity": 0.9 } }, before);
+  map.addLayer({ id: SEL_LINE, type: "line", source: SEL_SRC, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": accent, "line-width": 5 } }, before);
+}
+
+function setSelection(sel) {
+  const route = mainRoute(TripManager.currentTrip);
+  selection = sel && route ? { ...sel, ref: route.geometry.coordinates } : null;
+  paintSelection();
+}
+export function clearSelection() { if (selection) { selection = null; paintSelection(); } }
+
+/** Delete what is selected (Delete / Backspace, or the menu). Undoable. */
+export async function deleteSelection() {
+  const trip = TripManager.currentTrip;
+  const sel = selection;
+  const route = isLineTrip(trip) ? mainRoute(trip) : null;
+  if (!sel || !route || sel.ref !== route.geometry.coordinates) { clearSelection(); return; }
+  closeLineMenu();
+  if (sel.whole) { commitDelete("delete the line", () => deleteLine(trip)); clearSelection(); return; }
+  const sec = sectionAt(route, lineIndex(route).legs[sel.leg]?.startM ?? -1);
+  if (!sec || sec.leg !== sel.leg) { clearSelection(); return; }
+  // A middle section is rejoined by routing between its two anchors, the way the draw tool does.
+  let bridge = null;
+  if (sec.where === "middle") {
+    const [a, b] = sectionEnds(route, sel.leg);
+    bridge = await routeBetween(a, b);
+    if (TripManager.currentTrip !== trip || mainRoute(trip) !== route || selection !== sel) return; // the trip changed while routing
+  }
+  clearSelection();
+  commitDelete(sec.where === "middle" ? "delete a section" : sec.where === "only" ? "delete the line" : "trim the line", () => deleteSection(trip, sel.leg, { bridge }));
+}
+
+function commitDelete(label, run) {
+  const trip = TripManager.currentTrip;
+  const route = mainRoute(trip);
+  const id = route?.properties._id;
+  snapshot(label);
+  const res = run();
+  if (!res) { undoStack.pop(); return; }
+  for (const l of res.lost) lostLabels.set(l.id, l.label);
+  TripManager.render();
+  TripManager.save();
+  if (res.removed !== "line") fetchElevationProfile(route.geometry.coordinates, id, { reuse: res.reuse });
+  const parts = [{ line: "Deleted the line", first: "Trimmed the start of the line", last: "Trimmed the end of the line", middle: "Deleted a section and joined the line back up" }[res.removed]];
+  if (res.lost.length) {
+    const names = res.lost.map((l) => l.name || l.label);
+    parts.push(`${names.join(", ")} ${names.length === 1 ? "is" : "are"} off your route now`);
+  }
+  if (res.reattached) parts.push(`${res.reattached} stop${res.reattached === 1 ? "" : "s"} moved onto the line`);
+  showToast(parts.join(". "), { undoable: true, warn: res.lost.length > 0, ms: parts.length > 1 ? 9000 : 6000 });
+}
+
 let linePopup = null;
 export function closeLineMenu() { linePopup?.remove(); linePopup = null; }
 
@@ -165,7 +247,7 @@ function onLineClick(e) {
   const pointLayers = ["trip-chart-points", "trip-chart-points-minor", "trip-chart-days", "trip-gap-pins"].filter((id) => map.getLayer(id));
   if (map.queryRenderedFeatures(bbox, { layers: pointLayers }).length) return;
   const hit = map.queryRenderedFeatures(bbox, { layers: ["trip-chart-hit"].filter((id) => map.getLayer(id)) })[0];
-  if (!hit) return;
+  if (!hit) { clearSelection(); return; } // clicking elsewhere clears the selection
   const route = mainRoute(trip);
   const ix = lineIndex(route);
   const pt = [e.lngLat.lng, e.lngLat.lat];
@@ -175,6 +257,10 @@ function onLineClick(e) {
   const passes = passesNear(ix, pt, 60);
   const inDay = day ? passes.find((p) => p.m >= day.fromM - 1 && p.m <= day.toM + 1) : null;
   const at = inDay || passes[0] || nearestOnLine(ix, pt);
+  // Clicking the line selects the section under the cursor (unless the whole
+  // line is selected, which the menu then offers to delete).
+  if (selection?.whole && selectionCoords()) setSelection({ whole: true });
+  else { const sec = sectionAt(route, at.m); setSelection(sec ? { leg: sec.leg } : null); }
   openLineMenu(at.m, at.coord, ix, route);
 }
 
@@ -189,6 +275,12 @@ function openLineMenu(m, coord, ix, route) {
       <button type="button" class="line-menu__item" data-act="camp" role="menuitem">Add a camp here</button>
       <button type="button" class="line-menu__item" data-act="redraw" role="menuitem">Redraw from here</button>
       ${back ? `<button type="button" class="line-menu__item" data-act="back" role="menuitem">Return the same way</button>` : ""}
+      <hr class="line-menu__sep">
+      ${selection?.whole
+        ? `<button type="button" class="line-menu__item line-menu__item--danger" data-act="delete-line" role="menuitem">Delete whole line</button>
+           <button type="button" class="line-menu__item" data-act="select-section" role="menuitem">Select this section instead</button>`
+        : `<button type="button" class="line-menu__item line-menu__item--danger" data-act="delete-section" role="menuitem">Delete this section</button>
+           <button type="button" class="line-menu__item" data-act="select-line" role="menuitem">Select whole line</button>`}
     </div>`;
   linePopup = new maplibregl.Popup({ className: "line-popup", closeButton: false, closeOnClick: true, maxWidth: "220px", offset: 8 })
     .setLngLat(coord).setHTML(html).addTo(map);
@@ -199,6 +291,10 @@ function openLineMenu(m, coord, ix, route) {
     if (act === "redraw") startRedraw(m);
     else if (act === "back") returnSameWay();
     else if (act === "camp") addStopAt("camp", coord, { atM: m });
+    else if (act === "delete-section") deleteSelection();
+    else if (act === "delete-line") { setSelection({ whole: true }); deleteSelection(); }
+    else if (act === "select-line") setSelection({ whole: true });
+    else if (act === "select-section") { const sec = sectionAt(route, m); setSelection(sec ? { leg: sec.leg } : null); }
   });
 }
 
@@ -207,10 +303,17 @@ export function initRouteEdit() {
   if (inited) return;
   inited = true;
   map.on("click", onLineClick);
+  map.on("styledata", () => { if (selection && !map.getSource(SEL_SRC)) paintSelection(); });
   document.addEventListener("keydown", (e) => {
     if (isDrawingRoute) return; // the drawing has its own undo
     const t = e.target;
     if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable) return;
+    if (selection && !isDeleteMode && !isStopToolActive() && (e.key === "Delete" || e.key === "Backspace") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      deleteSelection();
+      return;
+    }
+    if (selection && e.key === "Escape") { closeLineMenu(); clearSelection(); return; }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
       if (undo()) e.preventDefault();
     }

@@ -194,6 +194,37 @@ function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, previe
   return { from, to, kind, mode: "trail", coords: r.coords, length_m: r.length_m, wayIds: r.wayIds, runs: r.runs };
 }
 
+/**
+ * Route between two existing anchors with the draw tool's rules (graph of the
+ * region, snap to the trail, A*), outside a drawing session: used to rejoin the
+ * line when a middle section is deleted. Anchors are already on the trail, so
+ * a small snap radius is enough. Where routing is unavailable (no graph,
+ * outside it, no trail near an anchor) the leg is a straight segment, marked
+ * the same way the draw tool marks it.
+ * @returns {Promise<{coords, mode, reason?, wayIds?}>} a leg for redrawLine
+ */
+export async function routeBetween(a, b) {
+  const straight = (mode, reason) => ({ coords: [a, b], mode, ...(reason ? { reason } : {}), wayIds: [] });
+  try {
+    const pick = pickGraphRegion(getActiveRegion(), getCatalogRegions(), b);
+    if (!pick?.info) return straight("straight", "no_graph");
+    const g = peekGraph(pick.info) || await loadGraph(pick.info);
+    if (!g.contains(...a) || !g.contains(...b)) return straight("straight", "cross_region");
+    const A = g.snap(a[0], a[1], 30), B = g.snap(b[0], b[1], 30);
+    if (!A || !B) return straight("manual");
+    const r = g.route(A, B, { budgetMs: 2000 });
+    if (!r || r.aborted) return straight("straight", "no_path");
+    // Pin both ends to the anchors exactly so the line stays continuous.
+    const coords = r.coords.slice();
+    if (haversine(...coords[0], ...a) > 0.5) coords.unshift(a);
+    if (haversine(...coords.at(-1), ...b) > 0.5) coords.push(b);
+    return { coords, mode: "trail", wayIds: r.wayIds };
+  } catch (err) {
+    console.warn("[routing] route between anchors failed:", err.message);
+    return straight("straight", "no_graph");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Drawing lifecycle
 // ---------------------------------------------------------------------------
