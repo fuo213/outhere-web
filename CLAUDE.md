@@ -165,6 +165,25 @@ separate Point features:
   return leg mirrors an outbound leg), any redraw of the way out, with or
   without a rejoin, regenerates the whole way back; a way back edited by
   hand is never regenerated and the toast says so.
+- **Delete on the line** (route-edit.js selection + line-edit.js
+  `sectionAt` / `deleteSection` / `deleteLine`, tested in
+  `tests/line-delete.test.mjs`). Clicking the line selects the section under
+  the cursor (the leg between two adjacent hidden anchors; rust highlight) and
+  opens the line menu. Delete / Backspace (not in an input, not while drawing,
+  the stop tool or delete mode) or the menu's "Delete this section" removes it:
+  first/last section = the line is trimmed to the neighbouring anchor; middle
+  section = the two anchors are rejoined by `routeBetween` (planning.js: the
+  draw tool's graph + A*, straight where routing is unavailable or an anchor
+  was off-trail). All of it goes through `redrawLine` (it accepts empty
+  `newLegs` for a trim), so stops, elevation reuse and a linked way back behave
+  as for "Redraw from here": a stop whose stretch is gone re-attaches if the
+  new line passes within 120 m, else goes off route (never deleted). "Select
+  whole line" in the menu highlights everything; Delete or "Delete whole line"
+  removes the line and keeps its camps/breaks as off-route stops (`deleteLine`).
+  Esc or a click elsewhere clears the selection. Every delete is one `snapshot`
+  (Cmd/Ctrl-Z or the toast). On a linked out-and-back, deleting an outbound
+  section rebuilds the way back; deleting the last outbound section keeps the
+  way back and bridges to the turnaround.
 - **Elevation** is one profile on the route (feet, evenly spaced);
   `displayTrip` slices it per day at the same density. Source, in order:
   the 3DEP sidecar (25 m samples, `elevation_gain_ft` / `_loss_ft` as
