@@ -1559,6 +1559,12 @@ function dayhikePair(feature) {
   return [feature];
 }
 
+/** Frame a feature by _id (a stop together with its day hikes, and the reverse). Used by the 1.2 day story. */
+export function frameFeature(id) {
+  const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === id) ?? -1;
+  if (idx !== -1) zoomToFeature(idx);
+}
+
 /** Explicit selection from the panel: always frame it beside the panel. */
 function zoomToFeature(index) {
   const feature = TripManager.currentTrip?.features[index];

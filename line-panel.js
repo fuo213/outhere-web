@@ -6,7 +6,7 @@
  * stop rows), so the sticky profile and the active-day signal work unchanged.
  */
 
-import { escapeHTML, buildDayNotes, isEditingNotes, editDayNotes, showDayOnMap, isDayOnMap } from "./trip-panel.js"; // circular; runtime only
+import { escapeHTML, buildDayNotes, isEditingNotes, editDayNotes, showDayOnMap, isDayOnMap, frameFeature } from "./trip-panel.js"; // circular; runtime only
 import { openStopMenu, glyphForKind } from "./stops.js"; // circular; runtime only
 import { returnSameWay, offRouteLabel } from "./route-edit.js"; // circular; runtime only
 import { ruleSVG } from "./itinerary-profile.js";
@@ -128,13 +128,23 @@ function buildSection(d, trip, plan, mday, { last, loop }) {
     else if (act === "map") showDayOnMap(day.id);
     else if (act === "return") returnSameWay();
     const stop = e.target.closest("[data-stop-id]");
-    if (stop) openStopMenu(stop.dataset.stopId, { fly: true });
+    if (stop) selectRow(stop);
   });
   section.addEventListener("keydown", (e) => {
     const stop = e.target.closest("[data-stop-id]");
-    if (stop && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openStopMenu(stop.dataset.stopId, { fly: true }); }
+    if (stop && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectRow(stop); }
   });
   return section;
+}
+
+/**
+ * A row was chosen: frame it beside the panel, then open the stop's menu. A
+ * day-hike row frames the spur with the stop it leaves from (`from_stop`),
+ * and a stop is framed with its day hikes.
+ */
+function selectRow(row) {
+  frameFeature(row.dataset.spurId || row.dataset.stopId);
+  openStopMenu(row.dataset.stopId);
 }
 
 function stopRow(s, plan, d) {
@@ -178,6 +188,7 @@ function spurRow(sp) {
   const row = document.createElement("div");
   row.className = "stop-row";
   row.dataset.type = "dayhike";
+  row.dataset.spurId = sp.id;
   if (sp.fromStop) { row.dataset.stopId = sp.fromStop; row.tabIndex = 0; row.setAttribute("role", "button"); }
   row.innerHTML = `
     ${glyphIcon("dayhike", { seed: seedOf(sp.id), size: 24 })}

@@ -165,14 +165,16 @@ separate Point features:
   return leg mirrors an outbound leg), any redraw of the way out, with or
   without a rejoin, regenerates the whole way back; a way back edited by
   hand is never regenerated and the toast says so.
-- **Elevation** is one profile on the route (feet, evenly spaced, ~100 m);
-  `displayTrip` slices it per day at the same density. Gain/loss
-  (`gainLoss` in elevation.js: whole route, each day's slice, a mirrored
-  return) uses the 3 m hysteresis GPX imports use (one shared function).
-  It still over-counts in cliffy terrain: Open-Meteo's DEM error along a
-  canyon trail is tens of metres, far above any sensible threshold (West
-  Rim reads about +3,400 ft against a published ~1,200). Fixing that needs
-  a better DEM (USGS 3DEP), not a different sum.
+- **Elevation** is one profile on the route (feet, evenly spaced);
+  `displayTrip` slices it per day at the same density. Source, in order:
+  the 3DEP sidecar (25 m samples, `elevation_gain_ft` / `_loss_ft` as
+  `profileForRoute` counted them), else Open-Meteo (`buildProfile`, ~100 m
+  samples, `gainLoss` with the shared 3 m hysteresis; edits reuse the old
+  profile and a linked out-and-back is fetched one way and mirrored). Day
+  figures are always `gainLoss` of the day's slice. Open-Meteo's DEM
+  over-counts badly in cliffy terrain (West Rim: about +3,400 ft against
+  +1,262 from 3DEP and a published ~1,200), so its numbers are a stopgap
+  until the region's sidecar is deployed.
 - A failed elevation fetch writes nothing and fires `booot:elevation-failed`;
   the profile caption then offers "Try again" (`retryElevation`), which
   fetches only what is missing (after an edit: the drawn legs).
@@ -229,7 +231,9 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   recordings, stored at one sample per 25 m (up to 1,000). Straight and manual
   legs on such a route are filled from Open-Meteo (one request);
   `elevation_source` records which (`usgs-3dep`, `mixed`, `open-meteo`).
-  Anything else (no sidecar, no trail legs) takes the old Open-Meteo path.
+  Anything else (no sidecar, no trail legs, a failed fill) takes the
+  Open-Meteo path in `elevation.js`; the sidecar's fill uses the same
+  chunked, retried `fetchElevations`.
   With the `?graph=` dev override the sidecar is the file next to the graph
   (`dev-graphs/zion.trails-elev.json`). `window.__outhere.elevation.last`
   says what the last profile came from. Tests:
