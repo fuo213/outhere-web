@@ -209,7 +209,8 @@ export async function deleteSelection() {
   let bridge = null;
   if (sec.where === "middle") {
     const [a, b] = sectionEnds(route, sel.leg);
-    bridge = await routeBetween(a, b);
+    const vs = route.properties.vertex_snapped || [];
+    bridge = await routeBetween(a, b, { aSnapped: vs[sel.leg] !== false, bSnapped: vs[sel.leg + 1] !== false });
     if (TripManager.currentTrip !== trip || mainRoute(trip) !== route || selection !== sel) return; // the trip changed while routing
   }
   clearSelection();

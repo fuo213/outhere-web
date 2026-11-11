@@ -203,8 +203,10 @@ function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, previe
  * the same way the draw tool marks it.
  * @returns {Promise<{coords, mode, reason?, wayIds?}>} a leg for redrawLine
  */
-export async function routeBetween(a, b) {
+export async function routeBetween(a, b, { aSnapped = true, bSnapped = true } = {}) {
   const straight = (mode, reason) => ({ coords: [a, b], mode, ...(reason ? { reason } : {}), wayIds: [] });
+  // An anchor that was placed off every trail makes a deliberate off-trail leg.
+  if (!aSnapped || !bSnapped) return straight("manual");
   try {
     const pick = pickGraphRegion(getActiveRegion(), getCatalogRegions(), b);
     if (!pick?.info) return straight("straight", "no_graph");
