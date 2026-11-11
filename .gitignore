@@ -46,3 +46,4 @@ design/fixtures/local/
 # Local dev data for ?graph= / ?places= overrides
 dev-graphs/
 dev-places/
+dev-tiles/

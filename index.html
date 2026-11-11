@@ -68,6 +68,28 @@
   <!-- Map container -->
   <div id="map"></div>
 
+  <!-- Place search: shown only when the active region has a place index (place-search-ui.js) -->
+  <div class="place-search" id="placeSearch" hidden>
+    <div class="place-search-field">
+      <svg class="place-search-icon" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <circle cx="8.5" cy="8.5" r="5.5"/>
+        <line x1="12.7" y1="12.7" x2="17" y2="17"/>
+      </svg>
+      <input class="place-search-input" id="placeSearchInput" type="text" role="combobox"
+             aria-expanded="false" aria-controls="placeSearchList" aria-autocomplete="list"
+             aria-label="Search places" placeholder="Search trails, peaks, places"
+             autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+      <kbd class="place-search-key" id="placeSearchKey" aria-hidden="true">/</kbd>
+      <button class="place-search-clear" id="placeSearchClear" type="button" aria-label="Clear search" hidden>
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" aria-hidden="true"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5"/><line x1="8.5" y1="1.5" x2="1.5" y2="8.5"/></svg>
+      </button>
+    </div>
+    <div class="place-search-panel" id="placeSearchPanel" hidden>
+      <ul class="place-search-list" id="placeSearchList" role="listbox" aria-label="Matching places"></ul>
+      <p class="place-search-empty" id="placeSearchEmpty" role="status" hidden></p>
+    </div>
+  </div>
+
   <!-- Region switcher (top-right) — populated by region-picker.js -->
   <div class="region-switcher" id="regionSwitcher">
     <button class="region-btn" id="regionBtn" type="button" aria-haspopup="listbox" aria-expanded="false" title="Switch map region">

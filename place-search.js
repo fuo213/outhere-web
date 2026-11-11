@@ -165,8 +165,8 @@ function tierOf(norm, query, tokens) {
 }
 
 /**
- * Search records. Ranking: exact > prefix > word-start > substring, then
- * park-like kinds before trails and creeks, then shorter names, then A-Z.
+ * Search records. Ranking: exact > prefix > word-start > substring; within the first two
+ * park-like kinds come first, within the last two the shorter name; then A-Z.
  * @param {Array} entries decoded records
  * @param {string} rawQuery what the user typed
  * @param {{limit?: number}} opts
@@ -181,10 +181,14 @@ export function search(entries, rawQuery, { limit = 8 } = {}) {
     const tier = tierOf(e.norm, query, tokens);
     if (tier >= 0) hits.push({ e, tier });
   }
+  // Exact and prefix matches: park-like kinds first ("Zion" -> the park, then
+  // Zion Lodge). Word-start and substring matches: the tighter name first
+  // ("creek" -> Taylor Creek before Deep Creek Wilderness).
+  const kindOf = (h) => KIND_PRIORITY[h.e.kind] ?? 99;
+  const lenOf = (h) => h.e.norm.length;
   hits.sort((a, b) =>
     a.tier - b.tier
-    || (KIND_PRIORITY[a.e.kind] ?? 99) - (KIND_PRIORITY[b.e.kind] ?? 99)
-    || a.e.norm.length - b.e.norm.length
+    || (a.tier <= 1 ? kindOf(a) - kindOf(b) || lenOf(a) - lenOf(b) : lenOf(a) - lenOf(b) || kindOf(a) - kindOf(b))
     || a.e.norm.localeCompare(b.e.norm)
     || a.e.lat - b.e.lat);
   return hits.slice(0, limit).map((h) => h.e);

@@ -39,6 +39,17 @@ change tokens or principles. Propose, then log.
 
 ## Trying
 
+- **2026-11-11 · Place search at top centre + area labels** (awaiting
+  Vincent's verdict). One paper input, `/` to focus, a flat popover list
+  (name, then kind / miles or feet / containing area in the second line so
+  duplicates like "Dry Creek" can be told apart), rust ring and name tag left
+  on the chosen place until the next touch of the map. Area labels are
+  upper-case, wide-tracked, muted earth tones (park sage, district olive,
+  landform and locality warm grey) that fade out toward trail zoom, below POI
+  labels. New map colours live in `buildStyle()` with the pipeline style, not
+  in tokens. Not built: a recent-searches list, result categories, a "Fix it
+  in OSM" link on missing names.
+
 - **2026-11-08 · Itinerary explorations: continuous day story + hand-drawn
   charts** (awaiting Vincent's pick). `design/explorations/itinerary/`
   (A sketchbook profile, B trip chart, C field journal; README has pitches
