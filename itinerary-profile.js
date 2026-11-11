@@ -9,8 +9,9 @@
  * Pure: no DOM, no map. The panel controller (itinerary-panel.js) owns the
  * sticky header, the active day and the shared `booot:active-day` signal.
  *
- * Elevation comes from each route's `elevation_profile` (feet, <=100 samples
- * spaced evenly by distance, see sampleByDistance in planning.js), so sample k
+ * Elevation comes from each route's `elevation_profile` (feet, samples spaced
+ * evenly by distance: about one per 100 m, up to 800 per fetched route and
+ * twice that after "Return the same way"; see elevation.js), so sample k
  * of n sits at k/(n-1) of the route's length. Routes whose profile hasn't
  * arrived yet are drawn as a pencil "skeleton" in the same hand.
  */

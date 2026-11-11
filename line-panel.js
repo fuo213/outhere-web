@@ -23,6 +23,16 @@ function formatDateLabel(iso) {
   return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
+/**
+ * What being off the route means for a time stop, per kind: a camp's night
+ * stops counting (its day disappears); a break is still listed, at the
+ * nearest mile.
+ */
+export function offRouteConsequence(kind, n = 1) {
+  if (kind === "camp") return n === 1 ? "Its night doesn\u2019t count until it\u2019s back on the line." : "Their nights don\u2019t count until they\u2019re back on the line.";
+  return n === 1 ? "It\u2019s listed at the nearest mile until you move it back onto the line." : "They\u2019re listed at the nearest mile until you move them back onto the line.";
+}
+
 /** Label of a day end: "Start", "Camp 2", "Finish". */
 const endLabel = (e) => e.short || e.label;
 
@@ -38,10 +48,12 @@ export function renderLineDays(container, trip, plan, model) {
     container.insertAdjacentHTML("beforeend", `<p class="line-empty">Draw your line on the map. Then drop camps on it: the days build themselves.</p>`);
     return [];
   }
-  const offCamps = plan.offRoute.filter((o) => o.kind === "camp");
-  if (offCamps.length) {
-    const names = offCamps.map((o) => o.f.properties.name || offRouteLabel(o.id) || "A camp");
-    container.insertAdjacentHTML("beforeend", `<p class="line-flag" role="status">${escapeHTML(names.join(", "))} ${names.length === 1 ? "is" : "are"} off your route now. ${names.length === 1 ? "Its night doesn't" : "Their nights don't"} count until ${names.length === 1 ? "it's" : "they're"} back on the line.</p>`);
+  // Stops an edit pushed off the line: said once at the top, worded per kind.
+  for (const kind of ["camp", "break"]) {
+    const off = plan.offRoute.filter((o) => o.kind === kind);
+    if (!off.length) continue;
+    const names = off.map((o) => o.f.properties.name || offRouteLabel(o.id) || (kind === "camp" ? "A camp" : "A break"));
+    container.insertAdjacentHTML("beforeend", `<p class="line-flag" role="status">${escapeHTML(names.join(", "))} ${names.length === 1 ? "is" : "are"} off your route now. ${escapeHTML(offRouteConsequence(kind, names.length))}</p>`);
   }
   const loop = hav(plan.ix.coords[0], plan.ix.coords.at(-1)) < 60;
   const sections = plan.days.map((d) => buildSection(d, trip, plan, model.days?.[d.i], { last: d.i === plan.days.length - 1, loop }));
@@ -171,6 +183,7 @@ function spurRow(sp) {
     ${glyphIcon("dayhike", { seed: seedOf(sp.id), size: 24 })}
     <span class="stop-name is-dayhike">${escapeHTML(sp.f.properties.name || "Day hike")}</span>
     <span class="stop-at">${sp.rt.toFixed(1)} mi rt</span>
-    <span></span>`;
+    <span></span>
+    ${sp.f.properties.notes ? `<span class="stop-note">${escapeHTML(sp.f.properties.notes)}</span>` : ""}`;
   return row;
 }

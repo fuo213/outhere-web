@@ -34,10 +34,10 @@ import { confirm as confirmMotion } from "./design/motion.js";
 import { TripsStore, hideTripsHome, showTripsHome } from "./trips-home.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
 import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
-import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices } from "./line-model.js";
+import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices, canConvertToLine } from "./line-model.js";
 import { renderLineDays } from "./line-panel.js"; // circular; only used at runtime
 import { initStops, closeStopMenu } from "./stops.js"; // circular; only used at runtime
-import { initRouteEdit, closeLineMenu } from "./route-edit.js"; // circular; only used at runtime
+import { initRouteEdit, closeLineMenu, snapshot, showToast } from "./route-edit.js"; // circular; only used at runtime
 
 // ---------------------------------------------------------------------------
 // Trip state manager
@@ -486,14 +486,8 @@ export function migrateTrip(trip) {
     trip.properties.readme = trip.properties.notes;
   }
 
-  // 1.1 → 1.2 (line + stops) when it's cheap: an empty trip, or one routed
-  // line whose typed vertices become attached stops. Others stay 1.1.
-  if (!isLineTrip(trip)) {
-    if (!trip.features.length && !(trip.days || []).some((d) => d.notes?.trim())) {
-      trip.properties.schema_version = LINE_SCHEMA_VERSION;
-      trip.days = [];
-    } else convertTypedVertices(trip);
-  }
+  // 1.0 / 1.1 trips are never converted to 1.2 (line + stops) on open: they
+  // keep the day-assignment model until the user switches (convertToLineTrip).
 
   return trip;
 }
@@ -795,6 +789,7 @@ function renderDaySections() {
   const tripIsEmpty = trip.features.length === 0;
   const sections = trip.days.map((day, idx) => buildDaySection(day, idx, modelDays[idx], tripIsEmpty));
   sections.forEach(s => container.appendChild(s));
+  if (canConvertToLine(trip)) container.appendChild(buildLineOffer());
   updateItinerary(trip, sections, model);
 
   if (confirmFeatureId) {
@@ -1059,6 +1054,34 @@ function buildDaySection(day, dayIndex, mday, tripIsEmpty) {
   });
 
   return section;
+}
+
+/**
+ * Older trips (one routed line) can switch to line + stops. Never automatic:
+ * a quiet offer under the days, one sentence on what changes, and Undo.
+ */
+function buildLineOffer() {
+  const el = document.createElement("div");
+  el.className = "line-offer";
+  el.innerHTML = `
+    <p class="line-offer__text">This trip uses the older planner, where you drag things into days. You can switch it to line and stops: camps become stops on your line, rest days become extra nights, and the days rebuild themselves from your camps, replacing the ones set by hand.</p>
+    <button type="button" class="btn btn--quiet btn--sm" data-act="convert-line">Switch to line and stops</button>`;
+  el.querySelector("[data-act='convert-line']").addEventListener("click", convertToLineTrip);
+  return el;
+}
+
+/** The explicit 1.1 → 1.2 switch (undoable). */
+export function convertToLineTrip() {
+  const trip = TripManager.currentTrip;
+  if (!canConvertToLine(trip)) return false;
+  cancelDrawing();
+  snapshot("switch to line and stops");
+  if (!convertTypedVertices(trip)) return false;
+  setActiveDayHighlight(null);
+  TripManager.render();
+  TripManager.save();
+  showToast("Switched to line and stops. Days now follow your camps", { undoable: true, ms: 9000 });
+  return true;
 }
 
 // Small hooks for the 1.2 day story (line-panel.js).

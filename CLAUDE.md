@@ -38,9 +38,12 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `itinerary-panel.js` | The sticky profile in the trip panel: active day (IntersectionObserver), band click to scroll, compact strip while drawing, the `booot:active-day` signal |
 | `sketch.js` | The drawing kit: ink strokes, pencil hatching, paper grain, the hand-drawn glyph family (also used as stop icons) |
 | `planning.js` | Drawing the line (clicks only guide snapping; Shift = straight leg, Esc cancels, double-click finishes). Modes: new line, `redraw` (seeded at a cut, rejoins the faint old line), `spur` (day hike from a stop). Live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
-| `line-model.js` | Pure 1.2 model: line index (legs, metres), attach resolve/locate, passes near a point, `buildPlan` (camps → days, stops per day/pass), `syncLineTrip` (trip.days for mobile), `displayTrip` (the line cut per day for the chart + profile), `convertTypedVertices` (1.1 → 1.2) |
+| `line-model.js` | Pure 1.2 model: line index (legs, metres), attach resolve/locate, passes and visits near a point, `buildPlan` (camps → days, stops per day/visit), `syncLineTrip` (trip.days for mobile), `displayTrip` (the line cut per day for the chart + profile), `canConvertToLine` / `convertTypedVertices` (the opt-in 1.1 → 1.2 switch) |
+| `line-edit.js` | Pure line edits: `redrawLine` (stitch a drawn path in, shift / re-attach / flag stops, regenerate a linked way back, say which stretches keep their elevation), `appendReturn`, `returnLink` |
+| `elevation.js` | Pure elevation sampling: density rule (~1 sample / 100 m, max 800), `fetchElevations` (sequential chunks of ≤100 to Open-Meteo, backoff, all or nothing), `buildProfile` (reuses the old profile on unchanged stretches), `gainLoss` |
+| `tests/` | Plain-node unit tests for the three pure modules above: `node tests/run.mjs` (no dependencies) |
 | `stops.js` | Stop tool (keys 1-6: camp, break, water, hazard, viewpoint, note) and the stop menu (name, nights, water source/reliability, Out/Back, day hike, move, delete) |
-| `route-edit.js` | Line edits: "Redraw from here" commit (stitch, shift, re-attach or flag stops), extend from the end, "Return the same way" (`mirror_of`), line menu, trip-level undo + toast |
+| `route-edit.js` | The UI side of line edits: starts "Redraw from here" / draw-on-from-the-end, commits through `line-edit.js`, the line menu, trip-level undo (snapshots) + the edit toast |
 | `line-panel.js` | The 1.2 day story (days built from camps; stops in walking order; off-route flags) |
 | `map-trip-style.js` | How the trip is drawn on the map (itinerary direction B, "Trip chart"): inked route on a paper casing, colored-pencil `line-pattern` band per day, glyphs (tent, drop, day-hike arrow, start/end rings, gap pin), circled day numerals, italic labels, all rasterized at runtime with `map.addImage`. Drawing/preview leg styles. Active-day highlight (feature-state) + the `booot:active-day` event |
 | `gpx-core.js` / `gpx-import.js` | GPX import. Core is pure (parse via DOMParser, 1.5 m simplification, recorded-elevation profile and gain/loss with a 3 m hysteresis, route feature with `segments: [{mode:"imported"}]` + `source`). Import wires the trip panel: Import GPX (multi-select), drop files on the panel, "Assign by date". Client-side only; recorded elevation beats Open-Meteo for imported routes |
@@ -68,7 +71,10 @@ Classic `<script>` tags in `index.html`, used as globals from the modules:
 
 Runtime network calls: tiles.booot.org (catalog + PMTiles range requests),
 MapLibre demotiles for glyphs/sprite, and the free Open-Meteo elevation API
-(`fetchElevationProfile` in `planning.js`). Keep new dependencies open and
+(`fetchElevationProfile` in `planning.js`, sampling and chunking in
+`elevation.js`). Open-Meteo counts every coordinate as a call (600 / minute,
+10,000 / day per IP), which is why edits reuse the old profile and only fetch
+the drawn legs. Keep new dependencies open and
 free (see product principles in `../CLAUDE.md`); pin exact versions.
 
 ## Tiles, regions and style
@@ -141,16 +147,31 @@ separate Point features:
 - **Place stops** `waypoint` (`water` + `water_source`/`reliability`,
   `hazard`, `scenic`, `note`) have no attach; the itinerary lists them on
   every pass within `NEAR_M` (120 m).
+- A place stop is listed once per visit (`visitsNear`): switchbacks beside a
+  spring are one visit; the two passes of an out-and-back (more than
+  `SEPARATE_VISIT_M` = 1 km apart along the line, equally close) are two.
 - **Days build themselves** (`buildPlan`): camps number along the line; Day N
   runs camp N-1 → camp N; dates follow the start date. `TripManager.render()`
   runs `syncLineTrip` (rewrites `trip.days` for mobile, keyed by `_key`,
   stripped on export) and draws `displayTrip()` (the line cut per day) with
   the unchanged chart/profile code.
 - **Edits** are "Redraw from here", draw-on-from-the-end and "Return the same
-  way" (route-edit.js), each undoable (Cmd/Ctrl-Z or the toast). Out/Back
-  needs passes within `OVERLAP_M` (30 m), so switchbacks don't count.
-- 1.0/1.1 trips with one routed line convert on open (typed vertices →
-  attached stops); others (several routes, GPX) keep the day-assignment model.
+  way" (route-edit.js → line-edit.js), each undoable (Cmd/Ctrl-Z or the
+  toast). Out/Back needs passes within `OVERLAP_M` (30 m), so switchbacks
+  don't count. While the way back is still fully linked (`returnLink`: every
+  return leg mirrors an outbound leg), any redraw of the way out, with or
+  without a rejoin, regenerates the whole way back; a way back edited by
+  hand is never regenerated and the toast says so.
+- **Elevation** is one profile on the route (feet, evenly spaced, ~100 m);
+  `displayTrip` slices it per day at the same density. Gain/loss is the sum
+  of every step, so on the 90 m DEM it over-counts in steep terrain.
+- **Old trips never convert on open.** 1.0/1.1 trips keep the
+  day-assignment model. Trips with exactly one routed line get a quiet offer
+  under the days ("Switch to line and stops", undoable): typed vertices
+  become attached stops, rest becomes nights, a day-hike marker becomes a
+  stop at the spur's branch point (or the spur leaves from the camp there).
+- **Tests:** `node tests/run.mjs` (Node 22+, no dependencies) covers
+  line-model.js, line-edit.js and elevation.js. Run it after touching them.
 
 ## Trail routing
 

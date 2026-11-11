@@ -32,10 +32,12 @@ import {
   metersPerPixel, lineLength, haversine,
 } from "./routing.js";
 import { deriveNameFromRuns } from "./route-names.js";
+import { sampleByDistance, buildProfile, gainLoss } from "./elevation.js";
 import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
 import { exitStopTool, cancelStopMove } from "./stops.js"; // circular; runtime only
 import { startExtend, snapshot } from "./route-edit.js"; // circular; runtime only
-import { isLineTrip, mainRoute, passesNear, sliceM } from "./line-model.js";
+import { isLineTrip, mainRoute, passesNear, sliceM, lineIndex, pointAtM } from "./line-model.js";
+import { returnLink } from "./line-edit.js";
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
 export let isDrawingRoute = false;
@@ -983,88 +985,61 @@ function handleRouteKeyDown(e) {
 }
 
 // ---------------------------------------------------------------------------
-// Elevation profile — Open-Meteo API
+// Elevation profile — Open-Meteo API (sampling + chunked fetch: elevation.js)
 // ---------------------------------------------------------------------------
 
-/**
- * Sample a line at even distance spacing (not by vertex index, which
- * under-samples switchbacks and over-samples straight legs).
- * @param {number[][]} coords - [lng, lat] pairs
- * @param {number} maxPoints - at most this many samples, endpoints included
- * @param {number} minSpacingM - don't sample more densely than this
- * @returns {number[][]}
- */
-export function sampleByDistance(coords, maxPoints = 100, minSpacingM = 25) {
-  if (coords.length < 2) return coords.slice();
-  const cum = [0];
-  for (let i = 1; i < coords.length; i++) {
-    cum.push(cum[i - 1] + haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]));
-  }
-  const total = cum[cum.length - 1];
-  const n = Math.max(2, Math.min(maxPoints, Math.floor(total / minSpacingM) + 1));
-  const out = [];
-  let j = 0;
-  for (let k = 0; k < n; k++) {
-    const d = (total * k) / (n - 1);
-    while (j < cum.length - 2 && cum[j + 1] < d) j++;
-    const span = cum[j + 1] - cum[j];
-    const t = span > 0 ? Math.min(1, Math.max(0, (d - cum[j]) / span)) : 0;
-    out.push([
-      coords[j][0] + t * (coords[j + 1][0] - coords[j][0]),
-      coords[j][1] + t * (coords[j + 1][1] - coords[j][1]),
-    ]);
-  }
-  return out;
-}
+export { sampleByDistance };
+
+const elevationRun = new Map(); // feature _id → latest fetch number (older ones are dropped)
 
 /**
- * Fetch elevation for a route's display coords from Open-Meteo, then patch
- * the feature in TripManager with elevation_profile (ft), elevation_gain_ft,
- * and elevation_loss_ft.
+ * Fetch elevation for a route from Open-Meteo, then patch the feature in
+ * TripManager with elevation_profile (ft, evenly spaced by distance, about
+ * one sample per 100 m), elevation_gain_ft and elevation_loss_ft.
+ * - All or nothing: if a chunk fails, or the line changes while chunks are
+ *   in flight, nothing is written.
+ * - `reuse` (from line-edit.js redrawLine): stretches the edit didn't touch
+ *   are read from the old profile; only the drawn legs are fetched.
+ * - A linked out-and-back fetches the way out and mirrors it.
  *
- * @param {number[][]} coords - [lng, lat] display coords of the route
+ * @param {number[][]} coords - the route's geometry.coordinates (the array itself)
  * @param {string} featureId - the feature's _id property
+ * @param {{ reuse?: object|null }} [opts]
  */
-export async function fetchElevationProfile(coords, featureId) {
-  const sampled = sampleByDistance(coords, 100);
-  const lats = sampled.map(c => c[1].toFixed(6)).join(",");
-  const lons = sampled.map(c => c[0].toFixed(6)).join(",");
+export async function fetchElevationProfile(coords, featureId, { reuse = null } = {}) {
+  const run = (elevationRun.get(featureId) || 0) + 1;
+  elevationRun.set(featureId, run);
+  const find = () => TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
+  // Stale when a newer fetch started, the trip closed, or the line was redrawn.
+  const isStale = () => elevationRun.get(featureId) !== run || find()?.geometry.coordinates !== coords;
 
   try {
-    const res = await fetch(
-      `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!Array.isArray(data.elevation)) throw new Error("Unexpected response shape");
-
-    // Convert meters → feet, round to nearest foot
-    const profileFt = data.elevation.map(m => Math.round(m * 3.28084));
-
-    // Compute cumulative gain and loss
-    let gain = 0, loss = 0;
-    for (let i = 1; i < profileFt.length; i++) {
-      const diff = profileFt[i] - profileFt[i - 1];
-      if (diff > 0) gain += diff;
-      else loss += -diff;
-    }
-
-    // Patch the feature in place (no full render cycle needed for the map)
-    const trip = TripManager.currentTrip;
-    if (!trip) return;
-    const feature = trip.features.find(f => f.properties._id === featureId);
-    if (!feature) return;
-
-    feature.properties.elevation_profile = profileFt;
-    feature.properties.elevation_gain_ft = Math.round(gain);
-    feature.properties.elevation_loss_ft = Math.round(loss);
+    const feature = find();
+    if (!feature || isStale()) return;
+    const ix = lineIndex(feature);
+    const link = returnLink(feature.properties.segments);
+    // The way back of a linked out-and-back is the way out reversed.
+    const total = link.linked ? ix.legs[link.firstMirror].startM : ix.total;
+    const built = await buildProfile({ total, pointAt: (m) => pointAtM(ix, m), reuse, fetchOpts: { isStale } });
+    if (!built || isStale()) return;
+    const profileFt = link.linked ? [...built.profile, ...[...built.profile].reverse().slice(1)] : built.profile;
+    const { gain, loss } = gainLoss(profileFt);
+    const p = find().properties;
+    p.elevation_profile = profileFt;
+    p.elevation_gain_ft = gain;
+    p.elevation_loss_ft = loss;
+    elevationDebug.last = { samples: profileFt.length, fetched: built.fetched, reused: built.profile.length - built.fetched };
 
     TripManager.render();
     TripManager.save();
   } catch (err) {
+    elevationDebug.last = { error: err.message };
     console.warn("[elevation] fetch failed:", err.message);
   }
 }
+
+/** Debug/verification handle (window.__outhere.elevation). */
+export const elevationDebug = { last: null };
 
 export function getTripDateRange() {
   if (!TripManager.currentTrip) return [];

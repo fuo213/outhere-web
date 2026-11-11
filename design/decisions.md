@@ -112,6 +112,14 @@ change tokens or principles. Propose, then log.
   "Camp 1 to Camp 2"; rest days "Rest day at Camp 2". New glyph: `note` (a
   slip with a folded corner) in sketch.js; breaks use the rest glyph.
   Why: days come from where you sleep, so the itinerary builds itself.
+  Round 2 (2026-11-10): older trips are never switched on open. Trips with
+  one routed line get a quiet block under the days, one sentence on what
+  changes and a quiet "Switch to line and stops" button; the toast offers
+  Undo. Off-route copy is per kind: a camp's "night doesn't count until it's
+  back on the line"; a break is "listed at the nearest mile until you move
+  it back onto the line". Edit toasts add a second sentence when the way
+  back followed ("The way back follows the new way out") or was left alone
+  ("You edited the way back by hand, so it stays as it is").
 
 - 2026-11-08 · **Trip chart on the real map** (direction B carried onto the
   planner map): the route is a clean ink line (`--ink-900`, ~2.4 px at z13,

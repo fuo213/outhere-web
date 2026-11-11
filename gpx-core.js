@@ -10,7 +10,7 @@
  * Geometry is lightly simplified (DP, 1.5 m; 2.5 m shaved up to 15% off a switchbacked climb) so a day-long recording stays a
  * sane size; timing is not stored per point. Elevation comes from the file's
  * own <ele> (imported GPX > our DEM > Open-Meteo): a profile sampled by
- * distance like the planner's (<=100 points) and gain/loss with a 3 m
+ * distance like the planner's (here at most 100 points) and gain/loss with a 3 m
  * hysteresis so GPS/barometer noise doesn't count as climbing.
  */
 

@@ -23,6 +23,10 @@ export const NEAR_M = 120;
 /** Two passes of the line closer than this are the same trail walked twice
  *  (an out-and-back), not neighbouring switchbacks: Out / Back applies. */
 export const OVERLAP_M = 30;
+/** A place stop is listed once per visit. Passes closer than this along the
+ *  line (switchbacks beside a spring) are one visit; an out-and-back's two
+ *  passes, further apart than this, are two (see visitsNear). */
+export const SEPARATE_VISIT_M = 1000;
 
 const RAD = Math.PI / 180;
 const R = 6371008.8;
@@ -176,6 +180,24 @@ export function passesNear(ix, p, radius = NEAR_M) {
 }
 
 /**
+ * Separate visits of the line to a place, in walking order. The closest
+ * pass always counts. Another pass is its own visit only when it is more
+ * than SEPARATE_VISIT_M along the line from every visit already counted AND
+ * comes about as close as the closest one (the same trail walked again, as
+ * on an out-and-back). Neighbouring switchbacks are one visit.
+ */
+export function visitsNear(ix, p, radius = NEAR_M) {
+  const passes = passesNear(ix, p, radius).sort((a, b) => a.d - b.d);
+  const visits = [];
+  for (const q of passes) {
+    if (!visits.length) { visits.push(q); continue; }
+    if (q.d > visits[0].d + OVERLAP_M) break; // sorted by distance: the rest are further still
+    if (visits.every((v) => Math.abs(v.m - q.m) > SEPARATE_VISIT_M)) visits.push(q);
+  }
+  return visits.sort((a, b) => a.m - b.m);
+}
+
+/**
  * Where a time stop dropped at p goes: the first pass after `afterM` (the
  * previous camp), else the first pass. Null when no pass is within radius.
  */
@@ -264,12 +286,12 @@ export function buildPlan(trip) {
     plan.stopsById.set(o.id, entry);
     addStop(moveDayAt(o.near.m), entry);
   }
-  // Place stops: listed on every pass that comes within reach.
+  // Place stops: listed once per visit (see visitsNear).
   for (const f of points) {
     const p = f.properties;
     if (isTimeStop(p)) continue;
     const kind = stopKind(p);
-    const passes = passesNear(ix, f.geometry.coordinates, NEAR_M);
+    const passes = visitsNear(ix, f.geometry.coordinates, NEAR_M);
     if (!passes.length) {
       const near = nearestOnLine(ix, f.geometry.coordinates);
       const entry = { id: p._id, f, kind, m: near.m, nearD: near.d, offRoute: true, passes: 0, pass: -1 };
@@ -381,7 +403,8 @@ function sliceProfile(profile, total, m0, m1) {
     const k = Math.min(n - 2, Math.floor(t));
     return profile[k] + (t - k) * (profile[k + 1] - profile[k]);
   };
-  const k = Math.max(2, Math.min(100, Math.round(((m1 - m0) / total) * n) + 1));
+  // Same density as the stored profile (no cap: a day keeps every sample it spans).
+  const k = Math.max(2, Math.round(((m1 - m0) / total) * (n - 1)) + 1);
   return Array.from({ length: k }, (_, j) => Math.round(at(m0 + ((m1 - m0) * j) / (k - 1))));
 }
 
@@ -454,47 +477,107 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
 // ---------------------------------------------------------------------------
 
 /**
- * A 1.0/1.1 trip with exactly one routed line becomes a 1.2 trip: camp /
- * dayhike / rest points on typed vertices become attached stops (rest →
- * the previous camp's nights; a dayhike point becomes a break its spur
- * leaves from). Anything else (several routes, GPX imports) stays as it is.
+ * Can this 1.0/1.1 trip switch to the line + stops model? Exactly one routed
+ * line (drawn in the planner, not imported). Never done on open: the trip
+ * panel offers it (trip-panel.js), with undo.
+ */
+export function canConvertToLine(trip) {
+  if (!trip?.features || isLineTrip(trip)) return false;
+  const routes = trip.features.filter((f) => f.properties?.type === "route");
+  if (routes.length !== 1 || routes[0].geometry?.type !== "LineString" || routes[0].geometry.coordinates.length < 2) return false;
+  const segs = routes[0].properties.segments;
+  return Array.isArray(segs) && segs.length > 0 && !segs.some((sg) => sg.mode === "imported");
+}
+
+/**
+ * Turn an eligible 1.0/1.1 trip (canConvertToLine) into a 1.2 trip, in place:
+ *   camp points        attached stops at their vertex (leg + offset)
+ *   rest points        one more night at the camp before them
+ *   dayhike points     the marker sat at the spur's far end; the day hike now
+ *                      leaves from a stop on the line at the spur's branch
+ *                      point: the camp there if there is one (the marker's
+ *                      name and notes move onto the spur), otherwise the
+ *                      marker itself becomes a break at the branch point
  * @returns {boolean} converted
  */
 export function convertTypedVertices(trip) {
-  if (!trip?.features || isLineTrip(trip)) return false;
-  const routes = trip.features.filter((f) => f.properties?.type === "route");
-  if (routes.length !== 1) return false;
-  const route = routes[0];
+  if (!canConvertToLine(trip)) return false;
+  const route = trip.features.find((f) => f.properties?.type === "route");
   const rp = route.properties;
-  if (!Array.isArray(rp.segments) || !rp.segments.length || rp.segments.some((s) => s.mode === "imported")) return false;
   const routeIdx = trip.features.indexOf(route);
   const ix = lineIndex(route);
+  const vt = Array.isArray(rp.vertex_types) ? rp.vertex_types : [];
+  const r1 = (v) => Math.round(v * 10) / 10;
   const attachAtVertex = (vi) => {
-    const k = rp.segments.findIndex((s) => s.to_vertex === vi);
-    if (k >= 0) return { route_id: rp._id, leg: k, offset_m: Math.round(ix.legs[k].len * 10) / 10 };
-    const k0 = rp.segments.findIndex((s) => s.from_vertex === vi);
+    const k = rp.segments.findIndex((sg) => sg.to_vertex === vi);
+    if (k >= 0) return { route_id: rp._id, leg: k, offset_m: r1(ix.legs[k].len) };
+    const k0 = rp.segments.findIndex((sg) => sg.from_vertex === vi);
     return k0 >= 0 ? { route_id: rp._id, leg: k0, offset_m: 0 } : null;
   };
-  let lastCamp = null;
+  /** The main-line vertex a day hike at vertex vi branches from. */
+  const branchVertex = (vi) => { let j = vi - 1; while (j > 0 && vt[j] === "dayhike") j--; return j; };
+  const spurs = trip.features.filter((f) => f.properties.type === "dayhike_spur" && f.properties.route_index === routeIdx && f.geometry?.type === "LineString");
   const pts = trip.features.filter((f) => f.geometry?.type === "Point" && f.properties.route_index === routeIdx && Number.isInteger(f.properties.route_vertex_index))
     .sort((a, b) => a.properties.route_vertex_index - b.properties.route_vertex_index);
   const remove = new Set();
+  const stopAtVertex = new Map(); // vertex → converted camp/break feature there
+  let lastCamp = null;
   for (const f of pts) {
     const p = f.properties;
     const t = p.point_type || p.type;
-    const attach = attachAtVertex(p.route_vertex_index);
-    if (t === "camp") { p.type = "camp"; p.point_type = "camp"; p.nights = p.nights || 1; if (attach) p.attach = attach; lastCamp = p; }
-    else if (t === "rest") { if (lastCamp) { lastCamp.nights = (lastCamp.nights || 1) + 1; remove.add(f); } else { p.type = "break"; p.point_type = "break"; if (attach) p.attach = attach; } }
-    else if (t === "dayhike") {
-      p.type = "break"; p.point_type = "break"; if (attach) p.attach = attach;
-      const spur = trip.features.find((s) => s.properties.type === "dayhike_spur" && s.properties.route_index === routeIdx && !s.properties.from_stop && hav(s.geometry.coordinates[0], f.geometry.coordinates) < 400);
-      if (spur) spur.properties.from_stop = p._id;
+    const vi = p.route_vertex_index;
+    if (t === "camp") {
+      const attach = attachAtVertex(vi);
+      p.type = "camp"; p.point_type = "camp"; p.nights = p.nights || 1;
+      if (attach) p.attach = attach;
+      lastCamp = p;
+      stopAtVertex.set(vi, f);
+    } else if (t === "rest") {
+      if (lastCamp) { lastCamp.nights = (lastCamp.nights || 1) + 1; remove.add(f); }
+      else { const attach = attachAtVertex(vi); p.type = "break"; p.point_type = "break"; if (attach) p.attach = attach; stopAtVertex.set(vi, f); }
+    } else if (t === "dayhike") {
+      // The marker is at the spur's far end; the spur starts on the line.
+      const spur = spurs.find((sp) => !sp.properties.from_stop && hav(sp.geometry.coordinates.at(-1), f.geometry.coordinates) < 60) ||
+        spurs.find((sp) => !sp.properties.from_stop && hav(sp.geometry.coordinates[0], f.geometry.coordinates) < 60);
+      const bv = vt.length ? branchVertex(vi) : -1;
+      let attach = bv >= 0 ? attachAtVertex(bv) : null;
+      if (!attach && spur) {
+        // No vertex to go by: project the spur's first point onto the line.
+        const near = nearestOnLine(ix, spur.geometry.coordinates[0]);
+        if (near.d <= NEAR_M) attach = { route_id: rp._id, ...locateM(ix, near.m) };
+      }
+      const host = stopAtVertex.get(bv);
+      if (spur && host) {
+        // It leaves from the camp (or break) already at the branch point.
+        const sp = spur.properties;
+        if (p.name && (!sp.name || sp.name_auto)) { sp.name = p.name; delete sp.name_auto; }
+        if (p.notes && !sp.notes) sp.notes = p.notes;
+        sp.from_stop = host.properties._id;
+        remove.add(f);
+      } else {
+        p.type = "break"; p.point_type = "break";
+        if (attach) {
+          p.attach = attach;
+          f.geometry = { type: "Point", coordinates: round6(resolveAttach(ix, attach).coord) };
+          stopAtVertex.set(bv, f);
+        }
+        if (spur) {
+          const sp = spur.properties;
+          // The marker named the destination: that's the day hike's name.
+          if (p.name && (!sp.name || sp.name_auto)) { sp.name = p.name; delete sp.name_auto; p.name = ""; }
+          sp.from_stop = p._id;
+        }
+      }
     }
     delete p.route_vertex_index;
   }
+  const gone = new Set([...remove].map((f) => f.properties._id));
   trip.features = trip.features.filter((f) => !remove.has(f));
-  rp.vertex_types = rp.vertex_types?.map(() => "route");
-  for (const s of trip.features) if (s.properties.type === "dayhike_spur") s.properties.route_index = trip.features.indexOf(route);
+  trip.unassigned = (trip.unassigned || []).filter((id) => !gone.has(id));
+  for (const d of trip.days || []) d.features = (d.features || []).filter((id) => !gone.has(id));
+  rp.vertex_types = vt.map(() => "route");
+  const newIdx = trip.features.indexOf(route);
+  for (const sp of trip.features) if (sp.properties.type === "dayhike_spur") sp.properties.route_index = newIdx;
   trip.properties.schema_version = "1.2";
   return true;
 }

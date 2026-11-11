@@ -17,6 +17,7 @@ import {
   handleMapDblClickForRoute,
   showGapCard,
   routingDebug,
+  elevationDebug,
 } from "./planning.js";
 import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayType } from "./trip-panel.js";
 import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
@@ -26,6 +27,7 @@ import { addTripChartLayers, drawingLegLayers, gapPinLayers, vertexPaint, initTr
 import { handleMapClickForStop, isStopToolActive, openStopMenu } from "./stops.js";
 import * as lineModel from "./line-model.js";
 import * as routeEdit from "./route-edit.js";
+import * as lineEdit from "./line-edit.js";
 import * as stops from "./stops.js";
 const { isLineTrip } = lineModel;
 
@@ -255,7 +257,7 @@ export const map = new maplibregl.Map({
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
-window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug, lineModel, routeEdit, stops };
+window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug, lineModel, lineEdit, routeEdit, stops, elevation: elevationDebug };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");

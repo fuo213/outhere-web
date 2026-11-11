@@ -19,6 +19,7 @@ import { startRouteDrawing, cancelDrawing, isDrawingRoute, isDeleteMode, showPla
 import { snapshot, showToast, closeLineMenu } from "./route-edit.js"; // circular; runtime only
 import { metersPerPixel } from "./routing.js";
 import { glyphIcon } from "./sketch.js";
+import { offRouteConsequence } from "./line-panel.js"; // circular; runtime only
 import {
   isLineTrip, mainRoute, lineIndex, choosePass, locateM, nearestOnLine, passesNear, resolveAttach,
   buildPlan, stopKind, round6, OVERLAP_M, MI,
@@ -232,7 +233,7 @@ export function openStopMenu(id, { fly = false } = {}) {
         <span class="stop-menu__title">${escapeHTML(title)}</span>
         ${mi ? `<span class="stop-menu__at">${escapeHTML(mi)}</span>` : ""}
       </div>
-      ${offRoute ? `<p class="stop-menu__warn">Off your route. ${k === "camp" ? "Its night doesn't count until it's on the line." : "Move it onto the line to place it in a day."}</p>` : ""}
+      ${offRoute ? `<p class="stop-menu__warn">Off your route. ${escapeHTML(offRouteConsequence(k))}</p>` : ""}
       <input class="input input--sm" data-field="name" type="text" value="${escapeAttr(p.name || "")}" placeholder="Name (optional)" aria-label="Name" />
       ${k === "camp" ? `<div class="stop-menu__row"><span class="stop-menu__label">Nights</span><span class="stepper"><button type="button" class="stepper__btn" data-step="-1" aria-label="One night fewer"${nights <= 1 ? " disabled" : ""}>−</button><span class="stepper__num" aria-live="polite">${nights}</span><button type="button" class="stepper__btn" data-step="1" aria-label="One more night">+</button></span></div>` : ""}
       ${k === "water" ? `<div class="stop-menu__row"><span class="stop-menu__label">Source</span>${sel("water_source", WATER_SOURCES, p.water_source || "other")}</div>
