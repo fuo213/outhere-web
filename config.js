@@ -23,7 +23,7 @@ export const MAP_CONFIG = {
   center: [-110.0, 38.5],   // lng, lat — central Utah
   zoom: 7,
   minZoom: 6,
-  maxZoom: 14,
+  maxZoom: 17,              // tiles stop at z14; MapLibre overzooms vector tiles
   // Utah bounding box from STATE_REGISTRY (west, south, east, north)
   maxBounds: [
     [-114.1, 36.9],  // southwest
