@@ -43,6 +43,9 @@ change tokens or principles. Propose, then log.
   "Redraw this section" and "Snap to trails". Vincent: "working perfect".
   *Why:* drawing only runs forward along the trip, so the map has to show
   where a redraw starts.
+- **2026-11-11 · POI colours and sizes after the category fix.** Vincent
+  reviewed the rebuilt Utah tiles: likes seeing every point of interest, and
+  the large red peak dots are not too loud. Leave the pipeline POI style as is.
 
 ## Trying
 
