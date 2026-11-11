@@ -1,7 +1,7 @@
 // line-edit.js: selecting and deleting a section of the line, deleting the line.
 import { test, assert, near, pt, makeLine, makeTrip, point } from "./helpers.mjs";
 import * as M from "../line-model.js";
-import { sectionAt, sectionCoords, deleteSection, deleteLine, appendReturn } from "../line-edit.js";
+import { sectionAt, sectionCoords, deleteSection, replaceSection, deleteLine, appendReturn } from "../line-edit.js";
 
 const attachAt = (ix, m) => ({ route_id: "R", ...M.locateM(ix, m) });
 const get = (trip, id) => trip.features.find((f) => f.properties._id === id);
@@ -91,6 +91,21 @@ test("delete a middle section with no bridge: a straight manual segment", () => 
   assert.deepEqual(res.lost, []);
   assert.equal(res.reattached, 1);
   assert.equal(get(trip, "C2").properties.attach.leg, 2);
+});
+
+test("a straight gap left by a delete can be snapped back to a trail leg", () => {
+  const { trip, route } = fourLegs();
+  deleteSection(trip, 2);
+  assert.equal(route.properties.segments[2].mode, "manual");
+  const res = replaceSection(trip, 2, { coords: [pt(2), pt(2.5, 0.05), pt(3)], mode: "trail", wayIds: [9] });
+  assert.equal(res.removed, "replaced");
+  assert.equal(route.properties.segments.length, 4);
+  assert.equal(route.properties.segments[2].mode, "trail");
+  assert.deepEqual(route.properties.segments[2].osm_way_ids, [9]);
+  assert.deepEqual(route.properties.segments.map((s) => s.mode), ["trail", "trail", "trail", "trail"]);
+  // neighbours untouched, line continuous
+  assert.deepEqual(route.properties.vertex_coords.length, 5);
+  assert.equal(replaceSection(trip, 2, { coords: [pt(2)], mode: "trail" }), null);
 });
 
 test("delete the only section removes the line and keeps stops off route", () => {

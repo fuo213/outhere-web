@@ -164,6 +164,22 @@ export function deleteSection(trip, leg, { bridge = null } = {}) {
 }
 
 /**
+ * Replace one section with a drawn leg between the same two anchors (a straight
+ * gap snapped to trails). Stops, elevation reuse and a linked way back behave
+ * as they do for "Redraw from here". Mutates the trip.
+ * @param {{coords, mode, reason?, wayIds?}} leg2
+ */
+export function replaceSection(trip, leg, leg2) {
+  const route = mainRoute(trip);
+  const L = route ? lineIndex(route).legs[leg] : null;
+  if (!L || !(leg2?.coords?.length >= 2)) return null;
+  const sec = sectionAt(route, L.startM);
+  if (sec.leg !== leg) return null;
+  const res = redrawLine(trip, { cutM: sec.startM, rejoinM: sec.where === "last" || sec.where === "only" ? null : sec.endM, newLegs: [leg2] });
+  return res && { ...res, removed: "replaced" };
+}
+
+/**
  * Delete the whole line. Its time stops stay where they are as off-route
  * stops (no `attach`); place stops and spurs are untouched. Mutates the trip.
  * @returns {null | { lost: [{ id, kind, name, label }], removed: "line" }}

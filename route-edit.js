@@ -11,7 +11,7 @@ import { TripManager, escapeHTML } from "./trip-panel.js"; // circular; runtime 
 import { startRouteDrawing, isDrawingRoute, isDeleteMode, fetchElevationProfile, routeBetween } from "./planning.js"; // circular; runtime only
 import { isStopToolActive, addStopAt } from "./stops.js"; // circular; runtime only
 import { isLineTrip, mainRoute, lineIndex, sliceM, passesNear, nearestOnLine, hav, MI, buildPlan } from "./line-model.js";
-import { redrawLine, appendReturn, sectionAt, sectionCoords, sectionEnds, deleteSection, deleteLine } from "./line-edit.js";
+import { redrawLine, appendReturn, sectionAt, sectionCoords, sectionEnds, deleteSection, replaceSection, deleteLine } from "./line-edit.js";
 
 /** "Camp 2" for camps a redraw took off the route (session only; the flag
  *  in the itinerary falls back to the camp's name or "A camp"). */
@@ -196,7 +196,7 @@ function setSelection(sel) {
 export function clearSelection() { if (selection) { selection = null; paintSelection(); } }
 
 /** Delete what is selected (Delete / Backspace, or the menu). Undoable. */
-export async function deleteSelection() {
+export function deleteSelection() {
   const trip = TripManager.currentTrip;
   const sel = selection;
   const route = isLineTrip(trip) ? mainRoute(trip) : null;
@@ -205,19 +205,57 @@ export async function deleteSelection() {
   if (sel.whole) { commitDelete("delete the line", () => deleteLine(trip)); clearSelection(); return; }
   const sec = sectionAt(route, lineIndex(route).legs[sel.leg]?.startM ?? -1);
   if (!sec || sec.leg !== sel.leg) { clearSelection(); return; }
-  // A middle section is rejoined by routing between its two anchors, the way the draw tool does.
-  let bridge = null;
-  if (sec.where === "middle") {
-    const [a, b] = sectionEnds(route, sel.leg);
-    const vs = route.properties.vertex_snapped || [];
-    bridge = await routeBetween(a, b, { aSnapped: vs[sel.leg] !== false, bSnapped: vs[sel.leg + 1] !== false });
-    if (TripManager.currentTrip !== trip || mainRoute(trip) !== route || selection !== sel) return; // the trip changed while routing
+  // A middle section leaves a straight gap between its two anchors. Routing
+  // between the same two anchors would only draw the deleted section again.
+  if (sec.where === "middle" && isGapSection(route, sel.leg)) {
+    showToast("This section is already a straight gap. Click it to redraw it or snap it to trails.");
+    return;
   }
   clearSelection();
-  commitDelete(sec.where === "middle" ? "delete a section" : sec.where === "only" ? "delete the line" : "trim the line", () => deleteSection(trip, sel.leg, { bridge }));
+  commitDelete(sec.where === "middle" ? "delete a section" : sec.where === "only" ? "delete the line" : "trim the line", () => deleteSection(trip, sel.leg));
 }
 
-function commitDelete(label, run) {
+/** A section that is a straight line, not a trail: an off-trail leg or the gap a delete left. */
+function isGapSection(route, leg) {
+  const mode = route?.properties.segments?.[leg]?.mode;
+  return mode === "manual" || mode === "straight";
+}
+
+const SNAP_FAIL = {
+  no_path: "These trails don\u2019t connect in OpenStreetMap, so the section stays straight.",
+  no_graph: "Trail snapping isn\u2019t available here yet, so the section stays straight.",
+  cross_region: "Routes can\u2019t cross between map regions yet, so the section stays straight.",
+};
+
+/** Replace the selected straight section with the trail route between its two anchors. Undoable. */
+export async function snapSelection() {
+  const trip = TripManager.currentTrip;
+  const sel = selection;
+  const route = isLineTrip(trip) ? mainRoute(trip) : null;
+  if (!sel || sel.whole || !route || sel.ref !== route.geometry.coordinates) { clearSelection(); return; }
+  closeLineMenu();
+  const ends = sectionEnds(route, sel.leg);
+  if (!ends) { clearSelection(); return; }
+  const bridge = await routeBetween(ends[0], ends[1]);
+  if (TripManager.currentTrip !== trip || mainRoute(trip) !== route || selection !== sel) return; // the trip changed while routing
+  if (bridge.mode !== "trail") {
+    showToast(SNAP_FAIL[bridge.reason] || "One end of this section isn\u2019t on a trail, so it stays straight. Redraw it instead.");
+    return;
+  }
+  clearSelection();
+  commitDelete("snap a section to trails", () => replaceSection(trip, sel.leg, bridge), "Snapped the section to trails");
+}
+
+/** Redraw the selected section: start drawing at its first anchor; clicking the line further on rejoins it. */
+function redrawSelection() {
+  const route = mainRoute(TripManager.currentTrip);
+  const L = selection && !selection.whole && route ? lineIndex(route).legs[selection.leg] : null;
+  if (!L) return;
+  clearSelection();
+  startRedraw(L.startM);
+}
+
+function commitDelete(label, run, headline = null) {
   const trip = TripManager.currentTrip;
   const route = mainRoute(trip);
   const id = route?.properties._id;
@@ -228,7 +266,7 @@ function commitDelete(label, run) {
   TripManager.render();
   TripManager.save();
   if (res.removed !== "line") fetchElevationProfile(route.geometry.coordinates, id, { reuse: res.reuse });
-  const parts = [{ line: "Deleted the line", first: "Trimmed the start of the line", last: "Trimmed the end of the line", middle: "Deleted a section and joined the line back up" }[res.removed]];
+  const parts = [headline || { line: "Deleted the line", first: "Trimmed the start of the line", last: "Trimmed the end of the line", middle: "Deleted a section. A straight line bridges the gap: click it to redraw it" }[res.removed]];
   if (res.lost.length) {
     const names = res.lost.map((l) => l.name || l.label);
     parts.push(`${names.join(", ")} ${names.length === 1 ? "is" : "are"} off your route now`);
@@ -270,17 +308,22 @@ function openLineMenu(m, coord, ix, route) {
   const mi = (m / MI).toFixed(1);
   const loop = hav(ix.coords[0], ix.coords.at(-1)) < 60;
   const back = !route.properties.return_same_way && !loop;
+  const sec = selection && !selection.whole ? sectionAt(route, m) : null;
+  const gap = !!sec && isGapSection(route, sec.leg);
   const html = `
     <div class="line-menu" role="menu">
       <p class="line-menu__at">Mile <span class="line-menu__num">${mi}</span></p>
       <button type="button" class="line-menu__item" data-act="camp" role="menuitem">Add a camp here</button>
-      <button type="button" class="line-menu__item" data-act="redraw" role="menuitem">Redraw from here</button>
+      ${gap
+        ? `<button type="button" class="line-menu__item" data-act="redraw-section" role="menuitem">Redraw this section</button>
+           <button type="button" class="line-menu__item" data-act="snap-section" role="menuitem">Snap to trails</button>`
+        : `<button type="button" class="line-menu__item" data-act="redraw" role="menuitem">Redraw from here</button>`}
       ${back ? `<button type="button" class="line-menu__item" data-act="back" role="menuitem">Return the same way</button>` : ""}
       <hr class="line-menu__sep">
       ${selection?.whole
         ? `<button type="button" class="line-menu__item line-menu__item--danger" data-act="delete-line" role="menuitem">Delete whole line</button>
            <button type="button" class="line-menu__item" data-act="select-section" role="menuitem">Select this section instead</button>`
-        : `<button type="button" class="line-menu__item line-menu__item--danger" data-act="delete-section" role="menuitem">Delete this section</button>
+        : `${gap && sec.where === "middle" ? "" : `<button type="button" class="line-menu__item line-menu__item--danger" data-act="delete-section" role="menuitem">Delete this section</button>`}
            <button type="button" class="line-menu__item" data-act="select-line" role="menuitem">Select whole line</button>`}
     </div>`;
   linePopup = new maplibregl.Popup({ className: "line-popup", closeButton: false, closeOnClick: true, maxWidth: "220px", offset: 8 })
@@ -290,6 +333,8 @@ function openLineMenu(m, coord, ix, route) {
     if (!act) return;
     closeLineMenu();
     if (act === "redraw") startRedraw(m);
+    else if (act === "redraw-section") redrawSelection();
+    else if (act === "snap-section") snapSelection();
     else if (act === "back") returnSameWay();
     else if (act === "camp") addStopAt("camp", coord, { atM: m });
     else if (act === "delete-section") deleteSelection();

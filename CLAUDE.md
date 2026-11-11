@@ -172,9 +172,13 @@ separate Point features:
   opens the line menu. Delete / Backspace (not in an input, not while drawing,
   the stop tool or delete mode) or the menu's "Delete this section" removes it:
   first/last section = the line is trimmed to the neighbouring anchor; middle
-  section = the two anchors are rejoined by `routeBetween` (planning.js: the
-  draw tool's graph + A*, straight where routing is unavailable or an anchor
-  was off-trail). All of it goes through `redrawLine` (it accepts empty
+  section = a straight `manual` gap between its two anchors (never re-routed:
+  routing between the same two anchors would draw the deleted section again).
+  A straight section (a gap, or any `manual` / `straight` leg) gets two menu
+  items instead of "Redraw from here": "Redraw this section" (redraw seeded at
+  its first anchor; click the line further on to rejoin) and "Snap to trails"
+  (`routeBetween` in planning.js + `replaceSection`; says why when it can't).
+  Delete on a middle section that is already straight only shows a hint. All of it goes through `redrawLine` (it accepts empty
   `newLegs` for a trim), so stops, elevation reuse and a linked way back behave
   as for "Redraw from here": a stop whose stretch is gone re-attaches if the
   new line passes within 120 m, else goes off route (never deleted). "Select
