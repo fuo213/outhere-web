@@ -36,8 +36,29 @@ change tokens or principles. Propose, then log.
   `reference/paper-extraction-2026-03.md`.)
 - **2026-03 · Playfair Display for the trip title.** Gives it cartographic
   character.
+- **2026-11-11 · Delete on the line, and the redraw point.** Click selects a
+  section; Delete trims an end or leaves a straight gap in the middle. The
+  gap's first anchor gets a rust ring on paper with a "Redraw from here" map
+  label (tap to redraw forward from there); a straight section's menu offers
+  "Redraw this section" and "Snap to trails". Vincent: "working perfect".
+  *Why:* drawing only runs forward along the trip, so the map has to show
+  where a redraw starts.
+- **2026-11-11 · POI colours and sizes after the category fix.** Vincent
+  reviewed the rebuilt Utah tiles: likes seeing every point of interest, and
+  the large red peak dots are not too loud. Leave the pipeline POI style as is.
 
 ## Trying
+
+- **2026-11-11 · Place search at top centre + area labels** (awaiting
+  Vincent's verdict). One paper input, `/` to focus, a flat popover list
+  (name, then kind / miles or feet / containing area in the second line so
+  duplicates like "Dry Creek" can be told apart), rust ring and name tag left
+  on the chosen place until the next touch of the map. Area labels are
+  upper-case, wide-tracked, muted earth tones (park sage, district olive,
+  landform and locality warm grey) that fade out toward trail zoom, below POI
+  labels. New map colours live in `buildStyle()` with the pipeline style, not
+  in tokens. Not built: a recent-searches list, result categories, a "Fix it
+  in OSM" link on missing names.
 
 - **2026-11-08 · Itinerary explorations: continuous day story + hand-drawn
   charts** (awaiting Vincent's pick). `design/explorations/itinerary/`
@@ -104,6 +125,32 @@ change tokens or principles. Propose, then log.
   a click into the map or Ctrl/Cmd, two fingers on touch). No new tokens ·
   `outhere-web.pages.dev/?embed=1`, `embed.css` · a visitor sees the real
   product working instead of a screenshot of it.
+- 2026-11-08 · **Line + stops planner (POC, trip format 1.2)** · branch
+  `poc/line-stops`, new trip in Zion · the draw tool only draws the line
+  (no point types); a separate pin tool drops stops (keys 1-6, pills reuse
+  the point-type selector, active fill = the type's text shade, ink for
+  hazard/viewpoint/note). Stops open a small paper menu on the map (name,
+  nights stepper, water source/reliability selects, Out/Back segmented
+  toggle, "Day hike from here" quiet, Move ghost, Delete in danger ink).
+  Clicking the line opens a three-item list ("Add a camp here", "Redraw from
+  here", "Return the same way"). While redrawing, the stretch that will go
+  is washed out with paper and dashed rust; hovering the old line shows
+  "Rejoin your line here" and shrinks the rust stretch to what will really
+  be removed. Every edit says what happened in an ink toast with Undo; a stop
+  pushed off the route gets a rust dot in the toast and a rust-ruled note at
+  the top of the itinerary ("Camp 2 is off your route now"). Day titles read
+  "Camp 1 to Camp 2"; rest days "Rest day at Camp 2". New glyph: `note` (a
+  slip with a folded corner) in sketch.js; breaks use the rest glyph.
+  Why: days come from where you sleep, so the itinerary builds itself.
+  Round 2 (2026-11-10): older trips are never switched on open. Trips with
+  one routed line get a quiet block under the days, one sentence on what
+  changes and a quiet "Switch to line and stops" button; the toast offers
+  Undo. Off-route copy is per kind: a camp's "night doesn't count until it's
+  back on the line"; a break is "listed at the nearest mile until you move
+  it back onto the line". Edit toasts add a second sentence when the way
+  back followed ("The way back follows the new way out") or was left alone
+  ("You edited the way back by hand, so it stays as it is").
+
 - 2026-11-08 · **Trip chart on the real map** (direction B carried onto the
   planner map): the route is a clean ink line (`--ink-900`, ~2.4 px at z13,
   round caps/joins) on a thin `--surface-raised` casing; each day's stretch

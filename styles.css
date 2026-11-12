@@ -2308,6 +2308,182 @@ body.panel-open .route-instructions {
 }
 
 /* ---------------------------------------------------------------------------
+   Place search (top centre): name search over the region's place index.
+   Hidden unless the active region has one. Paper popover, flat, one input.
+   --------------------------------------------------------------------------- */
+
+.place-search {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(380px, calc(100vw - 420px));
+  min-width: 240px;
+  z-index: 4;
+}
+.place-search[hidden] { display: none; }
+
+.place-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  color: var(--text-secondary);
+  transition: border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
+}
+.place-search-field:hover { border-color: var(--border-strong); }
+.place-search-field:focus-within { border-color: var(--dust-500); box-shadow: var(--shadow-2), var(--focus-ring); }
+
+.place-search-icon { flex: none; margin-left: var(--space-3); }
+
+.place-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: var(--weight-regular) var(--text-base)/1 var(--font-ui);
+}
+.place-search-input::placeholder { color: var(--text-secondary); }
+.place-search-input:focus { outline: none; }
+
+.place-search-key {
+  flex: none;
+  margin-right: var(--space-3);
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font: var(--weight-medium) var(--text-xs)/1 var(--font-data);
+}
+.place-search-key[hidden] { display: none; }
+.place-search-field:focus-within .place-search-key { display: none; }
+
+.place-search-clear {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.place-search-clear[hidden] { display: none; }
+.place-search-clear:hover { background: var(--surface-sunken); color: var(--text); }
+.place-search-clear:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.place-search-panel {
+  margin-top: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-3);
+  max-height: min(420px, calc(100vh - 100px));
+  overflow-y: auto;
+}
+.place-search-panel[hidden] { display: none; }
+
+.place-search-list { list-style: none; margin: 0; padding: var(--space-1); }
+.place-search-list:empty { display: none; }
+
+.place-opt {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.place-opt[aria-selected="true"] { background: var(--surface-sunken); }
+.place-opt-name {
+  font: var(--weight-medium) var(--text-base)/var(--leading-tight) var(--font-ui);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.place-opt-name mark {
+  background: none;
+  color: inherit;
+  font-weight: var(--weight-bold);
+}
+.place-opt-meta {
+  font: var(--weight-regular) var(--text-sm)/1.3 var(--font-ui);
+  color: var(--text-secondary);
+}
+.place-opt-num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+.place-search-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-secondary);
+  font: var(--weight-regular) var(--text-md)/var(--leading-normal) var(--font-ui);
+}
+.place-search-empty[hidden] { display: none; }
+
+/* The marker left on a chosen place: a rust ring and a paper tag with the name */
+.place-pin { position: relative; width: 0; height: 0; pointer-events: none; }
+.place-pin-ring {
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border: 2.5px solid var(--accent);
+  border-radius: 50%;
+  background: var(--accent-tint);
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: place-pin-drop var(--dur-slow) var(--ease-spring) both;
+}
+.place-pin-tag {
+  position: absolute;
+  left: 0;
+  top: 16px;
+  transform: translateX(-50%);
+  max-width: 200px;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  color: var(--text);
+  font: var(--weight-semi) var(--text-sm)/1.2 var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes place-pin-drop {
+  from { transform: scale(1.7); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .place-pin-ring { animation: none; }
+}
+
+/* Narrow screens: its own row under the region button, clear of the map controls */
+@media (max-width: 700px) {
+  .place-search {
+    top: calc(var(--space-3) + 40px + var(--space-2));
+    left: 54px;
+    right: var(--space-3);
+    width: auto;
+    min-width: 0;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Responsive
    --------------------------------------------------------------------------- */
 
@@ -2411,3 +2587,197 @@ body.panel-open .route-instructions {
 }
 .demo-banner-text strong { color: var(--text); font-weight: var(--weight-semi); }
 .demo-banner-actions { display: flex; gap: var(--space-1); }
+
+/* ---------------------------------------------------------------------------
+   Line + stops (trip format 1.2): stop tool, stop menu, line menu, edit
+   toast, the self-building day story. (stops.js, route-edit.js, line-panel.js)
+   --------------------------------------------------------------------------- */
+
+/* Stop kinds reuse the point-type pills; active fills use each type's text
+   shade (white on the light fills is too faint), ink for kinds without one. */
+.stop-kind-selector.visible { max-height: 300px; }
+.point-type-btn.active[data-stop-kind]          { background: var(--text); }
+.point-type-btn.active[data-stop-kind="camp"]   { background: var(--type-camp-text); }
+.point-type-btn.active[data-stop-kind="break"]  { background: var(--type-rest-text); }
+.point-type-btn.active[data-stop-kind="water"]  { background: var(--type-water-text); }
+#addStopBtn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-accent);
+}
+
+/* Days build themselves in 1.2 trips: no manual "Add day". */
+body.is-line-trip .add-day-row { display: none; }
+
+.stop-popup .maplibregl-popup-content { padding: var(--space-3); }
+.stop-popup .maplibregl-popup-close-button {
+  top: var(--space-1);
+  right: var(--space-1);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+.stop-popup .maplibregl-popup-close-button:hover { background: var(--surface-sunken); color: var(--text); }
+
+.stop-menu { display: flex; flex-direction: column; gap: var(--space-2); width: 248px; margin: 0; }
+.stop-menu__head { display: flex; align-items: center; gap: var(--space-2); padding-right: var(--space-6); }
+.stop-menu__title { font: var(--weight-semi) var(--text-base)/1.2 var(--font-ui); color: var(--text); }
+.stop-menu[data-kind="camp"] .stop-menu__title { color: var(--type-camp-text); }
+.stop-menu[data-kind="water"] .stop-menu__title { color: var(--type-water-text); }
+.stop-menu__at { margin-left: auto; font: var(--weight-regular) var(--text-sm)/1 var(--font-data); color: var(--text-secondary); }
+.stop-menu__warn {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.stop-menu__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.stop-menu__label { font: var(--weight-medium) var(--text-sm)/1 var(--font-ui); color: var(--text-secondary); }
+.stop-menu .input { height: 30px; padding: 0 var(--space-2); font-size: var(--text-md); }
+.stop-menu select.input { width: 140px; }
+.stop-menu__notes.input { height: auto; min-height: 52px; padding: var(--space-2); resize: vertical; font-family: var(--font-ui); }
+.stop-menu__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+.stop-menu__delete.btn--ghost { margin-left: auto; color: var(--danger); }
+.stop-menu__delete.btn--ghost:hover:not(:disabled) { color: var(--danger); background: var(--danger-tint); }
+
+/* Two-way toggle (Out / Back) and the nights stepper */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.seg__btn {
+  height: 26px;
+  padding: 0 var(--space-3);
+  border: 0;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font: var(--weight-semi) var(--text-sm)/1 var(--font-ui);
+  cursor: pointer;
+}
+.seg__btn + .seg__btn { border-left: 1px solid var(--border); }
+.seg__btn[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+.seg__btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.stepper { display: inline-flex; align-items: center; gap: var(--space-2); }
+.stepper__btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: var(--weight-semi) var(--text-base)/1 var(--font-ui);
+  cursor: pointer;
+}
+.stepper__btn:disabled { opacity: 0.4; cursor: default; }
+.stepper__btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.stepper__num { min-width: 2ch; text-align: center; font: var(--weight-medium) var(--text-base)/1 var(--font-data); color: var(--text); }
+
+/* Line menu: a short list where you clicked the line */
+.line-popup .maplibregl-popup-content { padding: var(--space-1); }
+.line-menu { display: flex; flex-direction: column; min-width: 180px; }
+.line-menu__at { margin: 0; padding: var(--space-1) var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
+.line-menu__num { font-family: var(--font-data); }
+.line-menu__item {
+  display: block;
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: var(--weight-medium) var(--text-md)/1.2 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.line-menu__item:hover { background: var(--surface-sunken); }
+.line-menu__sep { margin: var(--space-1) 0; border: 0; border-top: 1px solid var(--border); }
+.line-menu__item--danger { color: var(--danger); }
+.line-menu__item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.seg__btn,
+.stepper__btn,
+.line-menu__item {
+  transition: transform var(--dur-base) var(--ease-spring), background-color var(--dur-quick) var(--ease-out);
+}
+.seg__btn:active,
+.stepper__btn:active:not(:disabled),
+.line-menu__item:active { transform: scale(var(--press-scale)); transition-duration: var(--dur-instant); }
+
+/* Edit toast: what an edit did, with Undo. Ink pill like the drawing hint. */
+.edit-toast {
+  position: absolute;
+  bottom: var(--space-12);
+  left: 50%;
+  transform: translate(-50%, var(--space-1));
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-5);
+  min-height: 36px;
+  background: var(--text);
+  color: var(--surface);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-2);
+  font: var(--weight-medium) var(--text-md)/1.3 var(--font-ui);
+  max-width: calc(100vw - 2 * var(--space-5));
+  z-index: 6;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.edit-toast.visible { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.edit-toast:not(:has(.edit-toast__undo)) { padding-right: var(--space-5); }
+body.panel-open .edit-toast { left: calc((100% - 520px) / 2); }
+body.is-drawing-route .edit-toast { bottom: 236px; }
+.edit-toast__undo.btn--ghost { color: var(--surface); }
+.edit-toast__undo.btn--ghost:hover:not(:disabled) { background: var(--ink-700); color: var(--surface); }
+.edit-toast--warn::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: calc(-1 * var(--space-2));
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Day story (1.2) */
+.line-empty,
+.line-hint {
+  margin: var(--space-2) 0;
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--text-secondary);
+}
+.line-empty { margin: var(--space-4) 0; font-size: var(--text-base); }
+.line-flag {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--text-body);
+}
+.line-actions { margin: var(--space-3) 0 var(--space-1); }
+.itin-day--line .stop-row[data-stop-id] { cursor: pointer; }
+.itin-day--line .stop-row[data-stop-id]:hover .stop-name { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--border-strong); }
+.stop-note--off { color: var(--accent); font-weight: var(--weight-medium); }
+.stop-row--off .stop-glyph { opacity: 0.55; }
+
+/* Older trips: the quiet offer to switch to line + stops (never automatic). */
+.line-offer {
+  margin: var(--space-6) 0 var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.line-offer__text {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--text-secondary);
+}

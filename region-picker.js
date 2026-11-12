@@ -183,6 +183,7 @@ export function applyRegion(region, { fly = true } = {}) {
   updateRegionButton();
   renderRegionList();
   document.title = `Booot — ${region.name}`;
+  document.dispatchEvent(new CustomEvent("outhere:region")); // place search listens
 
   // Release the old region's camera constraints before moving.
   map.setMaxBounds(null);

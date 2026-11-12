@@ -9,8 +9,9 @@
  * Pure: no DOM, no map. The panel controller (itinerary-panel.js) owns the
  * sticky header, the active day and the shared `booot:active-day` signal.
  *
- * Elevation comes from each route's `elevation_profile` (feet, <=100 samples
- * spaced evenly by distance, see sampleByDistance in planning.js), so sample k
+ * Elevation comes from each route's `elevation_profile` (feet, samples spaced
+ * evenly by distance: about one per 100 m, up to 800 per fetched route and
+ * twice that after "Return the same way"; see elevation.js), so sample k
  * of n sits at k/(n-1) of the route's length. Routes whose profile hasn't
  * arrived yet are drawn as a pencil "skeleton" in the same hand.
  */
@@ -120,7 +121,8 @@ export function buildItinerary(trip) {
       }
       return best ? best.mi : startMi + width / 2;
     };
-    const stops = g.feats
+    // 1.2 trips hand over their stops already placed (per pass, per leg).
+    const stops = g.d._stops ? g.d._stops.map((s) => ({ ...s, mi: startMi + s.dayMi })) : g.feats
       .filter((f) => !isRoute(f) && f.geometry?.type === "Point" && Array.isArray(f.geometry.coordinates))
       .map((f) => {
         const p = f.properties;
@@ -513,11 +515,12 @@ function ariaSummary(m) {
 }
 
 /** One-line caption under the drawing. */
-export function captionFor(m) {
+export function captionFor(m, { failed = false } = {}) {
   const { gain, loss } = m;
   const parts = [];
   if (m.mode === "loose") parts.push("This route isn’t in a day yet. Drag it into a day to split the profile.");
   else if (m.hasElevation) parts.push(`Elevation, ${fmt.gain(gain)} / ${fmt.loss(loss)} ft over ${fmt.mi(m.routeMiles)}. Vertical scale exaggerated.`);
+  else if (failed) parts.push(`${fmt.mi(m.routeMiles)} drawn. Elevation didn\u2019t load.`);
   else parts.push(`${fmt.mi(m.routeMiles)} drawn. Elevation fills in once it loads.`);
   if (m.looseCount) parts.push(`${m.looseCount} route${m.looseCount === 1 ? "" : "s"} not in a day yet.`);
   return parts.join(" ");
