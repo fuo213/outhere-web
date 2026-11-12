@@ -31,7 +31,7 @@ import {
   loadGraph, peekGraph, pickGraphRegion, graphInfoForRegion,
   metersPerPixel, lineLength, haversine,
 } from "./routing.js";
-import { reportedAt, openReportDialog } from "./report-ui.js";
+import { reportedAt, openReportDialog, reportIconSvg } from "./report-ui.js";
 import { osmEditUrl, formatReportDate } from "./osm-report.js";
 import { deriveNameFromRuns } from "./route-names.js";
 import { sampleByDistance, buildProfile, fetchElevations, gainLoss } from "./elevation.js";
@@ -702,6 +702,7 @@ function updateGhost() {
 function showSnapText(text, point) {
   const el = document.getElementById("snapTooltip");
   if (!el || !point) return;
+  delete el.dataset.hint;
   if (el.textContent !== text) el.textContent = text;
   el.classList.remove("snap-tooltip--unnamed");
   el.style.transform = `translate(${Math.round(point.x + 14)}px, ${Math.round(point.y + 14)}px)`;
@@ -847,14 +848,24 @@ export function showGapCard({ gap, reason, length_m, gap_m, ways = [] }) {
   });
 }
 
+const UNNAMED_HINT_KEY = "unnamed";
+
 function updateSnapTooltip(snap, point) {
   const el = document.getElementById("snapTooltip");
   if (!el) return;
   if (!snap || !point) { hideSnapTooltip(); return; }
   const unnamedTrail = !snap.name && (snap.highway === "path" || snap.highway === "track");
-  const text = snap.name || (unnamedTrail ? "Know this trail’s name? Add it in OpenStreetMap" : "");
+  const text = snap.name || (unnamedTrail ? UNNAMED_HINT_KEY : "");
   if (!text) { hideSnapTooltip(); return; }
-  if (el.textContent !== text) el.textContent = text;
+  if (unnamedTrail) {
+    if (el.dataset.hint !== UNNAMED_HINT_KEY) {
+      el.dataset.hint = UNNAMED_HINT_KEY;
+      el.innerHTML = `Know this trail\u2019s name? Add it to OpenStreetMap with the <span class="snap-tooltip__icon" role="img" aria-label="flag">${reportIconSvg}</span> flag button.`;
+    }
+  } else {
+    delete el.dataset.hint;
+    if (el.textContent !== text) el.textContent = text;
+  }
   el.classList.toggle("snap-tooltip--unnamed", unnamedTrail);
   el.style.transform = `translate(${Math.round(point.x + 14)}px, ${Math.round(point.y + 14)}px)`;
   el.classList.add("visible");

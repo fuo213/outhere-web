@@ -8,7 +8,7 @@
  */
 
 import { TILE_URL, MAP_CONFIG, LAYER_GROUPS, MAP_FONT } from "./config.js";
-import { initReport, isReportPicking } from "./report-ui.js";
+import { initReport, isReportPicking, reportIconSvg } from "./report-ui.js";
 import { LayerStyleManager, buildStyleControls, toggleStyleControls } from "./layer-styles.js";
 import {
   isDrawingRoute,
@@ -413,10 +413,6 @@ map.addControl(makeMapControl("homeBtn", "My Trips", homeIconSvg), "top-left");
 map.addControl(makeMapControl("planBtn", "Trip Planning", planIconSvg), "top-left");
 map.addControl(makeMapControl("layersBtn", "Map Layers", layersIconSvg), "top-left");
 
-const reportIconSvg = `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-  <line x1="5" y1="3" x2="5" y2="17"/>
-  <path d="M5 4 h9 l-2 3.2 l2 3.2 h-9"/>
-</svg>`;
 map.addControl(makeMapControl("reportBtn", "Report a map problem", reportIconSvg), "top-left");
 
 // ---------------------------------------------------------------------------

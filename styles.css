@@ -1079,6 +1079,14 @@ body.panel-open .drawing-hint {
   white-space: normal;
 }
 
+/* Flag glyph inline in the unnamed-trail hint, sized to the text. */
+.snap-tooltip__icon {
+  display: inline-block;
+  vertical-align: -0.2em;
+  color: var(--accent);
+}
+.snap-tooltip__icon svg { width: 1.1em; height: 1.1em; }
+
 /* Gap card: why a leg is drawn straight, with the OpenStreetMap fix link.
    Inherits the base popup (paper, border, shadow-3); only adds room for the
    close button. */

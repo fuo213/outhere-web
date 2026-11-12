@@ -20,6 +20,12 @@ const store = (() => {
 })();
 
 /** The report already made for a spot, or null (card shows "Reported on ..."). */
+/** The flag icon on the report button; also shown inline in the unnamed-trail hint. */
+export const reportIconSvg = `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+  <line x1="5" y1="3" x2="5" y2="17"/>
+  <path d="M5 4 h9 l-2 3.2 l2 3.2 h-9"/>
+</svg>`;
+
 export const reportedAt = (lat, lon) => store.find(lat, lon, OSM_API_BASE);
 
 function el(tag, props = {}, ...kids) {
