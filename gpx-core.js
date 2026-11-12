@@ -10,9 +10,14 @@
  * Geometry is lightly simplified (DP, 1.5 m; 2.5 m shaved up to 15% off a switchbacked climb) so a day-long recording stays a
  * sane size; timing is not stored per point. Elevation comes from the file's
  * own <ele> (imported GPX > our DEM > Open-Meteo): a profile sampled by
- * distance like the planner's (<=100 points) and gain/loss with a 3 m
+ * distance like the planner's (here at most 100 points) and gain/loss with a 3 m
  * hysteresis so GPS/barometer noise doesn't count as climbing.
  */
+
+import { HYSTERESIS_M, hysteresisGainLoss } from "./elevation.js";
+
+// Shared with drawn routes (elevation.js); re-exported for existing importers.
+export { HYSTERESIS_M, hysteresisGainLoss };
 
 const MI = 1609.344;
 const FT = 3.28084;
@@ -20,7 +25,6 @@ const R = 6371008.8;
 const RAD = Math.PI / 180;
 
 export const SIMPLIFY_TOLERANCE_M = 1.5;
-export const HYSTERESIS_M = 3;
 const MAX_PROFILE_POINTS = 100;
 const MIN_SPACING_M = 25;
 
@@ -113,30 +117,6 @@ export function simplifyIndices(coords, tolM = SIMPLIFY_TOLERANCE_M) {
   return idx;
 }
 
-/**
- * Total gain and loss of an elevation series (any unit) counting only swings
- * of at least `h` from the last turning point.
- */
-export function hysteresisGainLoss(series, h) {
-  let gain = 0, loss = 0;
-  if (series.length < 2) return { gain, loss };
-  let dir = 0, ext = series[0], base = series[0];
-  for (let i = 1; i < series.length; i++) {
-    const e = series[i];
-    if (dir >= 0 && e > ext) ext = e;
-    else if (dir <= 0 && e < ext) ext = e;
-    if (dir === 0) {
-      if (e - base >= h) { dir = 1; ext = e; }
-      else if (base - e >= h) { dir = -1; ext = e; }
-    } else if (dir === 1 && ext - e >= h) { gain += ext - base; base = ext; dir = -1; ext = e; }
-    else if (dir === -1 && e - ext >= h) { loss += base - ext; base = ext; dir = 1; ext = e; }
-  }
-  if (dir === 1) gain += ext - base;
-  else if (dir === -1) loss += base - ext;
-  return { gain, loss };
-}
-
-/** Fill gaps in an elevation series by linear interpolation. null if too few values. */
 export function fillElevation(ele) {
   const have = ele.filter((v) => v != null).length;
   if (have < Math.max(2, ele.length * 0.5)) return null;

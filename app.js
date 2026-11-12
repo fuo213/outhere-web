@@ -24,7 +24,14 @@ import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayTy
 import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
 import { graphInfoForRegion } from "./routing.js";
 import { initTripsHome, loadDemoTripFromURL } from "./trips-home.js";
+import { initPlaceSearch } from "./place-search-ui.js";
 import { addTripChartLayers, drawingLegLayers, gapPinLayers, vertexPaint, initTripChart, TRIP_POINT_LAYERS, tripChartDebug } from "./map-trip-style.js";
+import { handleMapClickForStop, isStopToolActive, openStopMenu } from "./stops.js";
+import * as lineModel from "./line-model.js";
+import * as routeEdit from "./route-edit.js";
+import * as lineEdit from "./line-edit.js";
+import * as stops from "./stops.js";
+const { isLineTrip } = lineModel;
 
 // ---------------------------------------------------------------------------
 // PMTiles protocol registration
@@ -183,6 +190,99 @@ export function buildStyle(region) {
           "line-dasharray": [2, 1],
         },
       },
+      // Area labels (pipeline: places layer, PLACES_AND_SEARCH.md). Mirrors
+      // tile_generator.py; below the POI labels so those win collisions.
+      {
+        id: "area-labels-park",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 1],
+        minzoom: 6,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-transform": "uppercase",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 6, 11, 9, 15, 12, 19],
+          "text-letter-spacing": 0.18,
+          "text-max-width": 9,
+          "symbol-sort-key": 1,
+        },
+        paint: {
+          "text-color": "#6f7f66",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.5,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.9, 14, 0.25],
+        },
+      },
+      {
+        id: "area-labels-district",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 2],
+        minzoom: 8,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-transform": "uppercase",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 8, 10, 11, 13, 13, 16],
+          "text-letter-spacing": 0.16,
+          "text-max-width": 9,
+          "symbol-sort-key": 2,
+        },
+        paint: {
+          "text-color": "#7a8068",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.5,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.9, 14, 0.25],
+        },
+      },
+      {
+        id: "area-labels-area",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 3],
+        minzoom: 7,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-transform": "uppercase",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 7, 9, 10, 11, 13, 13],
+          "text-letter-spacing": 0.14,
+          "text-max-width": 8,
+          "symbol-sort-key": 3,
+        },
+        paint: {
+          "text-color": "#8a7a6a",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.2,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.85, 14, 0.2],
+        },
+      },
+      {
+        id: "area-labels-local",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 4],
+        minzoom: 11,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 11, 10, 14, 12],
+          "text-letter-spacing": 0.06,
+          "text-max-width": 7,
+          "symbol-sort-key": 4,
+        },
+        paint: {
+          "text-color": "#9a8a78",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.2,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0.9, 15, 0.5],
+        },
+      },
       // POIs — colored circles by category
       {
         id: "pois",
@@ -258,7 +358,7 @@ export const map = new maplibregl.Map({
 
 // Debug handle: module scope is unreachable from devtools, so expose the two
 // core objects for console debugging. Not part of the public API.
-window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug, elevation: elevationDebug };
+window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug, lineModel, lineEdit, routeEdit, stops, elevation: elevationDebug };
 
 // Navigation controls (zoom +/-, compass)
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -357,6 +457,24 @@ function addTripLayers() {
   map.addSource("route-preview", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
   const isLine = ["==", ["geometry-type"], "LineString"];
+  const tok = resolveTokenColors();
+  // "Redraw from here": the stretch the change would remove, faded under a
+  // paper wash with a rust dash, so you see it before you commit.
+  map.addSource("route-ghost", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({
+    id: "route-ghost-fade", type: "line", source: "route-ghost", filter: ["==", ["get", "role"], "remove"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": tok.surfaceRaised, "line-width": ["interpolate", ["linear"], ["zoom"], 9, 10, 13, 20, 17, 32], "line-opacity": 0.82 },
+  });
+  map.addLayer({
+    id: "route-ghost-remove", type: "line", source: "route-ghost", filter: ["==", ["get", "role"], "remove"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": tok.accent, "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.4, 13, 2.2, 17, 3], "line-dasharray": [1.2, 1.8], "line-opacity": 0.9 },
+  });
+  map.addLayer({
+    id: "route-ghost-rejoin", type: "circle", source: "route-ghost", filter: ["==", ["get", "role"], "rejoin"],
+    paint: { "circle-radius": 6, "circle-color": tok.surfaceRaised, "circle-stroke-width": 2, "circle-stroke-color": tok.ink },
+  });
   for (const layer of drawingLegLayers("route-preview", "route-preview", isLine, { preview: true })) map.addLayer(layer);
   for (const layer of drawingLegLayers("route-drawing", "route-drawing", isLine)) map.addLayer(layer);
   for (const layer of gapPinLayers("route-drawing-gaps", "route-drawing", ["==", ["get", "gap"], true])) map.addLayer(layer);
@@ -434,6 +552,7 @@ function resolveTokenColors() {
   return {
     accent: t("--accent"),
     surfaceRaised: t("--surface-raised"),
+    ink: t("--text"),
   };
 }
 
@@ -472,6 +591,7 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   const regionsReady = initRegionPicker();
   initTripsHome();
+  initPlaceSearch();
   loadDemoTripFromURL(regionsReady); // dev only: ?demo=maze
 
   // -------------------------------------------------------------------
@@ -485,6 +605,7 @@ map.on("load", () => {
       handleDeleteClick(e);
       return;
     }
+    if (!isDrawingRoute && handleMapClickForStop(e)) return;
     if (isDrawingRoute) {
       handleMapClickForRoute(e);
     }
@@ -511,7 +632,13 @@ map.on("load", () => {
   // Trip feature click — show popup (skip during route drawing)
   for (const layerId of TRIP_POINT_LAYERS) {
     map.on("click", layerId, (e) => {
-      if (isDrawingRoute) return;
+      if (isDrawingRoute || isDeleteMode || isStopToolActive()) return;
+      // 1.2 trips: a stop opens its menu (name, nights, water, pass, day hike).
+      if (isLineTrip(TripManager.currentTrip) && e.features?.[0]?.properties?._id) {
+        e.originalEvent.stopPropagation();
+        openStopMenu(e.features[0].properties._id);
+        return;
+      }
       showTripFeaturePopup(e);
     });
     // Don't clobber the crosshair cursor while drawing or in delete mode

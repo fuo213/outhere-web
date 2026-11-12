@@ -141,6 +141,16 @@ export const LAYER_GROUPS = [
     legend: [{ color: "#B8431A", label: "Trails snap to real paths" }],
   },
   {
+    // Quiet names of parks, park sections and landforms (the pipeline's
+    // `places` layer). Only names OpenStreetMap has; nothing is invented.
+    id: "area-labels",
+    label: "Area names",
+    layers: ["area-labels-park", "area-labels-district", "area-labels-area", "area-labels-local"],
+    styleLayers: [],
+    defaultVisible: true,
+    legend: [],
+  },
+  {
     id: "protected-areas",
     label: "Protected Areas",
     layers: ["protected-areas-fill"],

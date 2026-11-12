@@ -35,17 +35,25 @@
 
   <!-- Planning toolbar (hidden until Plan panel is open, shown on planBtn hover) -->
   <div class="planning-toolbar" id="planningToolbar">
-    <button class="tool-btn" id="addRouteBtn" title="Draw route" aria-label="Draw route">
+    <button class="tool-btn" id="addRouteBtn" title="Draw your line" aria-label="Draw your line">
       <svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none">
         <line x1="8" y1="2" x2="8" y2="14"/>
         <line x1="2" y1="8" x2="14" y2="8"/>
       </svg>
     </button>
-    <div class="point-type-selector" id="pointTypeSelector">
-      <button class="point-type-btn active" data-point-type="route"><kbd>1</kbd> Route</button>
-      <button class="point-type-btn" data-point-type="camp"><kbd>2</kbd> Camp</button>
-      <button class="point-type-btn" data-point-type="dayhike"><kbd>3</kbd> Dayhike</button>
-      <button class="point-type-btn" data-point-type="rest"><kbd>4</kbd> Rest</button>
+    <button class="tool-btn" id="addStopBtn" title="Add a stop: camp, break, water, hazard, viewpoint, note" aria-label="Add a stop" aria-pressed="false">
+      <svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M8 15 C8 15 3 9.6 3 6.2 A5 5 0 0 1 13 6.2 C13 9.6 8 15 8 15 Z"/>
+        <circle cx="8" cy="6.2" r="1.7"/>
+      </svg>
+    </button>
+    <div class="point-type-selector stop-kind-selector" id="stopKindSelector" role="group" aria-label="Stop kind">
+      <button class="point-type-btn active" data-stop-kind="camp" aria-pressed="true"><kbd>1</kbd> Camp</button>
+      <button class="point-type-btn" data-stop-kind="break" aria-pressed="false"><kbd>2</kbd> Break</button>
+      <button class="point-type-btn" data-stop-kind="water" aria-pressed="false"><kbd>3</kbd> Water</button>
+      <button class="point-type-btn" data-stop-kind="hazard" aria-pressed="false"><kbd>4</kbd> Hazard</button>
+      <button class="point-type-btn" data-stop-kind="scenic" aria-pressed="false" title="Viewpoint"><kbd>5</kbd> View</button>
+      <button class="point-type-btn" data-stop-kind="note" aria-pressed="false"><kbd>6</kbd> Note</button>
     </div>
     <button class="tool-btn" id="deleteWaypointBtn" title="Delete waypoint" aria-label="Delete waypoint">
       <svg width="14" height="15" viewBox="0 0 14 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -62,11 +70,36 @@
   <!-- Drawing hint overlay -->
   <div class="drawing-hint" id="drawingHint" role="status" aria-live="polite"></div>
 
+  <!-- Edit toast: what an edit did, with Undo (route-edit.js) -->
+  <div class="edit-toast" id="editToast" role="status" aria-live="polite"></div>
+
   <!-- Name of the trail under the cursor while drawing -->
   <div class="snap-tooltip" id="snapTooltip" aria-hidden="true"></div>
 
   <!-- Map container -->
   <div id="map"></div>
+
+  <!-- Place search: shown only when the active region has a place index (place-search-ui.js) -->
+  <div class="place-search" id="placeSearch" hidden>
+    <div class="place-search-field">
+      <svg class="place-search-icon" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <circle cx="8.5" cy="8.5" r="5.5"/>
+        <line x1="12.7" y1="12.7" x2="17" y2="17"/>
+      </svg>
+      <input class="place-search-input" id="placeSearchInput" type="text" role="combobox"
+             aria-expanded="false" aria-controls="placeSearchList" aria-autocomplete="list"
+             aria-label="Search places" placeholder="Search trails, peaks, places"
+             autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+      <kbd class="place-search-key" id="placeSearchKey" aria-hidden="true">/</kbd>
+      <button class="place-search-clear" id="placeSearchClear" type="button" aria-label="Clear search" hidden>
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" aria-hidden="true"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5"/><line x1="8.5" y1="1.5" x2="1.5" y2="8.5"/></svg>
+      </button>
+    </div>
+    <div class="place-search-panel" id="placeSearchPanel" hidden>
+      <ul class="place-search-list" id="placeSearchList" role="listbox" aria-label="Matching places"></ul>
+      <p class="place-search-empty" id="placeSearchEmpty" role="status" hidden></p>
+    </div>
+  </div>
 
   <!-- Region switcher (top-right) — populated by region-picker.js -->
   <div class="region-switcher" id="regionSwitcher">
@@ -199,10 +232,10 @@
   <!-- Route drawing instructions (floating overlay, visible during drawing) -->
   <div class="route-instructions" id="routeInstructions">
     <div class="route-instructions-inner">
-      <p class="route-instructions-title">Drawing a route</p>
+      <p class="route-instructions-title">Drawing your line</p>
       <ul class="route-instructions-steps">
-        <li><strong>Click</strong> near a trail; the route follows trails between points</li>
-        <li>Press <strong>1-4</strong> to switch: Route, Camp, Dayhike, Rest</li>
+        <li><strong>Click</strong> near a trail; the line follows trails between clicks</li>
+        <li>Add camps and other stops afterwards with the <strong>stop</strong> tool</li>
         <li><strong>Backspace</strong> removes the last point</li>
         <li><strong>Shift-click</strong> for a straight leg</li>
         <li><strong>Double-click</strong> to finish, <strong>Esc</strong> to cancel</li>

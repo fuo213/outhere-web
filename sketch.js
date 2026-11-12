@@ -240,6 +240,15 @@ const GLYPHS = {
     ],
     color: "--earth-500",
   },
+  // Note: a slip of paper with a folded corner and two written lines.
+  note: {
+    fill: P("M-5.6 0 L-5.6 -11 L3 -11 L5.6 -8.4 L5.6 0 Z"),
+    ink: [
+      [[-5.8, 0.2], [-5.7, -11.2], [3.1, -11.3], [5.8, -8.5], [5.9, 0.1], [-5.8, 0.2]],
+      [[-3.4, -7.4], [2.6, -7.5]], [[-3.4, -4.2], [3.4, -4.3]],
+    ],
+    color: "--earth-300",
+  },
   // A route that isn't the day's main line: a short inked trail.
   route: {
     ink: [[[-8, -1], [-4.4, -6.4], [-0.6, -3.2], [3, -9], [8, -6]]],

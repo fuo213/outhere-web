@@ -1,10 +1,19 @@
 /**
  * Booot trip planning: drawing tools.
  *
- * Route drawing with switchable point types (route/camp/dayhike/rest; keys
- * 1-4). Clicks snap to the region's routing graph and every leg is routed
- * along real trails by routing.js (A* over the pipeline-built OSM graph,
- * SNAPPING_DESIGN.md Part 2). A live routed preview follows the cursor.
+ * Drawing the line. Clicks only guide snapping: they snap to the region's
+ * routing graph and every leg is routed along real trails by routing.js (A*
+ * over the pipeline-built OSM graph, SNAPPING_DESIGN.md Part 2). After the
+ * line is finished the clicks are hidden; they stay in the data as anchors
+ * (vertex_coords / segments). Stops are a separate layer (stops.js).
+ *
+ * Modes (startRouteDrawing(opts)):
+ *   line    a new line (on a 1.2 trip with a line, the draw tool extends it)
+ *   redraw  seeded at a cut point on the line ("Redraw from here",
+ *           route-edit.js): the old line after the cut goes faint; clicking
+ *           back onto it rejoins there and finishes
+ *   spur    a day hike drawn from a stop (from_stop), returns the same day
+ * A live routed preview follows the cursor.
  *
  * Legs that can't be routed are drawn straight and say why:
  *   manual        Shift-click (or a point placed away from any trail)
@@ -25,18 +34,29 @@ import {
 import { reportedAt, openReportDialog } from "./report-ui.js";
 import { osmEditUrl, formatReportDate } from "./osm-report.js";
 import { deriveNameFromRuns } from "./route-names.js";
+import { sampleByDistance, buildProfile, fetchElevations, gainLoss } from "./elevation.js";
 import { profileForRoute } from "./elevation-dem.js";
 import { tripChartOverlay, TRIP_POINT_LAYERS } from "./map-trip-style.js"; // circular; runtime only
+import { exitStopTool, cancelStopMove } from "./stops.js"; // circular; runtime only
+import { startExtend, snapshot } from "./route-edit.js"; // circular; runtime only
+import { isLineTrip, mainRoute, passesNear, sliceM, lineIndex, pointAtM } from "./line-model.js";
+import { returnLink } from "./line-edit.js";
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
 export let isDrawingRoute = false;
 export let isDeleteMode = false;
 
-/** Placed points: { coord: [lon, lat], snapped, type, snap } (snap = routing.js snap result or null). */
+/** Placed points: { coord: [lon, lat], snapped, snap, seed?, rejoinM? } (snap = routing.js snap result or null). */
 let verts = [];
 /** legs[i] ends at verts[i] (legs[0] is unused). See computeLeg(). */
 let legs = [];
-let currentPointType = "route";
+/**
+ * What this drawing is: { mode: "line" } | { mode: "spur", seed, fromStop }
+ * | { mode: "redraw", seed, cutM, ix (old line index), onCommit }.
+ */
+let drawOpts = { mode: "line" };
+/** While redrawing: the rejoin point under the cursor ({ m, coord }) or null. */
+let rejoinHover = null;
 
 /**
  * Routing context for the route being drawn: one graph per route.
@@ -124,10 +144,7 @@ function snapPoint(lngLat, zoom) {
 // Legs
 // ---------------------------------------------------------------------------
 
-function lastMainIndex(upTo) {
-  for (let i = upTo; i >= 0; i--) if (verts[i].type !== "dayhike") return i;
-  return 0;
-}
+const legKind = () => (drawOpts.mode === "spur" ? "spur" : "main");
 
 function straightLeg(from, to, A, B, kind, mode, reason, { preview = false } = {}) {
   const coords = [A.coord, B.coord];
@@ -166,7 +183,7 @@ function unroutableReason(A, B) {
  *          or {aborted: true} when a preview query blows its budget
  */
 function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, preview = false } = {}) {
-  const kind = B.type === "dayhike" ? "spur" : "main";
+  const kind = legKind();
   if (shift) return straightLeg(from, to, A, B, kind, "manual");
   // Graph still downloading (preview only; clicks wait for it): neutral straight.
   if (ctx?.status === "loading") return straightLeg(from, to, A, B, kind, "manual");
@@ -180,13 +197,52 @@ function computeLeg(from, to, A, B, { shift = false, budgetMs = Infinity, previe
   return { from, to, kind, mode: "trail", coords: r.coords, length_m: r.length_m, wayIds: r.wayIds, runs: r.runs };
 }
 
+/**
+ * Route between two existing anchors with the draw tool's rules (graph of the
+ * region, snap to the trail, A*), outside a drawing session: used to rejoin the
+ * line when a middle section is deleted. Anchors are already on the trail, so
+ * a small snap radius is enough. Where routing is unavailable (no graph,
+ * outside it, no trail near an anchor) the leg is a straight segment, marked
+ * the same way the draw tool marks it.
+ * @returns {Promise<{coords, mode, reason?, wayIds?}>} a leg for redrawLine
+ */
+export async function routeBetween(a, b, { aSnapped = true, bSnapped = true } = {}) {
+  const straight = (mode, reason) => ({ coords: [a, b], mode, ...(reason ? { reason } : {}), wayIds: [] });
+  // An anchor that was placed off every trail makes a deliberate off-trail leg.
+  if (!aSnapped || !bSnapped) return straight("manual");
+  try {
+    const pick = pickGraphRegion(getActiveRegion(), getCatalogRegions(), b);
+    if (!pick?.info) return straight("straight", "no_graph");
+    const g = await (peekGraph(pick.info) || loadGraph(pick.info)); // the cache holds promises
+    if (!g.contains(...a) || !g.contains(...b)) return straight("straight", "cross_region");
+    const A = g.snap(a[0], a[1], 30), B = g.snap(b[0], b[1], 30);
+    if (!A || !B) return straight("manual");
+    const r = g.route(A, B, { budgetMs: 2000 });
+    if (!r || r.aborted) return straight("straight", "no_path");
+    // Pin both ends to the anchors exactly so the line stays continuous.
+    const coords = r.coords.slice();
+    if (haversine(...coords[0], ...a) > 0.5) coords.unshift(a);
+    if (haversine(...coords.at(-1), ...b) > 0.5) coords.push(b);
+    return { coords, mode: "trail", wayIds: r.wayIds };
+  } catch (err) {
+    console.warn("[routing] route between anchors failed:", err.message);
+    return straight("straight", "no_graph");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Drawing lifecycle
 // ---------------------------------------------------------------------------
 
-export function startRouteDrawing() {
+export function startRouteDrawing(opts = {}) {
   if (isDrawingRoute) return;       // already drawing — ignore repeat clicks
   if (isDeleteMode) exitDeleteMode(); // drawing and delete mode are exclusive
+  exitStopTool();
+  // The draw tool on a 1.2 trip that already has a line draws on from its end.
+  if (!opts.mode && isLineTrip(TripManager.currentTrip) && mainRoute(TripManager.currentTrip)) {
+    startExtend();
+    return;
+  }
   isDrawingRoute = true;
   session++;
   verts = [];
@@ -194,7 +250,8 @@ export function startRouteDrawing() {
   previewLeg = null;
   previewMemo = new Map();
   queue = Promise.resolve();
-  currentPointType = "route";
+  drawOpts = { mode: "line", ...opts };
+  rejoinHover = null;
 
   // Area regions know their graph up front: start loading it now. For a
   // full-state region the first click decides (smallest area containing it).
@@ -204,8 +261,6 @@ export function startRouteDrawing() {
   setActiveToolBtn("addRouteBtn");
   document.getElementById("planningToolbar")?.classList.add("active");
   alignPlanningToolbar();
-  showPointTypeSelector();
-  setActivePointType("route");
   showRouteModal();
   map.doubleClickZoom.disable();
   // Box zoom swallows shift+mousedown, which would eat the shift-click
@@ -222,6 +277,21 @@ export function startRouteDrawing() {
 
   _routeKeyHandler = handleRouteKeyDown;
   document.addEventListener("keydown", _routeKeyHandler);
+
+  // Redraw / spur: the first point is given (the cut, or the stop).
+  if (drawOpts.seed) {
+    const seed = drawOpts.seed;
+    enqueue(async () => {
+      await ensureContext(seed);
+      const g = ctx?.graph;
+      const snap = g && g.contains(seed[0], seed[1]) ? g.snap(seed[0], seed[1], 25) : null;
+      verts.push({ coord: snap ? [snap.lon, snap.lat] : seed, snapped: !!snap, snap, seed: true });
+      updateRouteDrawing();
+      updateGhost();
+      notifyDrawingProgress();
+    });
+  }
+  updateGhost();
 }
 
 /** Run drawing work in click order, dropping it if drawing was reset meanwhile. */
@@ -240,24 +310,43 @@ export function handleMapClickForRoute(e) {
   const lngLat = [e.lngLat.lng, e.lngLat.lat];
   const shift = e.originalEvent.shiftKey;
   const zoom = map.getZoom();
-  const type = currentPointType;
-  enqueue(() => addVertex(lngLat, { shift, zoom, type }));
+  enqueue(() => addVertex(lngLat, { shift, zoom }));
 }
 
-async function addVertex(lngLat, { shift, zoom, type }) {
+/**
+ * Redraw: a point within the snap distance of the faint old line (after the
+ * cut) rejoins it there; on overlapping passes the first pass after the cut.
+ * @returns {{ m, coord } | null} the rejoin point on the OLD line
+ */
+function rejoinAt(lngLat, zoom) {
+  if (drawOpts.mode !== "redraw" || !drawOpts.ix || verts.length < 1) return null;
+  const ix = drawOpts.ix;
+  if (drawOpts.cutM >= ix.total - 1) return null; // extending: nothing to rejoin
+  const radius = snapRadius(lngLat[1], zoom);
+  const minM = drawOpts.cutM + Math.max(radius, 30);
+  const pass = passesNear(ix, lngLat, radius).find((p) => p.m > minM);
+  return pass ? { m: pass.m, coord: pass.coord } : null;
+}
+
+async function addVertex(lngLat, { shift, zoom }) {
   await ensureContext(lngLat);
-  const snap = shift ? null : snapPoint(lngLat, zoom);
-  const v = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, type, snap };
+  const rejoin = rejoinAt(lngLat, zoom);
+  let snap;
+  if (rejoin) {
+    const g = ctx?.graph;
+    snap = !shift && g && g.contains(...rejoin.coord) ? g.snap(rejoin.coord[0], rejoin.coord[1], 25) : null;
+  } else snap = shift ? null : snapPoint(lngLat, zoom);
+  const v = { coord: rejoin ? rejoin.coord : snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, snap };
+  if (rejoin) v.rejoinM = rejoin.m;
 
   // The two clicks of a finishing double-click land on the same spot: keep one.
   const last = verts[verts.length - 1];
-  if (last && last.type === type && haversine(...last.coord, ...v.coord) < 1) return;
+  if (last && haversine(...last.coord, ...v.coord) < 1) return;
 
   verts.push(v);
   const i = verts.length - 1;
   if (i >= 1) {
-    const from = lastMainIndex(i - 1);
-    legs[i] = computeLeg(from, i, verts[from], v, { shift });
+    legs[i] = computeLeg(i - 1, i, verts[i - 1], v, { shift });
     // Say why once, without covering the map where the user keeps clicking.
     if (legs[i].reason === "no_path") flashDrawingHint("These trails don\u2019t connect in OpenStreetMap. Click the rust pin to fix it.");
   }
@@ -266,10 +355,11 @@ async function addVertex(lngLat, { shift, zoom, type }) {
   updateRouteDrawing();
   updatePreviewSource();
   notifyDrawingProgress();
+  if (rejoin) finishRouteDrawing(); // back on the old line: that's the whole change
 }
 
 function undoLastVertex() {
-  if (!verts.length) return;
+  if (!verts.length || (verts.length === 1 && verts[0].seed)) return; // the cut / stop stays
   verts.pop();
   legs.length = verts.length;
   previewLeg = null;
@@ -287,12 +377,24 @@ export function handleMapDblClickForRoute(e) {
 }
 
 function finishRouteDrawing() {
-  const mainLegs = legs.filter((l) => l && l.kind === "main");
-  if (verts.length < 2 || !mainLegs.length) {
+  const drawn = legs.filter(Boolean);
+  if (verts.length < 2 || !drawn.length) {
     resetRouteDrawing();
     cancelDrawing();
     return;
   }
+  if (drawOpts.mode === "spur") return finishSpur(drawn);
+  if (drawOpts.mode === "redraw") {
+    const opts = drawOpts;
+    const rejoinM = verts.at(-1).rejoinM ?? null;
+    const routing = routingInfo();
+    const out = drawn.map((l) => ({ coords: l.coords.map(round6), mode: l.mode, reason: l.reason, wayIds: l.wayIds }));
+    resetRouteDrawing();
+    cancelDrawing();
+    opts.onCommit?.({ newLegs: out, rejoinM, routing });
+    return;
+  }
+  const mainLegs = drawn;
 
   // 1. Main route: legs concatenated at graph precision (6 dp), duplicate
   //    joints removed, with per-leg provenance (schema 1.1 `segments`).
@@ -311,14 +413,14 @@ function finishRouteDrawing() {
   if (geometryCoords.length < 2) geometryCoords.push([...geometryCoords[0]]);
   const routing = routingInfo();
 
-  const spurLegs = legs.filter((l) => l && l.kind === "spur");
+  const spurLegs = [];
   const autoName = deriveRouteName(mainLegs);
   const properties = {
     type: "route",
     name: autoName,
     planned: true,
     notes: "",
-    vertex_types: verts.map((v) => v.type),
+    vertex_types: verts.map(() => "route"),
     vertex_snapped: verts.map((v) => v.snapped),
     vertex_coords: verts.map((v) => round6(v.coord)),
     main_route_distance_mi: lineLength(geometryCoords) / MI,
@@ -337,48 +439,45 @@ function finishRouteDrawing() {
     fetchElevationProfile(geometryCoords, routeFeature.properties._id);
   }
 
-  // 2. Day-hike spurs: one direction, branch point → spur end.
-  for (const leg of spurLegs) {
-    const coords = leg.coords.map(round6);
-    const spurName = deriveRouteName([leg]);
-    const props = {
-      type: "dayhike_spur",
-      route_index: routeIdx,
-      name: spurName,
-      segments: [segmentRecord(leg, [0, coords.length - 1])],
-    };
-    if (spurName) props.name_auto = true;
-    if (routing) props.routing = routing;
-    const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
-    if (leg.gap) rememberGap(`${TripManager.currentTrip.features[idx].properties._id}:0`, leg);
-  }
-
-  // 3. Point features for special points (camp/dayhike/rest)
-  const tripDates = getTripDateRange();
-  let dateIndex = 0;
-  verts.forEach((v, i) => {
-    if (v.type === "route") return;
-    const pointProps = {
-      type: v.type,
-      point_type: v.type,
-      route_index: routeIdx,
-      route_vertex_index: i,
-      date: tripDates[dateIndex] || "",
-      name: "",
-      notes: "",
-    };
-    if (v.type === "camp") {
-      pointProps.water_nearby = false;
-      pointProps.water_notes = "";
-      dateIndex++; // camp advances to next day
-    } else if (v.type === "rest") {
-      dateIndex++; // rest day consumes a day
-    }
-    // dayhike does NOT advance the date (same-day activity)
-    TripManager.addFeature({ type: "Point", coordinates: round6(v.coord) }, pointProps);
-  });
-
   TripManager.render(); // picks up the gap pins memoized above
+  resetRouteDrawing();
+  cancelDrawing();
+}
+
+/** A day hike from a stop: one spur feature, branch point → spur end. */
+function finishSpur(drawn) {
+  const trip = TripManager.currentTrip;
+  const coords = [];
+  const segments = [];
+  for (const leg of drawn) {
+    const pts = leg.coords.map(round6);
+    let start = coords.length - 1;
+    if (start < 0 || !samePos(coords[start], pts[0])) { start = coords.length; coords.push(pts[0]); }
+    for (let k = 1; k < pts.length; k++) coords.push(pts[k]);
+    segments.push(segmentRecord(leg, [start, coords.length - 1]));
+  }
+  if (coords.length < 2) coords.push([...coords[0]]);
+  const route = mainRoute(trip);
+  const routing = routingInfo();
+  const spurName = deriveRouteName(drawn);
+  const props = {
+    type: "dayhike_spur",
+    route_index: route ? trip.features.indexOf(route) : 0,
+    name: spurName,
+    segments,
+  };
+  if (drawOpts.fromStop) props.from_stop = drawOpts.fromStop;
+  if (spurName) props.name_auto = true;
+  if (routing) props.routing = routing;
+  snapshot("add a day hike");
+  const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
+  drawn.forEach((leg, k) => leg.gap && gapMemo.set(`${trip.features[idx].properties._id}:${k}`, leg.gap));
+  if (route) {
+    route.properties.dayhike_distance_mi = trip.features.filter((f) => f.properties.type === "dayhike_spur")
+      .reduce((sum, f) => sum + (2 * lineLength(f.geometry.coordinates)) / MI, 0);
+  }
+  TripManager.render();
+  TripManager.save();
   resetRouteDrawing();
   cancelDrawing();
 }
@@ -432,7 +531,9 @@ function resetRouteDrawing() {
   pendingMove = null;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
-  currentPointType = "route";
+  drawOpts = { mode: "line" };
+  rejoinHover = null;
+  updateGhost();
   map.doubleClickZoom.enable();
   map.boxZoom.enable();
   map.getCanvas().style.cursor = "";
@@ -443,7 +544,6 @@ function resetRouteDrawing() {
   flashUntil = 0;
   clearTimeout(flashTimer);
   hideRouteModal();
-  hidePointTypeSelector();
   updateDrawingPreview(null);
 
   if (_routeMouseMoveHandler) {
@@ -478,14 +578,22 @@ function runPreview() {
   const { lngLat, shift, point } = pendingMove;
   const zoom = map.getZoom();
   const snap = shift ? null : snapPoint(lngLat, zoom);
-  const cursor = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, type: currentPointType, snap };
+  let cursor = { coord: snap ? [snap.lon, snap.lat] : lngLat, snapped: !!snap, snap };
+  // Redraw: hovering the faint old line previews the rejoin there.
+  const rj = rejoinAt(lngLat, zoom);
+  if ((rj?.m ?? null) !== (rejoinHover?.m ?? null)) { rejoinHover = rj; updateGhost(); }
+  if (rj) {
+    const g = ctx?.graph;
+    const s2 = !shift && g && g.contains(...rj.coord) ? g.snap(rj.coord[0], rj.coord[1], 25) : null;
+    cursor = { coord: rj.coord, snapped: true, snap: s2 };
+  }
 
   previewLeg = null;
   let routeMs = 0;
   if (verts.length) {
-    const from = lastMainIndex(verts.length - 1);
+    const from = verts.length - 1;
     const A = verts[from];
-    const key = snap && !shift ? `${from}|${snap.e}|${Math.round(snap.along / 5)}|${cursor.type === "dayhike"}` : null;
+    const key = cursor.snap && !shift ? `${from}|${cursor.snap.e}|${Math.round(cursor.snap.along / 5)}` : null;
     if (key && previewMemo.has(key)) {
       previewLeg = previewMemo.get(key);
       previewStats.memoHits++;
@@ -496,7 +604,7 @@ function runPreview() {
       if (leg.aborted) {
         // Too slow for a frame: preview straight; the click routes it properly.
         previewStats.aborted++;
-        previewLeg = straightLeg(from, verts.length, A, cursor, cursor.type === "dayhike" ? "spur" : "main", "manual");
+        previewLeg = straightLeg(from, verts.length, A, cursor, legKind(), "manual");
       } else {
         previewLeg = leg;
         if (key) {
@@ -507,7 +615,7 @@ function runPreview() {
     }
   }
   updatePreviewSource(cursor);
-  updateSnapTooltip(snap, point);
+  if (rj) showSnapText("Rejoin your line here", point); else updateSnapTooltip(snap, point);
 
   const frameMs = performance.now() - t0;
   previewStats.frames++;
@@ -567,9 +675,37 @@ function updateRouteDrawing() {
   verts.forEach((v, i) => features.push({
     type: "Feature",
     geometry: { type: "Point", coordinates: v.coord },
-    properties: { vertex: true, snapped: v.snapped, point_type: v.type, index: i },
+    properties: { vertex: true, snapped: v.snapped, point_type: v.seed ? "camp" : "route", index: i },
   }));
   source.setData({ type: "FeatureCollection", features });
+}
+
+/**
+ * Redraw: what the change will remove, drawn over the old line (faded, with
+ * a rust dash) before you commit. From the cut to the end, or to the rejoin
+ * point under the cursor; the part after a rejoin stays as it is.
+ */
+function updateGhost() {
+  const source = map.getSource?.("route-ghost");
+  if (!source) return;
+  const features = [];
+  const d = drawOpts;
+  if (isDrawingRoute && d.mode === "redraw" && d.ix && d.cutM < d.ix.total - 1) {
+    const end = rejoinHover ? rejoinHover.m : d.ix.total;
+    const coords = sliceM(d.ix, d.cutM, end);
+    if (coords.length >= 2) features.push({ type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: { role: "remove" } });
+    if (rejoinHover) features.push({ type: "Feature", geometry: { type: "Point", coordinates: rejoinHover.coord }, properties: { role: "rejoin" } });
+  }
+  source.setData({ type: "FeatureCollection", features });
+}
+
+function showSnapText(text, point) {
+  const el = document.getElementById("snapTooltip");
+  if (!el || !point) return;
+  if (el.textContent !== text) el.textContent = text;
+  el.classList.remove("snap-tooltip--unnamed");
+  el.style.transform = `translate(${Math.round(point.x + 14)}px, ${Math.round(point.y + 14)}px)`;
+  el.classList.add("visible");
 }
 
 /** Cursor marker + preview leg (changes per frame). */
@@ -777,6 +913,9 @@ function updateDrawingHint() {
     return hideDrawingHint();
   }
   if (ctx?.graph && map.getZoom() < SNAP_MIN_ZOOM) return showDrawingHint("Zoom in to snap to trails");
+  if (drawOpts.mode === "redraw" && drawOpts.ix && drawOpts.cutM < drawOpts.ix.total - 1) return showDrawingHint("Click the faint line to rejoin it, or double-click to end the trip there.");
+  if (drawOpts.mode === "redraw") return showDrawingHint("Drawing on from the end of your line. Double-click to finish.");
+  if (drawOpts.mode === "spur") return showDrawingHint("Draw the day hike out. Double-click where you turn around.");
   hideDrawingHint();
 }
 
@@ -796,7 +935,6 @@ function notifyDrawingProgress() {
     mainDistanceMi: main / MI,
     dayhikeDistanceMi: spur / MI,
     offTrailMi: off / MI,
-    vertexTypes: verts.map((v) => v.type),
   });
 }
 
@@ -809,15 +947,17 @@ export function cancelDrawing() {
     resetRouteDrawing();
   }
   if (isDeleteMode) exitDeleteMode();
+  cancelStopMove();
+  exitStopTool();
   setActiveToolBtn(null);
   hideDrawingHint();
   hideRouteModal();
-  hidePointTypeSelector();
   document.getElementById("planningToolbar")?.classList.remove("active");
 }
 
 export function startDeleteMode() {
   if (isDrawingRoute) cancelDrawing();
+  exitStopTool();
   isDeleteMode = true;
   map.getCanvas().style.cursor = "crosshair";
   document.getElementById("planningToolbar")?.classList.add("active");
@@ -840,7 +980,7 @@ export function handleDeleteClick(e) {
   const idx = TripManager.currentTrip.features.findIndex(
     f => f.properties._id === clickedId
   );
-  if (idx !== -1) TripManager.removeFeature(idx);
+  if (idx !== -1) { snapshot("delete"); TripManager.removeFeature(idx); }
 }
 
 function setActiveToolBtn(id) {
@@ -863,6 +1003,10 @@ function hideDrawingHint() {
   if (el) el.classList.remove("visible");
 }
 
+/** The same hint slot for the other map tools (stops.js). */
+export const showPlanningHint = (text) => showDrawingHint(text);
+export const hidePlanningHint = () => { if (!isDrawingRoute) hideDrawingHint(); };
+
 // ---------------------------------------------------------------------------
 // Route instruction modal
 // ---------------------------------------------------------------------------
@@ -878,37 +1022,7 @@ function hideRouteModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Point type selector
-// ---------------------------------------------------------------------------
-
-function showPointTypeSelector() {
-  const el = document.getElementById("pointTypeSelector");
-  if (el) el.classList.add("visible");
-}
-
-function hidePointTypeSelector() {
-  const el = document.getElementById("pointTypeSelector");
-  if (el) el.classList.remove("visible");
-}
-
-function setActivePointType(pointType) {
-  currentPointType = pointType;
-  document.querySelectorAll(".point-type-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.pointType === pointType);
-  });
-}
-
-export function initPointTypeSelector() {
-  document.querySelectorAll(".point-type-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      setActivePointType(btn.dataset.pointType);
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Keyboard: 1-4 switch point type, Backspace / Ctrl-Z / Cmd-Z undo
+// Keyboard: Backspace / Ctrl-Z / Cmd-Z undo
 // (Esc cancel lives in trip-panel.js)
 // ---------------------------------------------------------------------------
 
@@ -924,72 +1038,29 @@ function handleRouteKeyDown(e) {
   if (isUndo) {
     e.preventDefault();
     enqueue(undoLastVertex);
-    return;
-  }
-
-  const keyMap = { "1": "route", "2": "camp", "3": "dayhike", "4": "rest" };
-  const pointType = keyMap[e.key];
-  if (pointType) {
-    e.preventDefault();
-    setActivePointType(pointType);
-    schedulePreview(); // dayhike previews a spur from the last main point
   }
 }
 
 // ---------------------------------------------------------------------------
-// Elevation profile — Open-Meteo API
+// Elevation profile — Open-Meteo API (sampling + chunked fetch: elevation.js)
 // ---------------------------------------------------------------------------
 
-/**
- * Sample a line at even distance spacing (not by vertex index, which
- * under-samples switchbacks and over-samples straight legs).
- * @param {number[][]} coords - [lng, lat] pairs
- * @param {number} maxPoints - at most this many samples, endpoints included
- * @param {number} minSpacingM - don't sample more densely than this
- * @returns {number[][]}
- */
-export function sampleByDistance(coords, maxPoints = 100, minSpacingM = 25) {
-  if (coords.length < 2) return coords.slice();
-  const cum = [0];
-  for (let i = 1; i < coords.length; i++) {
-    cum.push(cum[i - 1] + haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]));
-  }
-  const total = cum[cum.length - 1];
-  const n = Math.max(2, Math.min(maxPoints, Math.floor(total / minSpacingM) + 1));
-  const out = [];
-  let j = 0;
-  for (let k = 0; k < n; k++) {
-    const d = (total * k) / (n - 1);
-    while (j < cum.length - 2 && cum[j + 1] < d) j++;
-    const span = cum[j + 1] - cum[j];
-    const t = span > 0 ? Math.min(1, Math.max(0, (d - cum[j]) / span)) : 0;
-    out.push([
-      coords[j][0] + t * (coords[j + 1][0] - coords[j][0]),
-      coords[j][1] + t * (coords[j + 1][1] - coords[j][1]),
-    ]);
-  }
-  return out;
-}
+export { sampleByDistance };
 
-/** Metres for a few [lng, lat] points from Open-Meteo (one request, ≤100 points). */
-async function openMeteoMetres(points) {
-  const lats = points.map(c => c[1].toFixed(6)).join(",");
-  const lons = points.map(c => c[0].toFixed(6)).join(",");
-  const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if (!Array.isArray(data.elevation)) throw new Error("Unexpected response shape");
-  return data.elevation;
-}
+const elevationRun = new Map();   // feature _id → latest fetch number (older ones are dropped)
+const elevationBusy = new Set();  // feature _ids with a fetch in flight
+/** feature _id → { coords, reuse } of a fetch that failed, so "Try again" asks only for what is missing. */
+const elevationFailed = new Map();
 
 /**
  * Elevation for a route from our own USGS 3DEP data (elevation-dem.js), when
  * the route has trail legs in a region whose graph ships an elevation
  * sidecar. Open-Meteo fills only the stretches the sidecar can't answer
- * (straight and manual legs). null → use Open-Meteo for the whole route.
+ * (straight and manual legs), through the same chunked, retried fetch as the
+ * fallback. null → use Open-Meteo for the whole route (buildProfile).
  * @returns {Promise<null | {profile_ft, gain_ft, loss_ft, spacing_m, source, coverage}>}
  */
-async function demProfileForFeature(feature) {
+async function demProfileForFeature(feature, fetchOpts) {
   const p = feature?.properties;
   const regionId = String(p?.routing?.graph || "").split("/")[1];
   if (!regionId || !p.segments?.some((s) => s.mode === "trail")) return null;
@@ -997,7 +1068,10 @@ async function demProfileForFeature(feature) {
   if (!info) return null;
   try {
     const graph = await loadGraph(info);
-    return await profileForRoute(feature, graph, { fill: openMeteoMetres });
+    // A fill that fails makes profileForRoute return null: the fallback then
+    // fails the same way and the profile offers "Try again".
+    const fill = (pts) => fetchElevations(pts, fetchOpts).catch(() => null);
+    return await profileForRoute(feature, graph, { fill });
   } catch (err) {
     console.warn("[elevation] 3DEP profile failed:", err.message);
     return null;
@@ -1005,74 +1079,106 @@ async function demProfileForFeature(feature) {
 }
 
 /**
- * Patch a route in TripManager with elevation_profile (ft),
- * elevation_gain_ft and elevation_loss_ft: from our 3DEP data where the
- * route follows trails in a region that has it (demProfileForFeature),
- * otherwise from Open-Meteo at the route's display coords.
+ * Patch a route in TripManager with elevation_profile (ft, evenly spaced by
+ * distance), elevation_gain_ft, elevation_loss_ft and elevation_source.
+ * 1. Our 3DEP data where the route follows trails in a region that has it
+ *    (demProfileForFeature): no API call for trail legs, one sample per 25 m,
+ *    gain/loss as counted there (smoothed 10 m series).
+ * 2. Otherwise Open-Meteo (elevation.js): about one sample per 100 m.
+ *    - `reuse` (from line-edit.js): stretches an edit didn't touch are read
+ *      from the old profile; only the drawn legs are fetched.
+ *    - A linked out-and-back fetches the way out and mirrors it.
+ * All or nothing: if a chunk fails, or the line changes while work is in
+ * flight, nothing is written. On failure the window gets
+ * `booot:elevation-failed` ({ id }); the profile's "Try again" calls
+ * retryElevation().
  *
- * @param {number[][]} coords - [lng, lat] display coords of the route
+ * @param {number[][]} coords - the route's geometry.coordinates (the array itself)
  * @param {string} featureId - the feature's _id property
+ * @param {{ reuse?: object|null }} [opts]
  */
-export async function fetchElevationProfile(coords, featureId) {
-  const findFeature = () => TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
-  const dem = await demProfileForFeature(findFeature());
-  if (dem) {
-    const feature = findFeature();
-    if (!feature) return;
-    feature.properties.elevation_profile = dem.profile_ft;
-    feature.properties.elevation_gain_ft = dem.gain_ft;
-    feature.properties.elevation_loss_ft = dem.loss_ft;
-    feature.properties.elevation_source = dem.source;
-    elevationDebug.last = { source: dem.source, samples: dem.profile_ft.length, spacing_m: dem.spacing_m, coverage: dem.coverage };
-    TripManager.render();
-    TripManager.save();
-    return;
-  }
+export async function fetchElevationProfile(coords, featureId, { reuse = null } = {}) {
+  const run = (elevationRun.get(featureId) || 0) + 1;
+  elevationRun.set(featureId, run);
+  elevationFailed.delete(featureId);
+  const find = () => TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
+  // Stale when a newer fetch started, the trip closed, or the line was redrawn.
+  const isStale = () => elevationRun.get(featureId) !== run || find()?.geometry.coordinates !== coords;
 
-  const sampled = sampleByDistance(coords, 100);
-  const lats = sampled.map(c => c[1].toFixed(6)).join(",");
-  const lons = sampled.map(c => c[0].toFixed(6)).join(",");
-
+  elevationBusy.add(featureId);
   try {
-    const res = await fetch(
-      `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!Array.isArray(data.elevation)) throw new Error("Unexpected response shape");
+    const feature = find();
+    if (!feature || isStale()) return;
+    const fetchOpts = { isStale };
+    if (elevationDebug.fetchFn) fetchOpts.fetchFn = elevationDebug.fetchFn;
+    if (elevationDebug.retryDelays) fetchOpts.retryDelays = elevationDebug.retryDelays;
 
-    // Convert meters → feet, round to nearest foot
-    const profileFt = data.elevation.map(m => Math.round(m * 3.28084));
-
-    // Compute cumulative gain and loss
-    let gain = 0, loss = 0;
-    for (let i = 1; i < profileFt.length; i++) {
-      const diff = profileFt[i] - profileFt[i - 1];
-      if (diff > 0) gain += diff;
-      else loss += -diff;
+    const dem = await demProfileForFeature(feature, fetchOpts);
+    if (isStale()) return;
+    if (dem) {
+      const p = find().properties;
+      p.elevation_profile = dem.profile_ft;
+      p.elevation_gain_ft = dem.gain_ft;
+      p.elevation_loss_ft = dem.loss_ft;
+      p.elevation_source = dem.source;
+      elevationDebug.last = { source: dem.source, samples: dem.profile_ft.length, spacing_m: dem.spacing_m, coverage: dem.coverage, fetched: 0, reused: 0 };
+      TripManager.render();
+      TripManager.save();
+      return;
     }
 
-    // Patch the feature in place (no full render cycle needed for the map)
-    const trip = TripManager.currentTrip;
-    if (!trip) return;
-    const feature = trip.features.find(f => f.properties._id === featureId);
-    if (!feature) return;
-
-    feature.properties.elevation_profile = profileFt;
-    feature.properties.elevation_gain_ft = Math.round(gain);
-    feature.properties.elevation_loss_ft = Math.round(loss);
-    feature.properties.elevation_source = "open-meteo";
-    elevationDebug.last = { source: "open-meteo", samples: profileFt.length };
+    const ix = lineIndex(feature);
+    const link = returnLink(feature.properties.segments);
+    // The way back of a linked out-and-back is the way out reversed.
+    const total = link.linked ? ix.legs[link.firstMirror].startM : ix.total;
+    const built = await buildProfile({ total, pointAt: (m) => pointAtM(ix, m), reuse, fetchOpts });
+    if (!built || isStale()) return;
+    const profileFt = link.linked ? [...built.profile, ...[...built.profile].reverse().slice(1)] : built.profile;
+    const { gain, loss } = gainLoss(profileFt);
+    const p = find().properties;
+    p.elevation_profile = profileFt;
+    p.elevation_gain_ft = gain;
+    p.elevation_loss_ft = loss;
+    p.elevation_source = "open-meteo";
+    elevationDebug.last = { source: "open-meteo", samples: profileFt.length, fetched: built.fetched, reused: built.profile.length - built.fetched };
 
     TripManager.render();
     TripManager.save();
   } catch (err) {
+    elevationDebug.last = { error: err.message };
     console.warn("[elevation] fetch failed:", err.message);
+    if (!isStale()) {
+      // Remember what was reusable, so trying again fetches only the rest.
+      elevationFailed.set(featureId, { coords, reuse });
+      window.dispatchEvent(new CustomEvent("booot:elevation-failed", { detail: { id: featureId } }));
+    }
+  } finally {
+    if (elevationRun.get(featureId) === run) elevationBusy.delete(featureId);
   }
 }
 
-/** Debug/verification handle: what the last elevation profile came from. */
-export const elevationDebug = { last: null };
+/**
+ * "Try again" on a route with no elevation: fetch what is missing. After a
+ * failed fetch that followed an edit, that is only the drawn legs (the kept
+ * stretches still come from the old profile); otherwise the whole line.
+ * @returns {boolean} a fetch was started
+ */
+export function retryElevation(featureId) {
+  const feature = TripManager.currentTrip?.features.find(f => f.properties._id === featureId);
+  if (!feature || feature.geometry?.type !== "LineString" || elevationBusy.has(featureId)) return false;
+  if (Array.isArray(feature.properties.elevation_profile)) return false;
+  const coords = feature.geometry.coordinates;
+  const failed = elevationFailed.get(featureId);
+  fetchElevationProfile(coords, featureId, { reuse: failed && failed.coords === coords ? failed.reuse : null });
+  return true;
+}
+
+/**
+ * Debug/verification handle (window.__outhere.elevation): what the last
+ * profile came from. `fetchFn` and `retryDelays` override the network for
+ * tests (scenes simulate an outage).
+ */
+export const elevationDebug = { last: null, fetchFn: null, retryDelays: null };
 
 export function getTripDateRange() {
   if (!TripManager.currentTrip) return [];
