@@ -117,6 +117,13 @@ export function sliceM(ix, m0, m1) {
   return out;
 }
 
+/**
+ * Round a metre offset DOWN to 0.1 m. Offsets are stored rounded, and rounding
+ * up could put one past its leg's end, where an edit then fails to match it
+ * to its leg. The epsilon keeps values already on a 0.1 grid unchanged.
+ */
+export const floorM = (v) => Math.floor(v * 10 + 1e-6) / 10;
+
 /** Global metre of an attach, or null when its leg doesn't exist. */
 export function resolveAttach(ix, attach) {
   if (!attach || !Number.isInteger(attach.leg)) return null;
@@ -130,7 +137,7 @@ export function resolveAttach(ix, attach) {
 export function locateM(ix, m) {
   let leg = ix.legs.find((l) => m < l.endM - 1e-6) || ix.legs.at(-1);
   if (m < leg.startM) leg = ix.legs[0];
-  return { leg: leg.k, offset_m: Math.round(Math.max(0, Math.min(leg.len, m - leg.startM)) * 10) / 10 };
+  return { leg: leg.k, offset_m: floorM(Math.max(0, Math.min(leg.len, m - leg.startM))) };
 }
 
 // ---------------------------------------------------------------------------
@@ -508,10 +515,9 @@ export function convertTypedVertices(trip) {
   const routeIdx = trip.features.indexOf(route);
   const ix = lineIndex(route);
   const vt = Array.isArray(rp.vertex_types) ? rp.vertex_types : [];
-  const r1 = (v) => Math.round(v * 10) / 10;
   const attachAtVertex = (vi) => {
     const k = rp.segments.findIndex((sg) => sg.to_vertex === vi);
-    if (k >= 0) return { route_id: rp._id, leg: k, offset_m: r1(ix.legs[k].len) };
+    if (k >= 0) return { route_id: rp._id, leg: k, offset_m: floorM(ix.legs[k].len) };
     const k0 = rp.segments.findIndex((sg) => sg.from_vertex === vi);
     return k0 >= 0 ? { route_id: rp._id, leg: k0, offset_m: 0 } : null;
   };

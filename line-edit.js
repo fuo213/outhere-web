@@ -20,7 +20,7 @@
 
 import {
   mainRoute, lineIndex, sliceM, locateM, resolveAttach, passesNear, buildPlan,
-  isTimeStop, round6, hav, MI, NEAR_M, OVERLAP_M,
+  isTimeStop, floorM, round6, hav, MI, NEAR_M, OVERLAP_M,
 } from "./line-model.js";
 import { gainLoss } from "./elevation.js";
 
@@ -303,7 +303,8 @@ export function redrawLine(trip, { cutM, rejoinM = null, newLegs, routing }) {
   const turnM = newFirstMirror >= 0 ? nix.legs[newFirstMirror].startM : Infinity;
 
   // 6. Stops: keep, shift, re-attach or flag.
-  const place = (old, off) => keeps.find((q) => q.old === old && off >= q.lo - 0.01 && off <= q.hi + 0.01);
+  // 0.15 m forgives offsets saved rounded up past the leg end (older trips).
+  const place = (old, off) => keeps.find((q) => q.old === old && off >= q.lo - 0.15 && off <= q.hi + 0.15);
   const lost = [];
   let reattached = 0;
   for (const s of oldStops) {
@@ -312,14 +313,14 @@ export function redrawLine(trip, { cutM, rejoinM = null, newLegs, routing }) {
     const wasReturn = firstMirror >= 0 && leg >= firstMirror;
     if (!(regenerate && wasReturn)) {
       const q = place(leg, offset_m);
-      if (q) { p.attach = { route_id: rp._id, leg: q.leg, offset_m: r1(Math.max(0, offset_m - q.lo)) }; continue; }
+      if (q) { p.attach = { route_id: rp._id, leg: q.leg, offset_m: floorM(Math.max(0, Math.min(q.hi, offset_m) - q.lo)) }; continue; }
     } else {
       // On the regenerated way back: the same spot on the mirror of the kept
       // outbound leg, when that stretch of the way out survived.
       const o = segs[leg].mirror_of;
       const y = ix.legs[o].len - offset_m; // offset on the outbound leg
       const q = place(o, y);
-      if (q) { p.attach = { route_id: rp._id, leg: 2 * nOut - 1 - q.leg, offset_m: r1(Math.max(0, q.hi - y)) }; continue; }
+      if (q) { p.attach = { route_id: rp._id, leg: 2 * nOut - 1 - q.leg, offset_m: floorM(Math.max(0, q.hi - Math.min(q.hi, y))) }; continue; }
     }
     const near = passesNear(nix, s.coord, NEAR_M);
     if (near.length) {
