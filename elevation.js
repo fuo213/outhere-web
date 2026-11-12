@@ -157,10 +157,27 @@ export const HYSTERESIS_M = 3;
  * of at least `h` from the last turning point.
  */
 export function hysteresisGainLoss(series, h) {
+  const { gain, loss } = hysteresisClimb(series, h);
+  return { gain, loss };
+}
+
+/**
+ * hysteresisGainLoss that also says where along the series each bit of climb
+ * is earned: `gainAt[i]` / `lossAt[i]` are the cumulative gain and loss at
+ * sample i, counting the swing in progress as it happens (so they rise
+ * smoothly instead of jumping at turning points). Both end exactly at
+ * `gain` / `loss`, and the difference between two samples is the climb of
+ * that stretch, so stretches that tile the series add up to the whole.
+ * Slicing the series and counting each slice separately does not: every cut
+ * restarts the hysteresis and drops or splits a swing.
+ */
+export function hysteresisClimb(series, h) {
+  const n = series.length;
+  const gainAt = new Array(n).fill(0), lossAt = new Array(n).fill(0);
   let gain = 0, loss = 0;
-  if (series.length < 2) return { gain, loss };
+  if (n < 2) return { gain, loss, gainAt, lossAt };
   let dir = 0, ext = series[0], base = series[0];
-  for (let i = 1; i < series.length; i++) {
+  for (let i = 1; i < n; i++) {
     const e = series[i];
     if (dir >= 0 && e > ext) ext = e;
     else if (dir <= 0 && e < ext) ext = e;
@@ -169,10 +186,68 @@ export function hysteresisGainLoss(series, h) {
       else if (base - e >= h) { dir = -1; ext = e; }
     } else if (dir === 1 && ext - e >= h) { gain += ext - base; base = ext; dir = -1; ext = e; }
     else if (dir === -1 && e - ext >= h) { loss += base - ext; base = ext; dir = 1; ext = e; }
+    gainAt[i] = gain + (dir === 1 ? ext - base : 0);
+    lossAt[i] = loss + (dir === -1 ? base - ext : 0);
   }
   if (dir === 1) gain += ext - base;
   else if (dir === -1) loss += base - ext;
-  return { gain, loss };
+  return { gain, loss, gainAt, lossAt };
+}
+
+/**
+ * The cumulative climb curve of a route: `gain[k]` / `loss[k]` (ft) at profile
+ * sample k, ending at the route's own figures. This is the one place a route
+ * says where its gain and loss are earned, and the only source for per-day
+ * and per-stretch figures (`climbBetween`), so they always add up to the
+ * route total.
+ *
+ * - `props._climb_ft` ({ gain, loss }, written next to a 3DEP profile) was
+ *   counted on the fine smoothed series; used as is when it matches the
+ *   profile and ends at the stored figures.
+ * - Otherwise (Open-Meteo, recorded GPX, files from before this field) the
+ *   curve is counted on the stored profile by the same hysteresis and scaled
+ *   so it ends at the stored gain / loss (a no-op where those were counted on
+ *   that profile, the Open-Meteo case).
+ *
+ * @returns {null | { gain: number[], loss: number[] }} null without a profile
+ */
+export function climbCurve(props) {
+  const prof = props?.elevation_profile;
+  if (!Array.isArray(prof) || prof.length < 2 || !prof.every(Number.isFinite)) return null;
+  const n = prof.length;
+  const G = props.elevation_gain_ft, L = props.elevation_loss_ft;
+  const hasG = Number.isFinite(G), hasL = Number.isFinite(L);
+  const c = props._climb_ft;
+  if (c && c.gain?.length === n && c.loss?.length === n
+      && (!hasG || c.gain[n - 1] === G) && (!hasL || c.loss[n - 1] === L)) return c;
+  const own = hysteresisClimb(prof, HYSTERESIS_M * FT);
+  const fit = (at, own_total, stored) => {
+    const total = Number.isFinite(stored) ? stored : Math.round(own_total);
+    if (own_total > 0) return at.map((v) => Math.round((v * total) / own_total));
+    return at.map((_, k) => Math.round((k / (n - 1)) * total)); // no swing to place: spread evenly
+  };
+  return { gain: fit(own.gainAt, own.gain, G), loss: fit(own.lossAt, own.loss, L) };
+}
+
+/**
+ * Gain and loss (integer ft) between metres m0 and m1 of a route `total`
+ * metres long, read off its climb curve. Rounding happens on the cumulative
+ * value at each cut, so consecutive stretches share their cut exactly and any
+ * set that tiles 0..total sums to the route's displayed figures, no matter
+ * how the cuts fall. null when the route has no profile.
+ */
+export function climbBetween(props, total, m0, m1, curve = climbCurve(props)) {
+  if (!curve || !(total > 0)) return null;
+  const n = curve.gain.length;
+  const at = (arr, m) => {
+    const t = Math.max(0, Math.min(1, m / total)) * (n - 1);
+    const k = Math.min(n - 2, Math.floor(t));
+    return Math.round(arr[k] + (t - k) * (arr[k + 1] - arr[k]));
+  };
+  return {
+    gain: Math.max(0, at(curve.gain, m1) - at(curve.gain, m0)),
+    loss: Math.max(0, at(curve.loss, m1) - at(curve.loss, m0)),
+  };
 }
 
 /** Fill gaps in an elevation series by linear interpolation. null if too few values. */

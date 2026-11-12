@@ -22,7 +22,7 @@ import {
   mainRoute, lineIndex, sliceM, locateM, resolveAttach, passesNear, buildPlan,
   isTimeStop, round6, hav, MI, NEAR_M, OVERLAP_M,
 } from "./line-model.js";
-import { gainLoss } from "./elevation.js";
+import { gainLoss, climbCurve } from "./elevation.js";
 
 const samePos = (a, b) => a[0] === b[0] && a[1] === b[1];
 const len = (c) => { let s = 0; for (let i = 1; i < c.length; i++) s += hav(c[i - 1], c[i]); return s; };
@@ -287,7 +287,7 @@ export function redrawLine(trip, { cutM, rejoinM = null, newLegs, routing }) {
   route.geometry = built.geometry;
   Object.assign(rp, built.props);
   const oldProfile = Array.isArray(rp.elevation_profile) && rp.elevation_profile.length >= 2 ? rp.elevation_profile : null;
-  delete rp.elevation_profile; delete rp.elevation_gain_ft; delete rp.elevation_loss_ft; delete rp.elevation_source;
+  delete rp.elevation_profile; delete rp.elevation_gain_ft; delete rp.elevation_loss_ft; delete rp.elevation_source; delete rp._climb_ft;
   if (routing) rp.routing = routing;
   if (recs.some((r) => Number.isInteger(r.seg.mirror_of))) rp.return_same_way = true; else delete rp.return_same_way;
   const nix = lineIndex(route);
@@ -357,13 +357,26 @@ export function appendReturn(trip) {
   Object.assign(rp, built.props);
   rp.return_same_way = true;
   if (Array.isArray(prof) && prof.length >= 2) {
+    const cv = climbCurve(rp); // of the way out, before the profile doubles
     rp.elevation_profile = [...prof, ...[...prof].reverse().slice(1)];
     // 3DEP figures were counted on a finer series than the stored profile:
-    // the way back climbs what the way out lost, so both become their sum.
+    // the way back climbs what the way out lost, so both become their sum,
+    // and the climb curve (what per-day figures are read from) continues the
+    // same way: the way back gains what the way out lost, and the reverse.
     const dem = rp.elevation_source === "usgs-3dep" || rp.elevation_source === "mixed";
-    const sum = (rp.elevation_gain_ft || 0) + (rp.elevation_loss_ft || 0);
-    const { gain, loss } = dem ? { gain: sum, loss: sum } : gainLoss(rp.elevation_profile);
-    rp.elevation_gain_ft = gain; rp.elevation_loss_ft = loss;
+    if (dem && cv) {
+      const gE = cv.gain.at(-1), lE = cv.loss.at(-1);
+      rp.elevation_gain_ft = rp.elevation_loss_ft = gE + lE;
+      rp._climb_ft = {
+        gain: [...cv.gain, ...[...cv.loss].reverse().slice(1).map((v) => gE + lE - v)],
+        loss: [...cv.loss, ...[...cv.gain].reverse().slice(1).map((v) => gE + lE - v)],
+      };
+    } else {
+      // Counted on the stored profile itself: no finer data to carry over.
+      const { gain, loss } = gainLoss(rp.elevation_profile);
+      rp.elevation_gain_ft = gain; rp.elevation_loss_ft = loss;
+      delete rp._climb_ft;
+    }
   }
   return true;
 }

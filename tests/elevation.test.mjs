@@ -176,3 +176,98 @@ test("a dense profile (1,599 samples, 6 days) builds and draws in the panel", ()
   assert.ok(ms < 1500, `plan + model + two drawings took ${ms.toFixed(0)} ms`);
   console.log(`      (plan + model + full and compact profile: ${ms.toFixed(0)} ms, svg ${(svg.length / 1024).toFixed(0)} KB)`);
 });
+
+// ---------------------------------------------------------------------------
+// One definition of climb: per-day figures come off the route's climb curve
+// ---------------------------------------------------------------------------
+
+const FT = 3.28084;
+/** A rolling 12 km climb, 10 m fine series like the 3DEP path (metres). */
+const fineSeries = () => Array.from({ length: 1201 }, (_, i) => 1500 + 0.03 * i * 10 + 2.0 * Math.sin((i * 10 * 2 * Math.PI) / 90) + 0.8 * Math.sin(i * 0.9));
+/** What profileForRoute stores: the profile at `n` samples plus the climb curve, counted on the fine series. */
+function storedRoute(fine, n) {
+  const { gain, loss, gainAt, lossAt } = E.hysteresisClimb(fine, E.HYSTERESIS_M);
+  const at = (s, t) => { const x = t * (s.length - 1), k = Math.min(s.length - 2, Math.floor(x)); return s[k] + (x - k) * (s[k + 1] - s[k]); };
+  const ks = Array.from({ length: n }, (_, k) => k / (n - 1));
+  return {
+    elevation_profile: ks.map((t) => Math.round(at(fine, t) * FT)),
+    elevation_gain_ft: Math.round(gain * FT), elevation_loss_ft: Math.round(loss * FT),
+    _climb_ft: { gain: ks.map((t) => Math.round(at(gainAt, t) * FT)), loss: ks.map((t) => Math.round(at(lossAt, t) * FT)) },
+  };
+}
+const cuts = [0, 1900, 3700, 5200, 7400, 9100, 12000];
+
+test("hysteresisClimb: cumulative curves end at the totals and match hysteresisGainLoss", () => {
+  const fine = fineSeries();
+  const a = E.hysteresisClimb(fine, 3), b = E.hysteresisGainLoss(fine, 3);
+  assert.equal(a.gain, b.gain); assert.equal(a.loss, b.loss);
+  near(a.gainAt.at(-1), a.gain, 1e-9); near(a.lossAt.at(-1), a.loss, 1e-9);
+  for (let i = 1; i < fine.length; i++) assert.ok(a.gainAt[i] >= a.gainAt[i - 1] - 1e-9 && a.lossAt[i] >= a.lossAt[i - 1] - 1e-9, "monotone");
+});
+
+test("slicing a coarse profile at day cuts loses gain; the climb curve does not", () => {
+  const props = storedRoute(fineSeries(), 221); // ~55 m spacing, like a 12 km line capped at 1,000 samples on a long trip
+  const days = cuts.slice(1).map((m1, i) => [cuts[i], m1]);
+  // The old way: slice the stored profile per day and count each slice alone.
+  const slice = (m0, m1) => {
+    const n = props.elevation_profile.length, t = (m) => (m / 12000) * (n - 1);
+    const k = Math.max(2, Math.round(t(m1) - t(m0)) + 1);
+    return Array.from({ length: k }, (_, j) => { const x = t(m0) + ((t(m1) - t(m0)) * j) / (k - 1), i = Math.min(n - 2, Math.floor(x)); return Math.round(props.elevation_profile[i] + (x - i) * (props.elevation_profile[i + 1] - props.elevation_profile[i])); });
+  };
+  const old = days.reduce((a, [m0, m1]) => a + E.gainLoss(slice(m0, m1)).gain, 0);
+  assert.ok(old < props.elevation_gain_ft * 0.97, `old per-day sum ${old} reads at least 3% under the route total ${props.elevation_gain_ft}`);
+  const sum = { gain: 0, loss: 0 };
+  for (const [m0, m1] of days) { const c = E.climbBetween(props, 12000, m0, m1); sum.gain += c.gain; sum.loss += c.loss; }
+  assert.equal(sum.gain, props.elevation_gain_ft, "days add up to the route gain");
+  assert.equal(sum.loss, props.elevation_loss_ft, "days add up to the route loss");
+});
+
+test("without a stored curve (Open-Meteo, recorded, older files) days still add up", () => {
+  const props = storedRoute(fineSeries(), 121);
+  delete props._climb_ft;
+  const whole = E.gainLoss(props.elevation_profile);
+  props.elevation_gain_ft = whole.gain; props.elevation_loss_ft = whole.loss; // counted on the stored profile, as planning.js does
+  let g = 0, l = 0;
+  for (let i = 1; i < cuts.length; i++) { const c = E.climbBetween(props, 12000, cuts[i - 1], cuts[i]); g += c.gain; l += c.loss; }
+  assert.equal(g, whole.gain); assert.equal(l, whole.loss);
+  // Stored figures from a finer series than the profile: the curve is scaled to end at them.
+  props.elevation_gain_ft = whole.gain + 200; props.elevation_loss_ft = whole.loss + 150;
+  g = 0; l = 0;
+  for (let i = 1; i < cuts.length; i++) { const c = E.climbBetween(props, 12000, cuts[i - 1], cuts[i]); g += c.gain; l += c.loss; }
+  assert.equal(g, whole.gain + 200); assert.equal(l, whole.loss + 150);
+  // A stale curve (wrong length, or not ending at the stored figures) is ignored.
+  props._climb_ft = { gain: [0, 1], loss: [0, 1] };
+  assert.equal(E.climbCurve(props).gain.length, 121);
+});
+
+test("displayTrip: per-day gain and loss add up to the route's, with camps anywhere", () => {
+  const route = makeLine([[0, 0], [4, 0], [8, 0], [12, 0]]);
+  Object.assign(route.properties, storedRoute(fineSeries(), 221), { elevation_source: "usgs-3dep" });
+  const trip = makeTrip([route]);
+  const ix = M.lineIndex(route);
+  for (const m of [1900, 3700, 5200, 7400, 9100]) trip.features.push(point("C" + m, { type: "camp", attach: { route_id: "R", ...M.locateM(ix, m) } }));
+  const view = M.displayTrip(trip);
+  const days = view.features.filter((f) => f.properties.type === "route");
+  assert.equal(days.length, 6);
+  assert.equal(days.reduce((a, f) => a + f.properties.elevation_gain_ft, 0), route.properties.elevation_gain_ft);
+  assert.equal(days.reduce((a, f) => a + f.properties.elevation_loss_ft, 0), route.properties.elevation_loss_ft);
+  // And the trip panel's total (sum over the day pieces) is the route's figure.
+  const it = buildItinerary(view);
+  assert.equal(it.gain, route.properties.elevation_gain_ft); assert.equal(it.loss, route.properties.elevation_loss_ft);
+});
+
+test("appendReturn carries the climb curve: the way back gains what the way out lost", () => {
+  const route = makeLine([[0, 0], [4, 0], [8, 0], [12, 0]]);
+  Object.assign(route.properties, storedRoute(fineSeries(), 221), { elevation_source: "usgs-3dep" });
+  const g0 = route.properties.elevation_gain_ft, l0 = route.properties.elevation_loss_ft;
+  const trip = makeTrip([route]);
+  appendReturn(trip);
+  const rp = route.properties, cv = E.climbCurve(rp);
+  assert.equal(rp.elevation_gain_ft, g0 + l0);
+  assert.equal(cv.gain.length, rp.elevation_profile.length);
+  assert.equal(cv.gain.at(-1), g0 + l0); assert.equal(cv.loss.at(-1), g0 + l0);
+  assert.equal(cv.gain[220], g0, "the turnaround: all the way-out gain, none of the way back");
+  const view = M.displayTrip(makeTrip([route]));
+  const days = view.features.filter((f) => f.properties.type === "route");
+  assert.equal(days.reduce((a, f) => a + f.properties.elevation_gain_ft, 0), g0 + l0);
+});

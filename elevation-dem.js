@@ -26,7 +26,8 @@
  * elevation stays: recorded GPX <ele>, then this, then Open-Meteo.
  */
 
-import { hysteresisGainLoss, HYSTERESIS_M } from "./gpx-core.js";
+import { HYSTERESIS_M } from "./gpx-core.js";
+import { hysteresisClimb } from "./elevation.js";
 
 const FT = 3.28084;
 const RAD = Math.PI / 180, R = 6371008.8;
@@ -239,6 +240,7 @@ function interpolateGaps(z) {
  * @param {TrailElevation} [opts.elevation]  skip loading (tests)
  * @param {Function} [opts.fetchFn]
  * @returns {Promise<null | { profile_ft: number[], gain_ft: number, loss_ft: number,
+ *   climb_ft: { gain: number[], loss: number[] },
  *   spacing_m: number, source: "usgs-3dep" | "mixed", coverage: number }>}
  *   profile_ft is evenly spaced by distance, ends included (sample k of n at
  *   k/(n-1) of the length); spacing_m is the distance between its samples.
@@ -267,14 +269,22 @@ export async function profileForRoute(route, graph, { fill = null, samples = nul
   }
 
   const sm = smooth(z, step, elev.smoothM);
-  const { gain, loss } = hysteresisGainLoss(sm, elev.hysteresisM);
+  const { gain, loss, gainAt, lossAt } = hysteresisClimb(sm, elev.hysteresisM);
   const n = Math.max(2, Math.round(samples ?? Math.min(PROFILE_MAX_SAMPLES, Math.round(total / PROFILE_SPACING_M) + 1)));
   const profile = new Array(n);
-  for (let k = 0; k < n; k++) profile[k] = Math.round(readAt(sm, k / (n - 1)) * FT);
+  const cumGain = new Array(n), cumLoss = new Array(n);
+  for (let k = 0; k < n; k++) {
+    profile[k] = Math.round(readAt(sm, k / (n - 1)) * FT);
+    cumGain[k] = Math.round(readAt(gainAt, k / (n - 1)) * FT);
+    cumLoss[k] = Math.round(readAt(lossAt, k / (n - 1)) * FT);
+  }
   return {
     profile_ft: profile,
     gain_ft: Math.round(gain * FT),
     loss_ft: Math.round(loss * FT),
+    // Cumulative gain / loss (ft) at each profile sample, counted on the fine
+    // smoothed series: a day's climb is the difference between its two ends.
+    climb_ft: { gain: cumGain, loss: cumLoss },
     spacing_m: total / (n - 1),
     source: known === z.length ? "usgs-3dep" : "mixed",
     coverage,

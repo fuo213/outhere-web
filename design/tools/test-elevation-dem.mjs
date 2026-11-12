@@ -101,6 +101,14 @@ await test("a fully routed route: profile, gain and loss from the sidecar, no fi
   const custom = await profileForRoute(route(coords, [{ mode: "trail", coord_range: [0, 3] }]), graph, { elevation: elev, samples: 16 });
   assert.equal(custom.profile_ft.length, 16);
   near(custom.spacing_m, 100, 0.2);
+  // The climb curve: one value per profile sample, from 0 to the route's own figures.
+  for (const x of [r, custom]) {
+    assert.equal(x.climb_ft.gain.length, x.profile_ft.length);
+    assert.equal(x.climb_ft.gain[0], 0); assert.equal(x.climb_ft.gain.at(-1), x.gain_ft);
+    assert.equal(x.climb_ft.loss.at(-1), x.loss_ft);
+    assert.ok(x.climb_ft.gain.every((v, i, a) => i === 0 || v >= a[i - 1]), "monotone");
+  }
+  near(r.climb_ft.gain[30], 75 * FT, 6, "750 m along the 1 m / 10 m climb");
 });
 
 await test("walked backwards it is all loss", async () => {

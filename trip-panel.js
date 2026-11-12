@@ -389,6 +389,7 @@ export function buildTripExport(trip) {
   const out = JSON.parse(JSON.stringify(trip));
   out.properties.schema_version = isLineTrip(trip) ? LINE_SCHEMA_VERSION : TRIP_SCHEMA_VERSION;
   for (const d of out.days || []) delete d._key; // internal: which camp a day ends at
+  for (const f of out.features || []) if (f.properties) delete f.properties._climb_ft; // internal: per-day climb curve
   // The UI edits `readme`; write `notes` from the same value for mobile.
   out.properties.notes = out.properties.readme || "";
   if (out.properties.dates === undefined) out.properties.dates = null;

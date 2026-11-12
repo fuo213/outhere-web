@@ -15,7 +15,7 @@
  * that pass when the line is edited.
  */
 
-import { gainLoss } from "./elevation.js";
+import { climbCurve, climbBetween } from "./elevation.js";
 
 export const MI = 1609.344;
 /** "Within the snap distance" for checks that have no zoom (listing place
@@ -423,6 +423,7 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
   const ix = plan.ix;
   const rp = route.properties;
   const prof = rp.elevation_profile;
+  const curve = climbCurve(rp); // per-day figures come off the route's own climb curve, not the drawn slice
   const pieces = new Map();
   const features = [];
   for (const d of plan.days) {
@@ -440,7 +441,7 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
     }
     if (coords.length < 2) continue;
     const ep = sliceProfile(prof, ix.total, d.fromM, d.toM);
-    const { gain, loss } = ep ? gainLoss(ep) : { gain: 0, loss: 0 };
+    const { gain, loss } = (ep && climbBetween(rp, ix.total, d.fromM, d.toM, curve)) || { gain: 0, loss: 0 };
     const id = `${rp._id}~${d.i}`;
     pieces.set(d.i, id);
     features.push({

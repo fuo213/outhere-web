@@ -1098,6 +1098,7 @@ export async function fetchElevationProfile(coords, featureId, { reuse = null } 
       p.elevation_gain_ft = dem.gain_ft;
       p.elevation_loss_ft = dem.loss_ft;
       p.elevation_source = dem.source;
+      p._climb_ft = dem.climb_ft; // internal: where the gain/loss is earned (per-day figures); not exported
       elevationDebug.last = { source: dem.source, samples: dem.profile_ft.length, spacing_m: dem.spacing_m, coverage: dem.coverage, fetched: 0, reused: 0 };
       TripManager.render();
       TripManager.save();
@@ -1117,6 +1118,7 @@ export async function fetchElevationProfile(coords, featureId, { reuse = null } 
     p.elevation_gain_ft = gain;
     p.elevation_loss_ft = loss;
     p.elevation_source = "open-meteo";
+    delete p._climb_ft; // the stored profile is the full resolution here
     elevationDebug.last = { source: "open-meteo", samples: profileFt.length, fetched: built.fetched, reused: built.profile.length - built.fetched };
 
     TripManager.render();
