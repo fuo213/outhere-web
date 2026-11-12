@@ -55,6 +55,8 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
 | `ui-motion.js` | Motion wiring: `confirm` shiver on exports (delegated clicks) |
+| `embed.css` | Embed mode (`?embed=1`) only: every rule scoped to `html.embed`; hides app chrome, narrows the panel, places the line tools, phone sheet layout, the "Open the planner" pill and "Reset demo" |
+| `_headers` | Cloudflare Pages headers: CSP `frame-ancestors` (see Embed mode) |
 | `design/` | The Booot design system (below) |
 
 Modules import each other circularly (`app.js` exports `map`; the others
@@ -127,6 +129,56 @@ window.dispatchEvent(new CustomEvent("booot:active-day", {
   `source` to avoid loops. `dayId` wins over `dayIndex` when both are given.
 - "Show on map" in a day's edit row is separate: it zooms to the day and dims
   the other days (`setActiveDayHighlight`).
+
+## Embed mode (`?embed=1`)
+
+The landing page (booot.org) frames `https://outhere-web.pages.dev/?embed=1`
+as its hero. Without the parameter nothing changes.
+
+- `config.js` exports `EMBED` and `appStorage`. **All app state goes through
+  `appStorage`** (trips, active region, catalog cache, layer styles): real
+  localStorage normally, a throwaway in-memory store in embed mode, so the
+  embed never reads or writes the visitor's saved trips. New persistence must
+  use `appStorage`, not `localStorage`.
+- Opens straight on the line + stops (1.2) copy of the public demo,
+  `design/fixtures/spanish-bottom-2026.line.trip.geojson` (region
+  `maze-district`), via `loadDemoTripFromURL`, panel open, framed. That
+  fixture is generated from the recorded 1.1 demo by
+  `node design/tools/make-line-demo.mjs` (needs the deployed Maze graph and
+  3DEP sidecar downloaded locally; the header says how). Each recording is
+  map-matched to the graph: trail stretches become real routed legs
+  (`TrailGraph.route`, elevation from the 3DEP sidecar via
+  `profileForRoute`), stretches with no trail nearby stay recorded
+  (`imported`) with elevation sampled from USGS EPQS (the same 3DEP data; the
+  app's own fill for off-trail legs is Open-Meteo, whose seams inflate climb).
+  Camps attach at leg ends, the Maze Overlook loop is its own day ending at
+  camp 2's site (`same_place_as`). Rerun it if the 1.1 demo or the Maze graph
+  changes. `?demo=spanish-bottom-line`
+  opens the same copy in the full app.
+- **Visitors can draw.** The draw and stop tools sit top left (zoom moves to
+  the bottom left; no zoom buttons on phones): extend or redraw the line, add
+  stops, click the line for its menu (delete a section, Snap to trails, ...).
+  The demo is a `TripManager.demo` copy, so nothing is saved; `save()` fires
+  `booot:demo-edited`, which shows a quiet "Reset demo" (`#embedReset`) that
+  reloads the fixture and clears undo. In the embed the draw button again
+  finishes a drawing (touch has no reliable double-tap); the hint says so.
+  Hidden: trips home, onboarding, import/export/download, file pickers, the
+  region switcher, layers, place search, geolocate, "Delete waypoint", the
+  drawing instructions card. The inline script in `index.html`'s head adds
+  `html.embed` before first paint; `embed.css` does the hiding.
+- Scroll: MapLibre `cooperativeGestures` (4.7.1 supports it). Wheel zooms only
+  with Ctrl/Cmd or after a mouse click into the map (`map.cooperativeGestures
+  .disable()` on pointerdown, re-enabled on window blur); touch is two-finger.
+- Ready signal: once the demo is on screen and the map is idle (6 s cap) the
+  embed does `window.parent.postMessage({ type: "booot-embed-ready" }, "*")`;
+  the landing page fades its poster on it. The payload carries no data.
+- "Open the planner" (`#embedOpen`) opens `./?demo=spanish-bottom-line` in a new tab.
+- `_headers`: `Content-Security-Policy: frame-ancestors 'self' booot.org
+  www.booot.org booot-landing.pages.dev *.booot-landing.pages.dev
+  localhost:* 127.0.0.1:*`. Add an origin there to embed from somewhere new.
+- Verify: `node design/tools/shoot.mjs --base https://<branch>.outhere-web.pages.dev
+  --scenes <file>` with path `/?embed=1` (1120x700 and 390x520). Check
+  `localStorage.length` stays 0 after drawing.
 
 ## Trip format
 

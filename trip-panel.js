@@ -16,6 +16,7 @@
  */
 
 import { map } from "./app.js"; // circular with app.js; only used at runtime
+import { EMBED } from "./config.js";
 import {
   cancelDrawing,
   startRouteDrawing,
@@ -243,6 +244,7 @@ export const TripManager = {
   },
 
   save() {
+    if (this.demo && this.currentTrip) window.dispatchEvent(new Event("booot:demo-edited")); // embed: shows "Reset demo"
     if (!this.currentTrip || this.demo) return; // the demo is a copy: never written to storage
     const props = this.currentTrip.properties;
     if (!props.trip_id) props.trip_id = crypto.randomUUID();
@@ -1636,12 +1638,15 @@ function handleFileUpload(file) {
 
 /** Map padding used to keep the visible map centered next to the open panel. */
 function panelMapPadding() {
-  // On mobile the panel overlays the full map — don't pad.
-  return window.innerWidth <= 640 ? 0 : 520;
+  // On mobile the panel overlays the full map — don't pad. (The embed's panel
+  // is narrower and stacks under the map on phones; see embed.css.)
+  if (window.innerWidth <= 640) return 0;
+  return EMBED ? document.getElementById("tripPanel").offsetWidth : 520;
 }
 
 /** Re-align the floating planning toolbar with the Plan map control. */
 export function alignPlanningToolbar() {
+  if (EMBED) return; // no Plan control in the embed: embed.css places the toolbar
   const planBtnEl = document.getElementById("planBtn");
   const planningToolbarEl = document.getElementById("planningToolbar");
   if (planBtnEl && planningToolbarEl) {

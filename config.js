@@ -6,6 +6,33 @@
  */
 
 // ---------------------------------------------------------------------------
+// Embed mode (?embed=1): the planner as a self-contained demo inside an iframe
+// on booot.org. No trips home, no import/export, nothing read from or written
+// to the visitor's saved data. See "Embed mode" in CLAUDE.md.
+// ---------------------------------------------------------------------------
+export const EMBED = new URLSearchParams(location.search).get("embed") === "1";
+
+/**
+ * Key-value storage for the app's own state (trips, active region, catalog
+ * cache, layer styles). The real localStorage normally; a throwaway in-memory
+ * store in embed mode, so the embed never reads or writes saved trips.
+ */
+export const appStorage = EMBED
+  ? (() => {
+      const mem = new Map();
+      return {
+        getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+        setItem: (k, v) => { mem.set(k, String(v)); },
+        removeItem: (k) => { mem.delete(k); },
+      };
+    })()
+  : {
+      getItem: (k) => localStorage.getItem(k),
+      setItem: (k, v) => localStorage.setItem(k, v),
+      removeItem: (k) => localStorage.removeItem(k),
+    };
+
+// ---------------------------------------------------------------------------
 // Tile source
 // ---------------------------------------------------------------------------
 // Production tile host (R2 custom domain, see outhere/DEPLOYMENT.md).

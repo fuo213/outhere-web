@@ -11,7 +11,7 @@
  * re-adds them via restoreRuntimeLayers() once the new style loads.
  */
 
-import { DEFAULT_REGION, CATALOG_URL, MAP_CONFIG } from "./config.js";
+import { DEFAULT_REGION, CATALOG_URL, MAP_CONFIG, appStorage } from "./config.js";
 import { map, buildStyle, restoreRuntimeLayers } from "./app.js"; // circular with app.js; only used at runtime
 import { TripManager, escapeHTML } from "./trip-panel.js"; // circular; only used at runtime
 import { cancelDrawing, prefetchRoutingGraph } from "./planning.js"; // only used at runtime
@@ -82,7 +82,7 @@ export function regionMaxBounds(region) {
 
 function readStoredRegion() {
   try {
-    const raw = localStorage.getItem(ACTIVE_REGION_KEY);
+    const raw = appStorage.getItem(ACTIVE_REGION_KEY);
     if (!raw) return null;
     const region = JSON.parse(raw);
     if (!region || typeof region.id !== "string" || typeof region.url !== "string") {
@@ -91,14 +91,14 @@ function readStoredRegion() {
     return region;
   } catch (err) {
     console.warn("[regions] discarding stored active region:", err.message);
-    localStorage.removeItem(ACTIVE_REGION_KEY);
+    appStorage.removeItem(ACTIVE_REGION_KEY);
     return null;
   }
 }
 
 function persistActiveRegion() {
   try {
-    localStorage.setItem(ACTIVE_REGION_KEY, JSON.stringify(activeRegion));
+    appStorage.setItem(ACTIVE_REGION_KEY, JSON.stringify(activeRegion));
   } catch (err) {
     console.warn("[regions] could not persist active region:", err.message);
   }
@@ -110,21 +110,21 @@ function persistActiveRegion() {
 
 function readCatalogCache() {
   try {
-    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+    const raw = appStorage.getItem(CATALOG_CACHE_KEY);
     if (!raw) return null;
     const cached = JSON.parse(raw);
     if (!cached || !Array.isArray(cached.catalog?.regions)) throw new Error("invalid cache shape");
     return cached;
   } catch (err) {
     console.warn("[regions] discarding corrupt catalog cache:", err.message);
-    localStorage.removeItem(CATALOG_CACHE_KEY);
+    appStorage.removeItem(CATALOG_CACHE_KEY);
     return null;
   }
 }
 
 function writeCatalogCache(cat) {
   try {
-    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), catalog: cat }));
+    appStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), catalog: cat }));
   } catch (err) {
     console.warn("[regions] could not cache catalog:", err.message);
   }

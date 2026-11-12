@@ -116,6 +116,22 @@ change tokens or principles. Propose, then log.
 
 ## Explorations (awaiting verdict)
 
+- 2026-11-11 · **Embedded planner on the landing hero** (`?embed=1`): the
+  planner as a read-only demo in an iframe. Panel narrowed to 380 px on
+  desktop and stacked under the map as a 46%-tall sheet on phones (the app's
+  full-screen phone panel would hide the map); all editing and file chrome
+  hidden; one quiet "Open the planner" pill (paper, `--shadow-2`, `--text-sm`)
+  where the region switcher normally sits; scroll never trapped (wheel needs
+  a click into the map or Ctrl/Cmd, two fingers on touch). No new tokens ·
+  `outhere-web.pages.dev/?embed=1`, `embed.css` · a visitor sees the real
+  product working instead of a screenshot of it.
+  Update 2026-11-11 (Vincent: visitors can draw): the embed opens the line +
+  stops copy of the demo and keeps the draw and stop tools, top left, with
+  zoom moved to the bottom left (two "+" buttons side by side read as one
+  thing); phones lose the zoom buttons (pinch). Once the trip has changed, a
+  quiet `btn--quiet btn--sm` "Reset demo" appears beside "Open the planner".
+  The draw button again finishes a drawing. On phones the stop and line menus
+  spill over the trip sheet rather than clip to the ~300 px map.
 - 2026-11-08 · **Line + stops planner (POC, trip format 1.2)** · branch
   `poc/line-stops`, new trip in Zion · the draw tool only draws the line
   (no point types); a separate pin tool drops stops (keys 1-6, pills reuse
