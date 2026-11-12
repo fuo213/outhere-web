@@ -471,7 +471,7 @@ function finishSpur(drawn) {
   if (routing) props.routing = routing;
   snapshot("add a day hike");
   const idx = TripManager.addFeature({ type: "LineString", coordinates: coords }, props);
-  drawn.forEach((leg, k) => leg.gap && gapMemo.set(`${trip.features[idx].properties._id}:${k}`, leg.gap));
+  drawn.forEach((leg, k) => leg.gap && rememberGap(`${trip.features[idx].properties._id}:${k}`, leg));
   if (route) {
     route.properties.dayhike_distance_mi = trip.features.filter((f) => f.properties.type === "dayhike_spur")
       .reduce((sum, f) => sum + (2 * lineLength(f.geometry.coordinates)) / MI, 0);
@@ -759,7 +759,7 @@ export function buildRoutingOverlay(trip) {
       });
       if (seg.mode === "straight" && (seg.reason || "no_path") === "no_path") {
         const gap = savedGap(p, k, legCoords);
-        const info = gapInfoMemo.get(`${p._id}:${k}`);
+        const info = gapInfoMemo.get(`${p._id}:${k}`); // after savedGap: it fills the memo
         out.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: gap },

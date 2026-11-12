@@ -18,7 +18,7 @@ export const PRODUCTION_API = "https://api.openstreetmap.org";
 export const SANDBOX_API = "https://master.apis.dev.openstreetmap.org";
 export const SITE = "https://www.openstreetmap.org";
 
-export const BOOOT_URL = "https://outhere-web.pages.dev";
+export const BOOOT_URL = "https://booot.org";
 export const SIGNATURE = `Sent from Booot (${BOOOT_URL}), an offline hiking map built on OpenStreetMap.`;
 
 /** Radius (m) for "is there already a note here" and "was this spot reported". */
@@ -187,7 +187,16 @@ export function parseNotes(json, { lat, lon, maxM = 150 } = {}) {
 
 /** Fetch open notes near a spot. Throws NoteError. */
 export async function fetchNearbyNotes(fetchFn, apiBase, lat, lon, { signal } = {}) {
-  const res = await request(fetchFn, nearbyNotesUrl(apiBase, lat, lon), { method: "GET", signal });
+  // Read-only, so a timeout is safe (a timed-out POST could still have been saved: no timeout there).
+  const timeout = typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(8000) : null;
+  const both = signal && timeout && AbortSignal.any ? AbortSignal.any([signal, timeout]) : signal || timeout || undefined;
+  let res;
+  try {
+    res = await request(fetchFn, nearbyNotesUrl(apiBase, lat, lon), { method: "GET", signal: both });
+  } catch (err) {
+    if (err?.name === "AbortError" && !signal?.aborted) throw new NoteError("offline", "timeout"); // our timeout, not the caller's cancel
+    throw err;
+  }
   return parseNotes(await res.json(), { lat, lon });
 }
 
@@ -210,6 +219,7 @@ export const ERROR_COPY = {
   offline: "You appear to be offline, or OpenStreetMap can’t be reached. Your text is kept; try again when you’re back online.",
   rate_limited: "OpenStreetMap is asking for a pause (too many requests). Your text is kept; try again in a few minutes.",
   blocked: "OpenStreetMap won’t take anonymous notes in this area. Your text is kept; you can open the editor or add the note on openstreetmap.org instead.",
+  untouched: "Add a few words about what you saw before sending, so a mapper has something to go on.",
   invalid: "OpenStreetMap rejected the note. Check that it has some text, then try again.",
   api: "OpenStreetMap had a problem saving the note. Your text is kept; try again in a moment.",
 };
@@ -219,7 +229,7 @@ async function request(fetchFn, url, init) {
   try {
     res = await fetchFn(url, init);
   } catch (err) {
-    if (err?.name === "AbortError") throw err;
+    if (err?.name === "AbortError" || err?.name === "TimeoutError") throw err;
     throw new NoteError("offline", String(err?.message || err));
   }
   if (res.ok) return res;

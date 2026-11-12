@@ -157,6 +157,7 @@ function renderForm(body, spot, { checkFailed = false } = {}) {
   sendBtn.addEventListener("click", async () => {
     const text = ta.value;
     if (!hasUserContent(text)) { showError(ERROR_COPY.invalid); return; }
+    if (!isGap && isUntouched(text, probKind, spot.nearby)) { showError(ERROR_COPY.untouched); return; }
     sendBtn.disabled = true; sendBtn.textContent = "Sending…"; ta.readOnly = true;
     status.hidden = true;
     try {

@@ -103,4 +103,26 @@ await test("reported spots store: find by distance and api base, survives bad st
   assert.match(R.formatReportDate("2026-11-11T10:00:00Z"), /Nov 1[01], 2026/);
 });
 
+await test("signature links to booot.org", () => {
+  assert.match(R.SIGNATURE, /\(https:\/\/booot\.org\)/);
+  assert.ok(!R.SIGNATURE.includes("pages.dev"));
+  assert.ok(R.gapNoteText({}).includes("https://booot.org"));
+});
+
+await test("fetchNearbyNotes: hung request becomes offline, caller cancel stays an abort, 429 surfaces", async () => {
+  const hang = (url, init) => new Promise((_, rej) => {
+    const abort = () => rej(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    if (init.signal.aborted) abort(); else init.signal.addEventListener("abort", abort);
+  });
+  const orig = AbortSignal.timeout;
+  AbortSignal.timeout = () => AbortSignal.abort(); // fire the 8 s timeout immediately
+  try {
+    await assert.rejects(R.fetchNearbyNotes(hang, R.SANDBOX_API, 1, 2), { kind: "offline" });
+  } finally { AbortSignal.timeout = orig; }
+  const ctl = new AbortController(); ctl.abort();
+  await assert.rejects(R.fetchNearbyNotes(hang, R.SANDBOX_API, 1, 2, { signal: ctl.signal }), { name: "AbortError" });
+  await assert.rejects(R.fetchNearbyNotes(async () => res(429, {}), R.SANDBOX_API, 1, 2), { kind: "rate_limited" });
+  assert.ok(R.ERROR_COPY.untouched);
+});
+
 console.log(`${n} tests passed`);
