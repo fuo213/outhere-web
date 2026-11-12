@@ -23,7 +23,7 @@ await test("api base: production by default, sandbox only on dev hosts", () => {
 
 await test("iD url: zoom 19 centred, way selected when known", () => {
   assert.equal(R.osmEditUrl({ lat: 37.2, lon: -112.9 }), "https://www.openstreetmap.org/edit?editor=id#map=19/37.200000/-112.900000");
-  assert.equal(R.osmEditUrl({ lat: 37.2, lon: -112.9, wayId: 123 }), "https://www.openstreetmap.org/edit?editor=id#id=w123&map=19/37.200000/-112.900000");
+  assert.equal(R.osmEditUrl({ lat: 37.2, lon: -112.9, wayId: 123 }), "https://www.openstreetmap.org/edit?editor=id&way=123#map=19/37.200000/-112.900000");
   assert.ok(!R.osmEditUrl({ lat: 1, lon: 2, wayId: "1&x=2" }).includes("x=2"));
 });
 

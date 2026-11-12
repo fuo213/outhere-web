@@ -52,13 +52,15 @@ export const siteFor = (apiBase) => (apiBase === PRODUCTION_API ? SITE : apiBase
 const fix6 = (n) => Number(n).toFixed(6);
 
 /**
- * iD at openstreetmap.org, centred on the spot. `#id=w<way>` makes iD select
- * that way when it is in the loaded data; `#map=zoom/lat/lon` is its
- * documented hash form.
+ * iD at openstreetmap.org, centred on the spot. On the OSM website the
+ * documented way to select an object is the `way` query parameter
+ * (iD API.md, "iD on openstreetmap.org": `/edit?editor=id&way=123`); the
+ * `#id=` hash form is documented only for standalone iD. `#map=zoom/lat/lon`
+ * is the documented hash form for the position.
  */
 export function osmEditUrl({ lat, lon, wayId = null, zoom = 19 }) {
-  const id = wayId != null && /^\d+$/.test(String(wayId)) ? `id=w${wayId}&` : "";
-  return `${SITE}/edit?editor=id#${id}map=${zoom}/${fix6(lat)}/${fix6(lon)}`;
+  const way = wayId != null && /^\d+$/.test(String(wayId)) ? `&way=${wayId}` : "";
+  return `${SITE}/edit?editor=id${way}#map=${zoom}/${fix6(lat)}/${fix6(lon)}`;
 }
 
 export const noteWebUrl = (apiBase, id) => `${siteFor(apiBase)}/note/${Number(id)}`;
