@@ -96,7 +96,8 @@ route.properties.elevation_loss_ft = routes.reduce((a, r) => a + (r.properties.e
 route.properties.elevation_source = "gpx";
 
 // ---- Stops ---------------------------------------------------------------
-const atLegEnd = (k) => ({ route_id: ROUTE_ID, leg: k, offset_m: Math.round(ix.legs[k].len * 10) / 10 });
+// Floor, not round: an offset past the leg end by even 0.05 m makes redrawLine re-attach the camp to another pass.
+const atLegEnd = (k) => ({ route_id: ROUTE_ID, leg: k, offset_m: Math.floor(ix.legs[k].len * 10) / 10 });
 const camp = (f, leg, extra = {}) => {
   const p = { ...f.properties };
   for (const key of ["route_index", "route_vertex_index", "date"]) delete p[key];
