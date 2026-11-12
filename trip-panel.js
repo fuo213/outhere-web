@@ -18,7 +18,6 @@
 import { map } from "./app.js"; // circular with app.js; only used at runtime
 import {
   cancelDrawing,
-  initPointTypeSelector,
   startRouteDrawing,
   startDeleteMode,
   exitDeleteMode,
@@ -27,6 +26,7 @@ import {
   buildRoutingOverlay,
   prefetchRoutingGraph,
   isDrawingRoute,
+  retryElevation,
 } from "./planning.js";
 import { buildItinerary, kindOf, ruleSVG, mentionsMeal } from "./itinerary-profile.js";
 import { initItineraryPanel, updateItinerary, setItineraryCompact } from "./itinerary-panel.js";
@@ -36,6 +36,10 @@ import { TripsStore, hideTripsHome, showTripsHome } from "./trips-home.js"; // c
 import { frameBounds, boundsOf } from "./map-trip-style.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
 import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
+import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices, canConvertToLine } from "./line-model.js";
+import { renderLineDays } from "./line-panel.js"; // circular; only used at runtime
+import { initStops, closeStopMenu } from "./stops.js"; // circular; only used at runtime
+import { initRouteEdit, closeLineMenu, snapshot, showToast } from "./route-edit.js"; // circular; only used at runtime
 
 // ---------------------------------------------------------------------------
 // Trip state manager
@@ -47,8 +51,15 @@ import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular;
 // Distinct from the legacy _schema_version integer migration counter.
 // 1.1 adds per-leg routing provenance (`segments`, `routing`); 1.0 files
 // remain valid and are still read.
+// 1.2 is the line + stops model (line-model.js): new trips are 1.2; older
+// trips keep the day-assignment model and export as 1.1.
 const TRIP_SCHEMA_VERSION = "1.1";
-const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1"];
+const LINE_SCHEMA_VERSION = "1.2";
+const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1", "1.2"];
+
+/** The current line plan (1.2 trips), rebuilt on every render. */
+let linePlan = null;
+let lineView = null;
 
 let activeDayId = null;       // day ID highlighted on the map ("Show on map"), or null
 let drawIntoDayId = null;     // "Draw route" from an empty day: new features land in that day
@@ -73,7 +84,10 @@ export const TripManager = {
         readme: "",
         notes: "",
         region: getActiveRegionId(),
-        schema_version: TRIP_SCHEMA_VERSION,
+        // New trips use the line + stops model: days build themselves from
+        // the camps on the line, so none are pre-created (`nights` only
+        // sizes the date range until the first camp lands).
+        schema_version: LINE_SCHEMA_VERSION,
         _schema_version: 4,
         dates: startDate ? {
           start: startDate,
@@ -84,15 +98,6 @@ export const TripManager = {
       unassigned: [],
       features: [],
     };
-    // Pre-create days
-    for (let i = 0; i <= nights; i++) {
-      this.currentTrip.days.push({
-        id: crypto.randomUUID(),
-        date: startDate ? offsetDate(startDate, i) : null,
-        features: [],
-        notes: "",
-      });
-    }
     hideTripsHome(); // creating a trip leaves the home view
     this.render();
     this.save();
@@ -184,14 +189,20 @@ export const TripManager = {
 
   /** Update MapLibre source and sidebar. */
   render() {
+    const trip = this.currentTrip;
+    // 1.2: days follow the camps on the line. Sync trip.days (mobile reads
+    // it), then draw a day-split view of the line with the same chart code.
+    linePlan = trip && isLineTrip(trip) ? syncLineTrip(trip) : null;
+    lineView = linePlan ? displayTrip(trip, linePlan) : null;
     if (map.getSource("trip")) {
       // Routed routes/spurs also render per leg (trail / manual / straight
       // + gap pins); the overlay never touches the stored trip.
-      const trip = this.currentTrip;
-      map.getSource("trip").setData(trip
-        ? { type: "FeatureCollection", features: [...trip.features, ...buildRoutingOverlay(trip)] }
+      const view = lineView || trip;
+      map.getSource("trip").setData(view
+        ? { type: "FeatureCollection", features: [...view.features, ...buildRoutingOverlay(view)] }
         : { type: "FeatureCollection", features: [] });
     }
+    document.body.classList.toggle("is-line-trip", !!linePlan);
     renderSidebar();
     renderTripTitle();
     renderMetaChips();
@@ -376,7 +387,8 @@ export const TripManager = {
 export function buildTripExport(trip) {
   if (!trip) return null;
   const out = JSON.parse(JSON.stringify(trip));
-  out.properties.schema_version = TRIP_SCHEMA_VERSION;
+  out.properties.schema_version = isLineTrip(trip) ? LINE_SCHEMA_VERSION : TRIP_SCHEMA_VERSION;
+  for (const d of out.days || []) delete d._key; // internal: which camp a day ends at
   // The UI edits `readme`; write `notes` from the same value for mobile.
   out.properties.notes = out.properties.readme || "";
   if (out.properties.dates === undefined) out.properties.dates = null;
@@ -476,6 +488,9 @@ export function migrateTrip(trip) {
     trip.properties.readme = trip.properties.notes;
   }
 
+  // 1.0 / 1.1 trips are never converted to 1.2 (line + stops) on open: they
+  // keep the day-assignment model until the user switches (convertToLineTrip).
+
   return trip;
 }
 
@@ -491,13 +506,14 @@ const FEATURE_GEOMETRY_TYPES = {
   dayhike_spur: "LineString",
   gps_track: "LineString",
   camp: "Point",
+  break: "Point",
   dayhike: "Point",
   rest: "Point",
   waypoint: "Point",
   photo: "Point",
 };
 
-const WAYPOINT_SUBTYPES = ["water", "hazard", "resupply", "scenic"];
+const WAYPOINT_SUBTYPES = ["water", "hazard", "resupply", "scenic", "note"];
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function validateTripExport(trip) {
@@ -756,6 +772,15 @@ function renderDaySections() {
     return;
   }
 
+  if (linePlan && lineView) {
+    if (activeDayId && !trip.days.some(d => d.id === activeDayId)) setActiveDayHighlight(null);
+    const model = buildItinerary(lineView);
+    model.line = true;
+    const sections = renderLineDays(container, trip, linePlan, model);
+    updateItinerary(trip, sections, model);
+    return;
+  }
+
   // Drop the map highlight if the highlighted day no longer exists
   if (activeDayId && !trip.days.some(d => d.id === activeDayId)) {
     setActiveDayHighlight(null);
@@ -766,6 +791,7 @@ function renderDaySections() {
   const tripIsEmpty = trip.features.length === 0;
   const sections = trip.days.map((day, idx) => buildDaySection(day, idx, modelDays[idx], tripIsEmpty));
   sections.forEach(s => container.appendChild(s));
+  if (canConvertToLine(trip)) container.appendChild(buildLineOffer());
   updateItinerary(trip, sections, model);
 
   if (confirmFeatureId) {
@@ -1030,6 +1056,49 @@ function buildDaySection(day, dayIndex, mday, tripIsEmpty) {
   });
 
   return section;
+}
+
+/**
+ * Older trips (one routed line) can switch to line + stops. Never automatic:
+ * a quiet offer under the days, one sentence on what changes, and Undo.
+ */
+function buildLineOffer() {
+  const el = document.createElement("div");
+  el.className = "line-offer";
+  el.innerHTML = `
+    <p class="line-offer__text">This trip uses the older planner, where you drag things into days. You can switch it to line and stops: camps become stops on your line, rest days become extra nights, and the days rebuild themselves from your camps, replacing the ones set by hand.</p>
+    <button type="button" class="btn btn--quiet btn--sm" data-act="convert-line">Switch to line and stops</button>`;
+  el.querySelector("[data-act='convert-line']").addEventListener("click", convertToLineTrip);
+  return el;
+}
+
+/** The explicit 1.1 → 1.2 switch (undoable). */
+export function convertToLineTrip() {
+  const trip = TripManager.currentTrip;
+  if (!canConvertToLine(trip)) return false;
+  cancelDrawing();
+  snapshot("switch to line and stops");
+  if (!convertTypedVertices(trip)) return false;
+  setActiveDayHighlight(null);
+  TripManager.render();
+  TripManager.save();
+  showToast("Switched to line and stops. Days now follow your camps", { undoable: true, ms: 9000 });
+  return true;
+}
+
+// Small hooks for the 1.2 day story (line-panel.js).
+export const buildDayNotes = (day) => buildNotesBlock(day);
+export const isEditingNotes = (dayId) => editingNotesDayId === dayId;
+export function editDayNotes(dayId) { editingNotesDayId = dayId; renderDaySections(); }
+export const isDayOnMap = (dayId) => !!dayId && activeDayId === dayId;
+export function showDayOnMap(dayId) {
+  const on = activeDayId !== dayId;
+  setActiveDayHighlight(on ? dayId : null);
+  if (on) {
+    const i = TripManager.currentTrip?.days.findIndex(d => d.id === dayId);
+    const vd = lineView?.days?.[i];
+    if (vd) fitToFeatures(vd.features.map(id => lineView.features.find(f => f.properties._id === id)).filter(Boolean));
+  }
 }
 
 /** Day notes: read as text; click (or "Edit notes") to write. */
@@ -1490,6 +1559,12 @@ function dayhikePair(feature) {
   return [feature];
 }
 
+/** Frame a feature by _id (a stop together with its day hikes, and the reverse). Used by the 1.2 day story. */
+export function frameFeature(id) {
+  const idx = TripManager.currentTrip?.features.findIndex(f => f.properties._id === id) ?? -1;
+  if (idx !== -1) zoomToFeature(idx);
+}
+
 /** Explicit selection from the panel: always frame it beside the panel. */
 function zoomToFeature(index) {
   const feature = TripManager.currentTrip?.features[index];
@@ -1637,12 +1712,13 @@ export function initTripPanel() {
     });
   }
 
-  // Point-type selector buttons
-  initPointTypeSelector();
+  // Stops (1.2): the stop tool + stop menu; the line menu + undo.
+  initStops();
+  initRouteEdit();
 
-  // Cancel drawing on Escape
+  // Cancel drawing (and the stop tool, open menus) on Escape
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") cancelDrawing();
+    if (e.key === "Escape") { cancelDrawing(); closeStopMenu(); closeLineMenu(); }
   });
 
   // Trip title input
@@ -1750,6 +1826,7 @@ export function initTripPanel() {
     scroll: document.getElementById("notebookPanel"),
     tail: document.getElementById("itineraryTail"),
     onDrawRoute: () => startRouteDrawing(),
+    onRetryElevation: (routeId) => retryElevation(routeId),
   });
   // Drawing a route: collapse the profile to a strip so the map leads.
   const toolbarEl = document.getElementById("planningToolbar");

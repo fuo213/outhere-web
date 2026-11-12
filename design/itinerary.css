@@ -335,3 +335,6 @@ body.is-dragging-feature .itin-day-empty {
   .itin-profile { position: static; }
   .itin-profile::after, .itin-edit-row, .stop-tools, .itin-tail { display: none; }
 }
+
+/* "Try again" beside the caption when a stretch has no elevation. */
+.itin-retry { font-style: normal; height: 24px; margin-left: var(--space-1); color: var(--accent); }

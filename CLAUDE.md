@@ -37,7 +37,14 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `itinerary-profile.js` | Pure: `buildItinerary(trip)` (day-by-day model: miles from geometry, elevation from each route's `elevation_profile`, stops projected onto the route) and `drawProfile()` (the sketchbook elevation profile as SVG, drawn at the real pixel width) |
 | `itinerary-panel.js` | The sticky profile in the trip panel: active day (IntersectionObserver), band click to scroll, compact strip while drawing, the `booot:active-day` signal |
 | `sketch.js` | The drawing kit: ink strokes, pencil hatching, paper grain, the hand-drawn glyph family (also used as stop icons) |
-| `planning.js` | Route drawing (point types route / camp / dayhike / rest, hotkeys 1-4, Shift = straight leg, Esc cancels, double-click finishes), live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
+| `planning.js` | Drawing the line (clicks only guide snapping; Shift = straight leg, Esc cancels, double-click finishes). Modes: new line, `redraw` (seeded at a cut, rejoins the faint old line), `spur` (day hike from a stop). Live routed preview, undo, gap card, legs → trip features (schema 1.1 `segments`), elevation profiles |
+| `line-model.js` | Pure 1.2 model: line index (legs, metres), attach resolve/locate, passes and visits near a point, `buildPlan` (camps → days, stops per day/visit), `syncLineTrip` (trip.days for mobile), `displayTrip` (the line cut per day for the chart + profile), `canConvertToLine` / `convertTypedVertices` (the opt-in 1.1 → 1.2 switch) |
+| `line-edit.js` | Pure line edits: `redrawLine` (stitch a drawn path in, shift / re-attach / flag stops, regenerate a linked way back, say which stretches keep their elevation), `appendReturn`, `returnLink` |
+| `elevation.js` | Pure elevation sampling: density rule (~1 sample / 100 m, max 800), `fetchElevations` (sequential chunks of ≤100 to Open-Meteo, backoff, all or nothing), `buildProfile` (reuses the old profile on unchanged stretches), `gainLoss` / `hysteresisGainLoss` (3 m hysteresis, shared with gpx-core.js) |
+| `tests/` | Plain-node unit tests for the three pure modules above: `node tests/run.mjs` (no dependencies) |
+| `stops.js` | Stop tool (keys 1-6: camp, break, water, hazard, viewpoint, note) and the stop menu (name, nights, water source/reliability, Out/Back, day hike, move, delete) |
+| `route-edit.js` | The UI side of line edits: starts "Redraw from here" / draw-on-from-the-end, commits through `line-edit.js`, the line menu, trip-level undo (snapshots) + the edit toast |
+| `line-panel.js` | The 1.2 day story (days built from camps; stops in walking order; off-route flags) |
 | `map-trip-style.js` | How the trip is drawn on the map (itinerary direction B, "Trip chart"): inked route on a paper casing, colored-pencil `line-pattern` band per day, glyphs (tent, drop, day-hike arrow, start/end rings, gap pin), circled day numerals, italic labels, all rasterized at runtime with `map.addImage`. Drawing/preview leg styles. Active-day highlight (feature-state) + the `booot:active-day` event |
 | `gpx-core.js` / `gpx-import.js` | GPX import. Core is pure (parse via DOMParser, 1.5 m simplification, recorded-elevation profile and gain/loss with a 3 m hysteresis, route feature with `segments: [{mode:"imported"}]` + `source`). Import wires the trip panel: Import GPX (multi-select), drop files on the panel, "Assign by date". Client-side only; recorded elevation beats Open-Meteo for imported routes |
 | `gpx-match.js` / `route-names.js` | Pure. `matchTrack(graph, coords)` map-matches a recording to the routing graph (resample ~17 m, nearest way within 25 m, sticky to the previous way, junction/GPS-gap noise merged) and returns name runs + OSM way ids + a loop flag. `route-names.js` holds the auto-name rules (`deriveNameFromRuns`, `deriveImportedName` with loop names, `isGenericRouteName`), shared by planning.js and GPX import. Test: `FLATBUSH_DIR=<dir with node_modules/flatbush> [ZION_GRAPH=<graph json>] node design/tools/test-gpx-match.mjs` |
@@ -63,14 +70,14 @@ Classic `<script>` tags in `index.html`, used as globals from the modules:
 - Flatbush 4.4.0: ES-module import from jsDelivr in `routing.js` (spatial index for snapping)
 - Google Fonts: Playfair Display, DM Sans, IBM Plex Mono
 
-Runtime network calls: tiles.booot.org (catalog + PMTiles range requests),
-MapLibre demotiles for glyphs/sprite, and the free Open-Meteo elevation API
-(`fetchElevationProfile` in `planning.js`), which is only the fallback: where
-a region's graph ships an elevation sidecar, trail legs get their profile
-from it with no API call (see "Elevation" below). Keep new dependencies open and
 Runtime network calls: tiles.booot.org (catalog, PMTiles range requests and
 map glyphs under `fonts/`), and the free Open-Meteo elevation API
-(`fetchElevationProfile` in `planning.js`). Keep new dependencies open and
+(`fetchElevationProfile` in `planning.js`, sampling and chunking in
+`elevation.js`), which is only the fallback: where a region's graph ships an
+elevation sidecar, trail legs get their profile from it with no API call (see
+"Elevation" below). Open-Meteo counts every coordinate as a call (600 /
+minute, 10,000 / day per IP), which is why edits reuse the old profile and
+only fetch the drawn legs. Keep new dependencies open and
 free (see product principles in `../CLAUDE.md`); pin exact versions.
 
 ## Tiles, regions and style
@@ -130,6 +137,82 @@ full schema validator, so validate real exports against the schema after
 touching export code. The internal `_schema_version` (4) is a separate
 localStorage migration counter.
 
+## Line + stops (trip format 1.2, POC)
+
+New trips are 1.2 (`schema_version: "1.2"`, draft fields in
+`../outhere/trips/`). One main `route` is the line; clicks only guided its
+routing and stay as hidden anchors (`vertex_coords` / `segments`). Stops are
+separate Point features:
+- **Time stops** `camp` / `break` carry `attach: { route_id, leg, offset_m }`
+  (leg = segment index). Always resolve per leg (`resolveAttach`), never by
+  nearest point, so stops on overlapping passes stay on their pass. No
+  `attach` = off route (flagged, never deleted). Camp `nights` adds rest days.
+- **Place stops** `waypoint` (`water` + `water_source`/`reliability`,
+  `hazard`, `scenic`, `note`) have no attach; the itinerary lists them on
+  every pass within `NEAR_M` (120 m).
+- A place stop is listed once per visit (`visitsNear`): switchbacks beside a
+  spring are one visit; the two passes of an out-and-back (more than
+  `SEPARATE_VISIT_M` = 1 km apart along the line, equally close) are two.
+- **Days build themselves** (`buildPlan`): camps number along the line; Day N
+  runs camp N-1 → camp N; dates follow the start date. `TripManager.render()`
+  runs `syncLineTrip` (rewrites `trip.days` for mobile, keyed by `_key`,
+  stripped on export) and draws `displayTrip()` (the line cut per day) with
+  the unchanged chart/profile code.
+- **Edits** are "Redraw from here", draw-on-from-the-end and "Return the same
+  way" (route-edit.js → line-edit.js), each undoable (Cmd/Ctrl-Z or the
+  toast). Out/Back needs passes within `OVERLAP_M` (30 m), so switchbacks
+  don't count. While the way back is still fully linked (`returnLink`: every
+  return leg mirrors an outbound leg), any redraw of the way out, with or
+  without a rejoin, regenerates the whole way back; a way back edited by
+  hand is never regenerated and the toast says so.
+- **Delete on the line** (route-edit.js selection + line-edit.js
+  `sectionAt` / `deleteSection` / `deleteLine`, tested in
+  `tests/line-delete.test.mjs`). Clicking the line selects the section under
+  the cursor (the leg between two adjacent hidden anchors; rust highlight) and
+  opens the line menu. Delete / Backspace (not in an input, not while drawing,
+  the stop tool or delete mode) or the menu's "Delete this section" removes it:
+  first/last section = the line is trimmed to the neighbouring anchor; middle
+  section = a straight `manual` gap between its two anchors (never re-routed:
+  routing between the same two anchors would draw the deleted section again).
+  A straight section (a gap, or any `manual` / `straight` leg) gets two menu
+  items instead of "Redraw from here": "Redraw this section" (redraw seeded at
+  its first anchor; click the line further on to rejoin) and "Snap to trails"
+  (`routeBetween` in planning.js + `replaceSection`; says why when it can't).
+  Delete on a middle section that is already straight only shows a hint. A gap
+  left by a delete also gets a **redraw point** on the map (ring + "Redraw from
+  here" at the gap's first anchor, route-edit.js `paintRedrawPoints`; session
+  memory only): drawing runs forward only, so that is where the redraw starts,
+  and a tap on it starts it. All of it goes through `redrawLine` (it accepts empty
+  `newLegs` for a trim), so stops, elevation reuse and a linked way back behave
+  as for "Redraw from here": a stop whose stretch is gone re-attaches if the
+  new line passes within 120 m, else goes off route (never deleted). "Select
+  whole line" in the menu highlights everything; Delete or "Delete whole line"
+  removes the line and keeps its camps/breaks as off-route stops (`deleteLine`).
+  Esc or a click elsewhere clears the selection. Every delete is one `snapshot`
+  (Cmd/Ctrl-Z or the toast). On a linked out-and-back, deleting an outbound
+  section rebuilds the way back; deleting the last outbound section keeps the
+  way back and bridges to the turnaround.
+- **Elevation** is one profile on the route (feet, evenly spaced);
+  `displayTrip` slices it per day at the same density. Source, in order:
+  the 3DEP sidecar (25 m samples, `elevation_gain_ft` / `_loss_ft` as
+  `profileForRoute` counted them), else Open-Meteo (`buildProfile`, ~100 m
+  samples, `gainLoss` with the shared 3 m hysteresis; edits reuse the old
+  profile and a linked out-and-back is fetched one way and mirrored). Day
+  figures are always `gainLoss` of the day's slice. Open-Meteo's DEM
+  over-counts badly in cliffy terrain (West Rim: about +3,400 ft against
+  +1,262 from 3DEP and a published ~1,200), so its numbers are a stopgap
+  until the region's sidecar is deployed.
+- A failed elevation fetch writes nothing and fires `booot:elevation-failed`;
+  the profile caption then offers "Try again" (`retryElevation`), which
+  fetches only what is missing (after an edit: the drawn legs).
+- **Old trips never convert on open.** 1.0/1.1 trips keep the
+  day-assignment model. Trips with exactly one routed line get a quiet offer
+  under the days ("Switch to line and stops", undoable): typed vertices
+  become attached stops, rest becomes nights, a day-hike marker becomes a
+  stop at the spur's branch point (or the spur leaves from the camp there).
+- **Tests:** `node tests/run.mjs` (Node 22+, no dependencies) covers
+  line-model.js, line-edit.js and elevation.js. Run it after touching them.
+
 ## Trail routing
 
 Routes follow real trails using the per-region routing graph the pipeline
@@ -175,7 +258,9 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   recordings, stored at one sample per 25 m (up to 1,000). Straight and manual
   legs on such a route are filled from Open-Meteo (one request);
   `elevation_source` records which (`usgs-3dep`, `mixed`, `open-meteo`).
-  Anything else (no sidecar, no trail legs) takes the old Open-Meteo path.
+  Anything else (no sidecar, no trail legs, a failed fill) takes the
+  Open-Meteo path in `elevation.js`; the sidecar's fill uses the same
+  chunked, retried `fetchElevations`.
   With the `?graph=` dev override the sidecar is the file next to the graph
   (`dev-graphs/zion.trails-elev.json`). `window.__outhere.elevation.last`
   says what the last profile came from. Tests:
