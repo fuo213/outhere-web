@@ -108,15 +108,17 @@ const camp2Again = {
   geometry: { type: "Point", coordinates: coords[ix.legs[3].b] },
   properties: {
     type: "camp", point_type: "camp", _id: "b0070000-0000-4000-8000-00000000c2c2",
-    name: "Back at camp 2", notes: "Same camp, second night (May 5).",
+    name: "same site as camp 2", notes: "Back at camp 2 for a second night (May 5).",
     nights: 1, water_nearby: false, water_notes: "", attach: atLegEnd(3),
   },
 };
+// The planner prefixes camps with their number ("Camp 1, Shot Canyon Route"),
+// so the names drop the recorded "Camp N" part.
 const stops = [
-  camp(c1, 1),
-  camp(c2, 2, { notes: "At-large. Two nights here (May 4 and 5)." }),
+  camp(c1, 1, { name: "Shot Canyon Route" }),
+  camp(c2, 2, { name: "Pete's Mesa Route", notes: "At-large. Two nights here (May 4 and 5)." }),
   camp2Again,
-  camp(c3, 4),
+  camp(c3, 4, { name: "" }),
 ];
 const places = waypoints.map((w) => {
   const p = { ...w.properties };

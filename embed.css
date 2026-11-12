@@ -58,14 +58,15 @@ html.embed .modal-header { padding: var(--space-5) var(--space-5) 0; }
 /* Attribution (OSM license) must stay visible: sit it left of the panel. */
 html.embed .maplibregl-ctrl-bottom-right { right: var(--embed-panel-w); }
 
-/* ---- Drawing: the two line tools beside the zoom buttons ------------------ */
-/* trip-panel.js aligns the toolbar's top with the zoom control. The hint and
-   the edit toast centre on the visible map, not on the app's 520px panel. */
-html.embed .planning-toolbar { left: calc(var(--space-3) + 29px + var(--space-3)); } /* 29px: MapLibre's control width */
+/* ---- Drawing: the two line tools, top left -------------------------------- */
+/* The zoom buttons move to the bottom left in the embed (app.js), so the draw
+   tool's "+" never sits beside zoom's "+". The hint sits just above the edit
+   toast, both centred on the visible map, not on the app's 520px panel. */
+html.embed .planning-toolbar { top: var(--space-3); left: var(--space-3); }
 html.embed body.panel-open .drawing-hint,
 html.embed body.panel-open .edit-toast { left: calc((100% - var(--embed-panel-w)) / 2); }
-html.embed .drawing-hint { bottom: var(--space-12); }
-html.embed body.is-drawing-route .edit-toast { bottom: calc(var(--space-12) + 48px); }
+html.embed .drawing-hint { bottom: calc(var(--space-12) + 44px); }
+html.embed body.is-drawing-route .edit-toast { bottom: var(--space-12); }
 
 /* ---- The way out, and back to the start ------------------------------------ */
 .embed-actions { display: none; }
@@ -132,9 +133,9 @@ html.embed .embed-open .visually-hidden {
   html.embed body.panel-open .drawing-hint,
   html.embed body.panel-open .edit-toast { left: 50%; right: auto; top: auto; width: max-content; max-width: calc(100% - 2 * var(--space-4)); transform: translateX(-50%); }
   html.embed .drawing-hint,
-  html.embed body.panel-open .drawing-hint { bottom: calc(var(--embed-sheet-h) + var(--space-3)); text-align: center; border-radius: var(--radius-pill); }
-  html.embed body.panel-open .edit-toast { bottom: calc(var(--embed-sheet-h) + var(--space-3)); }
-  html.embed body.is-drawing-route .edit-toast { bottom: calc(var(--embed-sheet-h) + var(--space-3) + 48px); }
+  html.embed body.panel-open .drawing-hint { bottom: calc(var(--embed-sheet-h) + var(--space-3) + 44px); text-align: center; border-radius: var(--radius-pill); }
+  html.embed body.panel-open .edit-toast,
+  html.embed body.is-drawing-route .edit-toast { bottom: calc(var(--embed-sheet-h) + var(--space-3)); }
   html.embed .maplibregl-ctrl-bottom-right { right: 0; }
   html.embed .maplibregl-ctrl-scale { display: none; } /* it collides with the attribution at this width */
 }

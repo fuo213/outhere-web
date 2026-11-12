@@ -385,7 +385,8 @@ if (EMBED) {
 window.__outhere = { map, TripManager, applyRegion, findRegionById, routing: routingDebug, tripChart: tripChartDebug, lineModel, lineEdit, routeEdit, stops, elevation: elevationDebug };
 
 // Navigation controls (zoom +/-, compass)
-map.addControl(new maplibregl.NavigationControl(), "top-left");
+// (Embed: zoom only, bottom left, so the drawing tools own the top left.)
+map.addControl(new maplibregl.NavigationControl(EMBED ? { showCompass: false } : {}), EMBED ? "bottom-left" : "top-left");
 
 // Scale bar (metric + imperial)
 map.addControl(

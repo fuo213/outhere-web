@@ -1646,10 +1646,8 @@ function panelMapPadding() {
 
 /** Re-align the floating planning toolbar with the Plan map control. */
 export function alignPlanningToolbar() {
-  // Embed: the Plan control is hidden; sit level with the zoom buttons instead.
-  const planBtnEl = EMBED
-    ? document.querySelector(".maplibregl-ctrl-top-left .maplibregl-ctrl-group")
-    : document.getElementById("planBtn");
+  if (EMBED) return; // no Plan control in the embed: embed.css places the toolbar
+  const planBtnEl = document.getElementById("planBtn");
   const planningToolbarEl = document.getElementById("planningToolbar");
   if (planBtnEl && planningToolbarEl) {
     planningToolbarEl.style.top = planBtnEl.getBoundingClientRect().top + "px";
