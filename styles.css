@@ -2308,6 +2308,182 @@ body.panel-open .route-instructions {
 }
 
 /* ---------------------------------------------------------------------------
+   Place search (top centre): name search over the region's place index.
+   Hidden unless the active region has one. Paper popover, flat, one input.
+   --------------------------------------------------------------------------- */
+
+.place-search {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(380px, calc(100vw - 420px));
+  min-width: 240px;
+  z-index: 4;
+}
+.place-search[hidden] { display: none; }
+
+.place-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  color: var(--text-secondary);
+  transition: border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
+}
+.place-search-field:hover { border-color: var(--border-strong); }
+.place-search-field:focus-within { border-color: var(--dust-500); box-shadow: var(--shadow-2), var(--focus-ring); }
+
+.place-search-icon { flex: none; margin-left: var(--space-3); }
+
+.place-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: var(--weight-regular) var(--text-base)/1 var(--font-ui);
+}
+.place-search-input::placeholder { color: var(--text-secondary); }
+.place-search-input:focus { outline: none; }
+
+.place-search-key {
+  flex: none;
+  margin-right: var(--space-3);
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font: var(--weight-medium) var(--text-xs)/1 var(--font-data);
+}
+.place-search-key[hidden] { display: none; }
+.place-search-field:focus-within .place-search-key { display: none; }
+
+.place-search-clear {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.place-search-clear[hidden] { display: none; }
+.place-search-clear:hover { background: var(--surface-sunken); color: var(--text); }
+.place-search-clear:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.place-search-panel {
+  margin-top: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-3);
+  max-height: min(420px, calc(100vh - 100px));
+  overflow-y: auto;
+}
+.place-search-panel[hidden] { display: none; }
+
+.place-search-list { list-style: none; margin: 0; padding: var(--space-1); }
+.place-search-list:empty { display: none; }
+
+.place-opt {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.place-opt[aria-selected="true"] { background: var(--surface-sunken); }
+.place-opt-name {
+  font: var(--weight-medium) var(--text-base)/var(--leading-tight) var(--font-ui);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.place-opt-name mark {
+  background: none;
+  color: inherit;
+  font-weight: var(--weight-bold);
+}
+.place-opt-meta {
+  font: var(--weight-regular) var(--text-sm)/1.3 var(--font-ui);
+  color: var(--text-secondary);
+}
+.place-opt-num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+.place-search-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-secondary);
+  font: var(--weight-regular) var(--text-md)/var(--leading-normal) var(--font-ui);
+}
+.place-search-empty[hidden] { display: none; }
+
+/* The marker left on a chosen place: a rust ring and a paper tag with the name */
+.place-pin { position: relative; width: 0; height: 0; pointer-events: none; }
+.place-pin-ring {
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border: 2.5px solid var(--accent);
+  border-radius: 50%;
+  background: var(--accent-tint);
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: place-pin-drop var(--dur-slow) var(--ease-spring) both;
+}
+.place-pin-tag {
+  position: absolute;
+  left: 0;
+  top: 16px;
+  transform: translateX(-50%);
+  max-width: 200px;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  color: var(--text);
+  font: var(--weight-semi) var(--text-sm)/1.2 var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes place-pin-drop {
+  from { transform: scale(1.7); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .place-pin-ring { animation: none; }
+}
+
+/* Narrow screens: its own row under the region button, clear of the map controls */
+@media (max-width: 700px) {
+  .place-search {
+    top: calc(var(--space-3) + 40px + var(--space-2));
+    left: 54px;
+    right: var(--space-3);
+    width: auto;
+    min-width: 0;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Responsive
    --------------------------------------------------------------------------- */
 
