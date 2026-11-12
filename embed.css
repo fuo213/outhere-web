@@ -145,6 +145,7 @@ html.embed .embed-open .visually-hidden {
   /* Stop and line menus are taller than the short map: let them spill over
      the sheet instead of being clipped. The map stacks above the sheet (it
      never overlaps it), the floating controls stay above the map. */
+  html.embed body:has(.maplibregl-popup) .edit-toast { opacity: 0; pointer-events: none; } /* an open menu wins */
   html.embed #map { z-index: 5; }
   html.embed #map.maplibregl-map { overflow: visible; }
   html.embed .planning-toolbar,

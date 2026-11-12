@@ -125,6 +125,13 @@ change tokens or principles. Propose, then log.
   a click into the map or Ctrl/Cmd, two fingers on touch). No new tokens ·
   `outhere-web.pages.dev/?embed=1`, `embed.css` · a visitor sees the real
   product working instead of a screenshot of it.
+  Update 2026-11-11 (Vincent: visitors can draw): the embed opens the line +
+  stops copy of the demo and keeps the draw and stop tools, top left, with
+  zoom moved to the bottom left (two "+" buttons side by side read as one
+  thing); phones lose the zoom buttons (pinch). Once the trip has changed, a
+  quiet `btn--quiet btn--sm` "Reset demo" appears beside "Open the planner".
+  The draw button again finishes a drawing. On phones the stop and line menus
+  spill over the trip sheet rather than clip to the ~300 px map.
 - 2026-11-08 · **Line + stops planner (POC, trip format 1.2)** · branch
   `poc/line-stops`, new trip in Zion · the draw tool only draws the line
   (no point types); a separate pin tool drops stops (keys 1-6, pills reuse
