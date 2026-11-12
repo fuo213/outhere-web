@@ -50,6 +50,8 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `gpx-match.js` / `route-names.js` | Pure. `matchTrack(graph, coords)` map-matches a recording to the routing graph (resample ~17 m, nearest way within 25 m, sticky to the previous way, junction/GPS-gap noise merged) and returns name runs + OSM way ids + a loop flag. `route-names.js` holds the auto-name rules (`deriveNameFromRuns`, `deriveImportedName` with loop names, `isGenericRouteName`), shared by planning.js and GPX import. Test: `FLATBUSH_DIR=<dir with node_modules/flatbush> [ZION_GRAPH=<graph json>] node design/tools/test-gpx-match.mjs` |
 | `routing.js` | Trail routing: loads the region's `booot-trail-graph`, flatbush snapping (meters), A* |
 | `elevation-dem.js` | Pure: elevation for routed legs from our own USGS 3DEP data. Loads the graph's `booot-trail-elev` sidecar (`routing_graph.elevation` in the catalog) and `profileForRoute(route, graph, { fill })` returns `{ profile_ft, gain_ft, loss_ft, spacing_m, source }` or null |
+| `place-search.js` | Pure: place search over the region's `booot-place-index` v1 (`decodeIndex`, `search` with exact > prefix > word-start > substring ranking, case/diacritic-insensitive, `highlightRanges`, `describeEntry`, `indexesForRegion`). Test: `node design/tools/test-place-search.mjs` (`PLACE_INDEX=<file>` adds a real-data test) |
+| `place-search-ui.js` | The search box (`#placeSearch`, top centre; own row on phones): combobox with keyboard nav (`/` focuses, arrows, Enter, Esc), lazy index load on first focus, fly-to plus a pin with the name. Hidden unless the active region has `place_index` in the catalog; a full-state region searches all of that state's indexed regions together |
 | `layer-styles.js` | `LayerStyleManager`: per-layer color / width / dash / opacity overrides via `setPaintProperty`, persisted to `outhere_layer_styles` |
 | `styles.css` | App feature styles on the design tokens (loaded after `design/tokens.css`, `motion.css`, `components.css`) |
 | `ui-motion.js` | Motion wiring: `confirm` shiver on exports (delegated clicks) |
@@ -303,6 +305,27 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   and preview timing. On the 2026-11-07 OSM graph (zion d9883fc4) expect
   2.18 / 14.64 / 6.54 mi; distances move with OSM edits (the Feb-2026 graph
   gave 2.11 / 14.57 / 6.54 before Walter's Wiggles was re-mapped in more detail).
+
+## Place search and area labels
+
+Design and index format: `../outhere/PLACES_AND_SEARCH.md`. The pipeline
+publishes one small `booot-place-index` JSON per region (catalog:
+`place_index`, an immutable hashed URL like `routing_graph`). The planner
+fetches it only after the user focuses the search box, matches client-side
+(`place-search.js`) and flies to the result. No index in the catalog means no
+search box and no request, which is production until the pipeline deploys.
+Names are OSM text: set with `textContent` only. The `places` tile layer draws
+quiet area labels (`area-labels-*` in `buildStyle()`, mirrored from
+`tile_generator.py`; production tiles without the layer just show none).
+
+- **Dev (localhost only):** `?places=zion:dev-places/zion.place-index.json`
+  maps a region id to a local index (keep `dev-places/` out of git, same idea
+  as `?graph=`). Build the files with `python3 search_index.py utah --region
+  zion` in `../outhere` and copy them in. To see the labels as well you need
+  PMTiles with the `places` layer; point the stored region's `url`
+  (`outhere_active_region` in localStorage) at a local file, served with Range
+  support, from a localhost origin. A Pages preview uses the production
+  catalog, so it cannot show this feature until the indexes are deployed.
 
 ## Trip on the map and the active day
 

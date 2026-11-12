@@ -23,6 +23,7 @@ import { initTripPanel, TripManager, POINT_TYPE_LABELS, escapeHTML, getDisplayTy
 import { getInitialRegion, regionMaxBounds, initRegionPicker, applyRegion, findRegionById, getCatalogRegions } from "./region-picker.js";
 import { graphInfoForRegion } from "./routing.js";
 import { initTripsHome, loadDemoTripFromURL } from "./trips-home.js";
+import { initPlaceSearch } from "./place-search-ui.js";
 import { addTripChartLayers, drawingLegLayers, gapPinLayers, vertexPaint, initTripChart, TRIP_POINT_LAYERS, tripChartDebug } from "./map-trip-style.js";
 import { handleMapClickForStop, isStopToolActive, openStopMenu } from "./stops.js";
 import * as lineModel from "./line-model.js";
@@ -186,6 +187,99 @@ export function buildStyle(region) {
           ],
           "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 14, 3],
           "line-dasharray": [2, 1],
+        },
+      },
+      // Area labels (pipeline: places layer, PLACES_AND_SEARCH.md). Mirrors
+      // tile_generator.py; below the POI labels so those win collisions.
+      {
+        id: "area-labels-park",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 1],
+        minzoom: 6,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-transform": "uppercase",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 6, 11, 9, 15, 12, 19],
+          "text-letter-spacing": 0.18,
+          "text-max-width": 9,
+          "symbol-sort-key": 1,
+        },
+        paint: {
+          "text-color": "#6f7f66",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.5,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.9, 14, 0.25],
+        },
+      },
+      {
+        id: "area-labels-district",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 2],
+        minzoom: 8,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-transform": "uppercase",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 8, 10, 11, 13, 13, 16],
+          "text-letter-spacing": 0.16,
+          "text-max-width": 9,
+          "symbol-sort-key": 2,
+        },
+        paint: {
+          "text-color": "#7a8068",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.5,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.9, 14, 0.25],
+        },
+      },
+      {
+        id: "area-labels-area",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 3],
+        minzoom: 7,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-transform": "uppercase",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 7, 9, 10, 11, 13, 13],
+          "text-letter-spacing": 0.14,
+          "text-max-width": 8,
+          "symbol-sort-key": 3,
+        },
+        paint: {
+          "text-color": "#8a7a6a",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.2,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.85, 14, 0.2],
+        },
+      },
+      {
+        id: "area-labels-local",
+        type: "symbol",
+        source,
+        "source-layer": "places",
+        filter: ["==", ["get", "rank"], 4],
+        minzoom: 11,
+        layout: {
+          "text-font": MAP_FONT,
+          "text-field": ["get", "name"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 11, 10, 14, 12],
+          "text-letter-spacing": 0.06,
+          "text-max-width": 7,
+          "symbol-sort-key": 4,
+        },
+        paint: {
+          "text-color": "#9a8a78",
+          "text-halo-color": "#f8f4f0",
+          "text-halo-width": 1.2,
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0.9, 15, 0.5],
         },
       },
       // POIs — colored circles by category
@@ -490,6 +584,7 @@ map.on("load", () => {
   // -------------------------------------------------------------------
   const regionsReady = initRegionPicker();
   initTripsHome();
+  initPlaceSearch();
   loadDemoTripFromURL(regionsReady); // dev only: ?demo=maze
 
   // -------------------------------------------------------------------
