@@ -705,7 +705,7 @@ function showSnapText(text, point) {
   delete el.dataset.hint;
   if (el.textContent !== text) el.textContent = text;
   el.classList.remove("snap-tooltip--unnamed");
-  el.style.transform = `translate(${Math.round(point.x + 14)}px, ${Math.round(point.y + 14)}px)`;
+  placeSnapTooltip(el, point);
   el.classList.add("visible");
 }
 
@@ -848,6 +848,13 @@ export function showGapCard({ gap, reason, length_m, gap_m, ways = [] }) {
   });
 }
 
+/** Beside the cursor, flipped to its left when it would run off the map's right edge. */
+function placeSnapTooltip(el, point) {
+  const room = (el.parentElement?.clientWidth || window.innerWidth) - point.x - 14 - 8;
+  const x = el.offsetWidth > room ? point.x - 14 - el.offsetWidth : point.x + 14;
+  el.style.transform = `translate(${Math.round(Math.max(8, x))}px, ${Math.round(point.y + 14)}px)`;
+}
+
 const UNNAMED_HINT_KEY = "unnamed";
 
 function updateSnapTooltip(snap, point) {
@@ -867,7 +874,7 @@ function updateSnapTooltip(snap, point) {
     if (el.textContent !== text) el.textContent = text;
   }
   el.classList.toggle("snap-tooltip--unnamed", unnamedTrail);
-  el.style.transform = `translate(${Math.round(point.x + 14)}px, ${Math.round(point.y + 14)}px)`;
+  placeSnapTooltip(el, point);
   el.classList.add("visible");
 }
 
