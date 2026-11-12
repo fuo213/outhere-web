@@ -174,17 +174,39 @@ separate Point features:
   (`addCampAtM` in stops.js, same camp as the map menu's). The profile is the
   days laid end to end, so the day under the pointer says which pass of an
   out-and-back is meant (`displayTrip` days carry `_fromM`; rest days place
-  nothing). A camp's invisible `.camp-grab` circle drags it along the line
-  (`moveStopAlongLine` -> `moveStopAlong`, one undo step, days renumber); a
-  tap on it opens its menu. Tapping the drawing still scrolls to that day.
-- **Same campsite** (`same_place_as`, format 1.2): adding a camp within
-  `SAME_SITE_M` (100 m) of an earlier camp on another pass (more than
-  `SEPARATE_VISIT_M` further along) makes its menu ask "Same as Camp N?"
-  (`sameSiteCandidate`, `askSame` in stops.js). Yes = `linkSameSite`: it takes
+  nothing). A camp's invisible `.camp-grab` circle drags it along the line:
+  live, the tent rides the line under the pointer while the profile redraws
+  from a throwaway copy each animation frame (`previewCampAt` in
+  trip-panel.js: days re-split, the map's tent moves; ~5 ms a frame on a
+  29 mi line) and only `.itin-profile-art`'s SVG is swapped so pointer
+  capture holds. Release commits (`moveStopAlongLine` -> `moveStopAlong`,
+  one undo step, toast); Esc or pointercancel puts it back. Pointer x is
+  read against the trip's own model, never the preview. Pressing the drawing
+  calls `preventDefault` (no text selection, no focus move) and the drawing
+  is `user-select: none` / `touch-action: none`. A tap on a camp opens its
+  menu. Tapping the drawing still scrolls to that day. The readout is a
+  small box at the spot (`.itin-scrub-box`, above the line when it fits,
+  clamped inside the drawing in JS).
+- **Echoes** (`campEchoes` in line-model.js): where the line passes a
+  camp's spot again with no camp there (an out-and-back's other pass), the
+  profile draws a faint tent (`.camp-echo`) and the cursor, pin and drag
+  snap to it within 10 px ("Camp 1's spot"). That is what tells you mile 3
+  and mile 11 are the same place.
+- **Same campsite** (`same_place_as`, format 1.2): adding a camp (map or
+  profile) or dragging one on the profile to within `SAME_SITE_M` (200 m;
+  100 m was too tight to hit by hand) of a camp on another pass (more than
+  `SEPARATE_VISIT_M` along) makes its menu ask "Same as Camp N?"
+  (`sameSiteCandidate`, `askSame` in stops.js). An earlier camp wins; a
+  later unlinked one counts too (way back placed first: on Yes the new,
+  earlier camp becomes the site and takes the later one's name). Dropping a
+  camp with the stop tool on an existing camp's spot picks the line's other
+  pass there, not the pass right beside that camp (`choosePass(..., camps)`).
+  Clicking right on a camp opens it; its menu then offers "Camp here again on
+  the way back" (`campAgainAt`, linked straight away) when it has an echo. Yes = `linkSameSite`: it takes
   the earlier camp's name and notes and from then on editing either shares
   them (`shareCampFields`); the plan says "Same site as Camp 1" / "Used again
   at Camp 2". `syncLineTrip` drops a link that stopped being true (camp
-  deleted, moved more than 150 m away, order swapped). "Separate" in the menu
+  deleted, moved more than 300 m away, order swapped). "Separate" in the menu
   unlinks.
 - **Transport legs** (format **1.3**, line-edit.js `setSectionTransport`,
   route-edit.js `setTransport`). Select a section (click the line), then the

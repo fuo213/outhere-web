@@ -14,7 +14,7 @@
  */
 
 import { map } from "./app.js"; // circular; runtime only
-import { TripManager, escapeHTML, escapeAttr } from "./trip-panel.js"; // circular; runtime only
+import { TripManager, escapeHTML, escapeAttr, frameFeature } from "./trip-panel.js"; // circular; runtime only
 import { startRouteDrawing, cancelDrawing, isDrawingRoute, isDeleteMode, showPlanningHint, hidePlanningHint } from "./planning.js"; // circular; runtime only
 import { snapshot, showToast, closeLineMenu } from "./route-edit.js"; // circular; runtime only
 import { metersPerPixel } from "./routing.js";
@@ -207,7 +207,7 @@ export function moveStopAlongLine(id, m) {
   const c = plan.camps.find((x) => x.id === id);
   showToast(`Moved ${c ? `Camp ${c.n}` : `the ${KIND_LABEL[k].toLowerCase()}`} to mile ${(m / MI).toFixed(1)}`, { undoable: true });
   // Dropped on another camp's site (another pass of the same ground): ask.
-  if (k === "camp" && sameSiteCandidate(plan, id)) { askSame.add(id); openStopMenu(id); }
+  if (k === "camp" && sameSiteCandidate(plan, id)) { askSame.add(id); frameFeature(id); openStopMenu(id); }
 }
 
 function moveStopTo(id, pt, zoom) {

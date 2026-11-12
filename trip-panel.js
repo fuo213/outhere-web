@@ -1863,7 +1863,9 @@ export function initTripPanel() {
     tail: document.getElementById("itineraryTail"),
     onDrawRoute: () => startRouteDrawing(),
     onRetryElevation: (routeId) => retryElevation(routeId),
-    onAddCamp: (m) => addCampAtM(m),
+    // From the profile the camp may be off-screen or under the panel: bring it
+    // into view so its menu (and "Same as Camp 1?") is seen.
+    onAddCamp: (m) => { const id = addCampAtM(m); if (id) frameFeature(id); },
     onMoveCamp: (id, m) => { campPreview = null; moveStopAlongLine(id, m); },
     onPreviewCamp: (id, m) => previewCampAt(id, m),
     onCancelPreview: () => cancelCampPreview(),
