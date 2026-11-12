@@ -144,10 +144,16 @@ as its hero. Without the parameter nothing changes.
   `design/fixtures/spanish-bottom-2026.line.trip.geojson` (region
   `maze-district`), via `loadDemoTripFromURL`, panel open, framed. That
   fixture is generated from the recorded 1.1 demo by
-  `node design/tools/make-line-demo.mjs` (one imported leg per day recording,
-  the short unrecorded gaps as the straight start of the next leg, camps
-  attached at leg ends, the Maze Overlook loop as its own day ending back at
-  camp 2); rerun it if the 1.1 demo changes. `?demo=spanish-bottom-line`
+  `node design/tools/make-line-demo.mjs` (needs the deployed Maze graph and
+  3DEP sidecar downloaded locally; the header says how). Each recording is
+  map-matched to the graph: trail stretches become real routed legs
+  (`TrailGraph.route`, elevation from the 3DEP sidecar via
+  `profileForRoute`), stretches with no trail nearby stay recorded
+  (`imported`) with elevation sampled from USGS EPQS (the same 3DEP data; the
+  app's own fill for off-trail legs is Open-Meteo, whose seams inflate climb).
+  Camps attach at leg ends, the Maze Overlook loop is its own day ending at
+  camp 2's site (`same_place_as`). Rerun it if the 1.1 demo or the Maze graph
+  changes. `?demo=spanish-bottom-line`
   opens the same copy in the full app.
 - **Visitors can draw.** The draw and stop tools sit top left (zoom moves to
   the bottom left; no zoom buttons on phones): extend or redraw the line, add
