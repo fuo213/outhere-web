@@ -5,6 +5,8 @@
  * Update TILE_URL after deploying tiles to R2.
  */
 
+import { resolveOsmApiBase } from "./osm-report.js";
+
 // ---------------------------------------------------------------------------
 // Tile source
 // ---------------------------------------------------------------------------
@@ -15,6 +17,17 @@ export const TILE_URL = "https://tiles.booot.org/utah/utah_hiking.pmtiles";
 // Machine-readable region catalog published by the tile pipeline. Fetched at
 // startup by region-picker.js (cached in localStorage, ~24h TTL).
 export const CATALOG_URL = "https://tiles.booot.org/catalog.json";
+
+// ---------------------------------------------------------------------------
+// OpenStreetMap Notes ("Fix the map")
+// ---------------------------------------------------------------------------
+// Production API by default. `?osmapi=sandbox` switches to the OSM development
+// sandbox, and is honoured ONLY on localhost or a Pages preview host (never on
+// outhere-web.pages.dev), so tests can't post real notes. See osm-report.js.
+export const OSM_API_BASE = resolveOsmApiBase(
+  typeof location !== "undefined" ? location.hostname : "",
+  typeof location !== "undefined" ? location.search : ""
+);
 
 // ---------------------------------------------------------------------------
 // Map defaults

@@ -261,5 +261,7 @@ change tokens or principles. Propose, then log.
   "Loading states" · Vincent's idea: makes waiting feel like spreading a map
   on a table. Build it with the map-loading work and validate on a real load.
 
+- 2026-11-11 · **Fix the map (report to OpenStreetMap)**: the gap card now has one rust "Report this gap" button plus a quiet text link "Open in the OSM editor"; once reported it reads "Reported on <date> · View note". The report dialog is the onboarding paper modal with an editable, pre-filled note, a plain "public on OpenStreetMap" line, and "Send note to OpenStreetMap" as its only rust button. If open notes already exist within 150 m they replace the form ("Mine is a different problem" reveals it). General entry: a flag button in the map's left controls (click, then click the spot; rust-active while armed) and right-click on the map · planner, any gap pin (`design/tools/scenes-report.json`) · reporting should feel like leaving a good note for a neighbour, not filing a ticket: specific text prefilled, honest about being public, no duplicate pile-ups.
+
 Format:
 `- YYYY-MM-DD · <what> · <where to see it> · <why it might be better>`

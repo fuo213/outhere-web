@@ -48,6 +48,8 @@ not, so tiles fail to load there). No install or build; edit and reload.
 | `map-trip-style.js` | How the trip is drawn on the map (itinerary direction B, "Trip chart"): inked route on a paper casing, colored-pencil `line-pattern` band per day, glyphs (tent, drop, day-hike arrow, start/end rings, gap pin), circled day numerals, italic labels, all rasterized at runtime with `map.addImage`. Drawing/preview leg styles. Active-day highlight (feature-state) + the `booot:active-day` event |
 | `gpx-core.js` / `gpx-import.js` | GPX import. Core is pure (parse via DOMParser, 1.5 m simplification, recorded-elevation profile and gain/loss with a 3 m hysteresis, route feature with `segments: [{mode:"imported"}]` + `source`). Import wires the trip panel: Import GPX (multi-select), drop files on the panel, "Assign by date". Client-side only; recorded elevation beats Open-Meteo for imported routes |
 | `gpx-match.js` / `route-names.js` | Pure. `matchTrack(graph, coords)` map-matches a recording to the routing graph (resample ~17 m, nearest way within 25 m, sticky to the previous way, junction/GPS-gap noise merged) and returns name runs + OSM way ids + a loop flag. `route-names.js` holds the auto-name rules (`deriveNameFromRuns`, `deriveImportedName` with loop names, `isGenericRouteName`), shared by planning.js and GPX import. Test: `FLATBUSH_DIR=<dir with node_modules/flatbush> [ZION_GRAPH=<graph json>] node design/tools/test-gpx-match.mjs` |
+| `osm-report.js` | Pure "Fix the map" logic: note text builders (gap + general problem, always ending with a Booot signature line), duplicate check (`nearbyNotesUrl` / `parseNotes`), `createNote` (anonymous POST to `{api}/api/0.6/notes.json`, typed `NoteError` kinds, optional `authHeaders` slot for a later OAuth path), `ReportedSpots` localStorage store (`outhere_osm_reports`, 75 m, per API base), iD link (`osmEditUrl`: `/edit?editor=id#id=w<way>&map=19/lat/lon`), `resolveOsmApiBase`. Test: `node design/tools/test-osm-report.mjs` |
+| `report-ui.js` | The report dialog (checks existing notes, editable text, send, sent/error/reported states), the pick-a-spot flag control (`#reportBtn`) and right-click entry. All OSM-provided text via `textContent`. Gap card wiring is in `planning.js` `showGapCard` |
 | `routing.js` | Trail routing: loads the region's `booot-trail-graph`, flatbush snapping (meters), A* |
 | `elevation-dem.js` | Pure: elevation for routed legs from our own USGS 3DEP data. Loads the graph's `booot-trail-elev` sidecar (`routing_graph.elevation` in the catalog) and `profileForRoute(route, graph, { fill })` returns `{ profile_ft, gain_ft, loss_ft, spacing_m, source }` or null |
 | `place-search.js` | Pure: place search over the region's `booot-place-index` v1 (`decodeIndex`, `search` with exact > prefix > word-start > substring ranking, case/diacritic-insensitive, `highlightRanges`, `describeEntry`, `indexesForRegion`). Test: `node design/tools/test-place-search.mjs` (`PLACE_INDEX=<file>` adds a real-data test) |
@@ -274,6 +276,19 @@ with a `routing_graph`. Exports write `schema_version` "1.1" with per-leg `segme
   and preview timing. On the 2026-11-07 OSM graph (zion d9883fc4) expect
   2.18 / 14.64 / 6.54 mi; distances move with OSM edits (the Feb-2026 graph
   gave 2.11 / 14.57 / 6.54 before Walter's Wiggles was re-mapped in more detail).
+
+## Fix the map (OSM Notes)
+
+Gap card and a general "Report a map problem" (flag control, right-click) post an
+anonymous OSM Note after the user reviews the text; nothing is sent without
+the Send click. **Never test against production OSM.** `OSM_API_BASE`
+(`config.js`) is `https://api.openstreetmap.org` unless `?osmapi=sandbox` is on
+localhost or a `*.outhere-web.pages.dev` preview, which switches to
+`https://master.apis.dev.openstreetmap.org` (the dialog then shows a "Test mode"
+line; reported spots are stored per API base). `routing.js` `gapFor()` now also
+returns `ways` (OSM id, name, highway) and `dist_m` for the note text. Scenes:
+`design/tools/scenes-report.json` (use `--base <preview>`; they post to the
+sandbox). Sign-in (OAuth) is not built: pass `authHeaders` to `createNote`.
 
 ## Place search and area labels
 

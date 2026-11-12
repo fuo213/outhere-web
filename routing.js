@@ -443,15 +443,31 @@ export class TrailGraph {
     let best = null;
     for (const g of this.gaps) {
       const d = distToLeg(g[0], g[1]);
-      if (d <= 25 && (!best || d < best.d)) best = { d, lon: g[0], lat: g[1] };
+      if (d <= 25 && (!best || d < best.d)) best = { d, lon: g[0], lat: g[1], dist_m: g[4], ids: [g[5], g[6]] };
     }
-    if (best) return { lon: best.lon, lat: best.lat, source: "gaps" };
+    // `ways`: the (up to) two OSM ways on either side, for "report this gap".
+    if (best) {
+      return { lon: best.lon, lat: best.lat, source: "gaps", dist_m: best.dist_m, ways: best.ids.map((id) => this.wayByOsmId(id)).filter(Boolean) };
+    }
 
+    const snapWay = (s) => (s?.osmId != null ? { osmId: s.osmId, name: s.name || "", highway: s.highway || "" } : null);
+    const ways = [snapWay(aSnap), snapWay(bSnap)].filter(Boolean);
     if (aSnap && bSnap && aSnap.comp !== bSnap.comp) {
       const approach = this._closestApproach(aLngLat, bLngLat, aSnap.comp, bSnap.comp);
-      if (approach) return { ...approach, source: "approach" };
+      if (approach) return { lon: approach.lon, lat: approach.lat, source: "approach", dist_m: approach.d, ways };
     }
-    return { lon: (ax + bx) / 2, lat: midLat, source: "midpoint" };
+    return { lon: (ax + bx) / 2, lat: midLat, source: "midpoint", ways };
+  }
+
+  /** {osmId, name, highway} for an OSM way id in this graph, or null. */
+  wayByOsmId(osmId) {
+    if (osmId == null) return null;
+    if (!this._osmIndex) {
+      this._osmIndex = new Map();
+      this.wayOsm.forEach((id, i) => { if (!this._osmIndex.has(id)) this._osmIndex.set(id, i); });
+    }
+    const i = this._osmIndex.get(osmId);
+    return i === undefined ? { osmId, name: "", highway: "" } : { osmId, name: this.wayName[i], highway: this.wayHighway[i] };
   }
 
   _closestApproach([ax, ay], [bx, by], compA, compB) {

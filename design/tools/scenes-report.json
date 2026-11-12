@@ -1,0 +1,354 @@
+[
+ {
+  "name": "report-gap-card",
+  "path": "/?osmapi=sandbox",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Springdale gap"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.9849,37.2012], zoom: 14 })"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickLngLat": [
+     -112.983857,
+     37.201728
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "mapMoveLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "mapDblClickLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "shot": "01-gap-card"
+   },
+   {
+    "click": "[data-gap-report]"
+   },
+   {
+    "wait": 2500
+   },
+   {
+    "shot": "02-gap-dialog"
+   },
+   {
+    "eval": "(() => { if (!document.getElementById('reportSend')) document.querySelector('.report-actions .btn--quiet')?.click(); })()"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "eval": "document.getElementById('reportText')?.value"
+   },
+   {
+    "click": "#reportSend"
+   },
+   {
+    "wait": 4000
+   },
+   {
+    "shot": "03-gap-sent"
+   },
+   {
+    "eval": "document.querySelector('.report-body')?.innerText"
+   },
+   {
+    "click": ".report-close"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "shot": "04-gap-card-reported"
+   }
+  ]
+ },
+ {
+  "name": "report-gap-offline",
+  "path": "/?osmapi=sandbox",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "click": "#tripsHomeNewBtn"
+   },
+   {
+    "wait": 500
+   },
+   {
+    "type": [
+     "#onboardingName",
+     "Springdale gap"
+    ]
+   },
+   {
+    "click": "#onboardingSubmit"
+   },
+   {
+    "wait": 1200
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); return o.map.getStyle().name; })()"
+   },
+   {
+    "click": "#addRouteBtn"
+   },
+   {
+    "eval": "window.__outhere.routing.ready()"
+   },
+   {
+    "eval": "void window.__outhere.map.jumpTo({ center: [-112.9849,37.2012], zoom: 14 })"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickLngLat": [
+     -112.983857,
+     37.201728
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "mapMoveLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "wait": 300
+   },
+   {
+    "mapClickLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "mapDblClickLngLat": [
+     -112.985952,
+     37.200626
+    ]
+   },
+   {
+    "eval": "window.__outhere.routing.idle().then(() => undefined)"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "mapClickExpr": "window.__outhere.map.querySourceFeatures('trip').find((f) => f.properties.type === 'route_gap').geometry.coordinates"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "click": "[data-gap-report]"
+   },
+   {
+    "wait": 2500
+   },
+   {
+    "eval": "document.querySelector('.report-actions .btn--quiet')?.textContent"
+   },
+   {
+    "eval": "document.querySelector('#reportSend') || document.querySelector('.report-actions .btn--quiet').click(); void 0"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "eval": "window.fetch = () => Promise.reject(new TypeError('Failed to fetch')); void 0"
+   },
+   {
+    "click": "#reportSend"
+   },
+   {
+    "wait": 800
+   },
+   {
+    "shot": "05-offline"
+   }
+  ]
+ },
+ {
+  "name": "report-pick",
+  "path": "/?osmapi=sandbox",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); o.map.jumpTo({ center: [-112.9515271,37.2599664], zoom: 15 }); await new Promise((r) => o.map.once('idle', r)); return 1; })()"
+   },
+   {
+    "click": "#reportBtn"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "shot": "06-pick"
+   },
+   {
+    "mapClick": [
+     0,
+     0
+    ]
+   },
+   {
+    "wait": 2500
+   },
+   {
+    "shot": "07-problem-dialog"
+   }
+  ]
+ },
+ {
+  "name": "report-existing-notes",
+  "path": "/",
+  "viewport": [
+   1440,
+   900
+  ],
+  "steps": [
+   {
+    "wait": 5000
+   },
+   {
+    "eval": "(async () => { const o = window.__outhere; o.applyRegion(o.findRegionById('zion'), { fly: false }); await new Promise((r) => o.map.once('idle', r)); o.map.jumpTo({ center: [-112.9875226,37.1999976], zoom: 16 }); await new Promise((r) => o.map.once('idle', r)); return 1; })()"
+   },
+   {
+    "click": "#reportBtn"
+   },
+   {
+    "mapClickLngLat": [
+     -112.9875226,
+     37.1999976
+    ]
+   },
+   {
+    "wait": 2500
+   },
+   {
+    "shot": "08-existing-notes"
+   },
+   {
+    "click": ".report-actions .btn--quiet"
+   },
+   {
+    "wait": 300
+   },
+   {
+    "shot": "09-different-problem"
+   }
+  ]
+ }
+]
