@@ -35,6 +35,9 @@ export function snapshot(label) {
   if (undoStack.length > 40) undoStack.shift();
 }
 
+/** Forget every snapshot (the embed's "Reset demo" puts the original trip back). */
+export function clearUndo() { undoStack.length = 0; undoTripId = null; }
+
 export function canUndo() {
   return undoStack.length > 0 && undoTripId === TripManager.currentTrip?.properties.trip_id;
 }

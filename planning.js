@@ -39,6 +39,7 @@ import { exitStopTool, cancelStopMove } from "./stops.js"; // circular; runtime 
 import { startExtend, snapshot } from "./route-edit.js"; // circular; runtime only
 import { isLineTrip, mainRoute, passesNear, sliceM, lineIndex, pointAtM } from "./line-model.js";
 import { returnLink } from "./line-edit.js";
+import { EMBED } from "./config.js";
 
 // Route drawing state (exported as live read-only bindings for app.js / trip-panel.js)
 export let isDrawingRoute = false;
@@ -232,7 +233,11 @@ export async function routeBetween(a, b, { aSnapped = true, bSnapped = true } = 
 // ---------------------------------------------------------------------------
 
 export function startRouteDrawing(opts = {}) {
-  if (isDrawingRoute) return;       // already drawing — ignore repeat clicks
+  if (isDrawingRoute) {
+    // Embed: the draw button again finishes (a double-tap is unreliable on touch).
+    if (EMBED && !opts.mode) enqueue(() => finishRouteDrawing());
+    return;                         // already drawing: ignore repeat clicks
+  }
   if (isDeleteMode) exitDeleteMode(); // drawing and delete mode are exclusive
   exitStopTool();
   // The draw tool on a 1.2 trip that already has a line draws on from its end.
@@ -890,8 +895,10 @@ function updateDrawingHint() {
     return hideDrawingHint();
   }
   if (ctx?.graph && map.getZoom() < SNAP_MIN_ZOOM) return showDrawingHint("Zoom in to snap to trails");
-  if (drawOpts.mode === "redraw" && drawOpts.ix && drawOpts.cutM < drawOpts.ix.total - 1) return showDrawingHint("Click the faint line to rejoin it, or double-click to end the trip there.");
-  if (drawOpts.mode === "redraw") return showDrawingHint("Drawing on from the end of your line. Double-click to finish.");
+  // Embed: the draw button finishes too (startRouteDrawing), which is the way on touch.
+  const finish = EMBED ? "double-click or press the draw button" : "double-click";
+  if (drawOpts.mode === "redraw" && drawOpts.ix && drawOpts.cutM < drawOpts.ix.total - 1) return showDrawingHint(`Click the faint line to rejoin it, or ${finish} to end the trip there.`);
+  if (drawOpts.mode === "redraw") return showDrawingHint(`Drawing on from the end of your line. To finish, ${finish}.`);
   if (drawOpts.mode === "spur") return showDrawingHint("Draw the day hike out. Double-click where you turn around.");
   hideDrawingHint();
 }

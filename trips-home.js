@@ -27,6 +27,8 @@ import {
   getDisplayType,
 } from "./trip-panel.js"; // circular; only used at runtime
 import { getActiveRegionId, findRegionById, getRegionName, applyRegion } from "./region-picker.js";
+import { clearUndo, showToast, closeLineMenu, clearSelection } from "./route-edit.js";
+import { closeStopMenu } from "./stops.js";
 
 const INDEX_KEY = "outhere_trips_index";
 const TRIP_KEY_PREFIX = "outhere_trip_";
@@ -389,8 +391,8 @@ export function initTripsHome() {
   });
 
   // See a demo trip (also offered in the onboarding modal)
-  document.getElementById("tripsHomeDemoBtn")?.addEventListener("click", openDemoTrip);
-  document.getElementById("onboardingDemoBtn")?.addEventListener("click", openDemoTrip);
+  document.getElementById("tripsHomeDemoBtn")?.addEventListener("click", () => openDemoTrip());
+  document.getElementById("onboardingDemoBtn")?.addEventListener("click", () => openDemoTrip());
 
   // New trip → existing onboarding modal (TripManager.create hides home)
   document.getElementById("tripsHomeNewBtn")?.addEventListener("click", () => {
@@ -432,7 +434,10 @@ export function initTripsHome() {
 // Public demo: Vincent's real May 2026 Maze trip (built with the GPX importer).
 // Opens as a throwaway copy (TripManager.openDemo), in production too.
 const DEMO_URL = "design/fixtures/spanish-bottom-2026.trip.geojson";
-const PUBLIC_DEMOS = { "spanish-bottom": DEMO_URL };
+// The same trip as one line with stops (format 1.2), so the line tools work on
+// it: the embed opens this one (design/tools/make-line-demo.mjs builds it).
+const LINE_DEMO_URL = "design/fixtures/spanish-bottom-2026.line.trip.geojson";
+const PUBLIC_DEMOS = { "spanish-bottom": DEMO_URL, "spanish-bottom-line": LINE_DEMO_URL };
 // Dev only: its notes are invented.
 const DEV_DEMOS = { maze: "design/fixtures/demo-maze-chocolate-drops.trip.geojson" };
 
@@ -463,22 +468,46 @@ function signalEmbedReady() {
   setTimeout(send, 6000);
 }
 
-/** Open the bundled demo trip (button on trips home / onboarding, or ?demo=spanish-bottom). */
-export async function openDemoTrip() {
+/** Open a bundled demo trip (button on trips home / onboarding, or ?demo=<key>). */
+export async function openDemoTrip(url = DEMO_URL) {
   try {
-    const res = await fetch(DEMO_URL);
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    TripManager.openDemo(await res.json());
+    const geojson = await res.json();
+    TripManager.openDemo(structuredClone(geojson));
     syncRegionForTrip(TripManager.currentTrip);
     hideTripsHome();
     document.getElementById("onboardingOverlay")?.setAttribute("hidden", "");
     openSidebar();
     fitTripToView();
-    if (EMBED) signalEmbedReady();
+    if (EMBED) { signalEmbedReady(); initEmbedReset(geojson); }
   } catch (err) {
     console.warn("[demo] could not open the demo trip:", err.message);
     demoNote("Couldn't open the demo trip. Check your connection and try again.");
   }
+}
+
+/**
+ * Embed: visitors can draw on the demo (in memory only). Once they've changed
+ * it, a quiet "Reset demo" next to "Open the planner" puts the original back.
+ * TripManager.save() announces each edit with `booot:demo-edited`.
+ */
+let embedResetReady = false;
+function initEmbedReset(original) {
+  const btn = document.getElementById("embedReset");
+  if (!btn || embedResetReady) return;
+  embedResetReady = true;
+  window.addEventListener("booot:demo-edited", () => { btn.hidden = false; });
+  btn.addEventListener("click", () => {
+    closeLineMenu();
+    closeStopMenu();
+    clearSelection();
+    TripManager.openDemo(structuredClone(original));
+    clearUndo();
+    fitTripToView();
+    btn.hidden = true;
+    showToast("Back to the demo trip as it was");
+  });
 }
 
 /** @param {Promise} regionsReady resolves once the region catalog is loaded */
@@ -488,7 +517,7 @@ export async function loadDemoTripFromURL(regionsReady) {
   if (!key) return;
   if (PUBLIC_DEMOS[key]) {
     await regionsReady;
-    return openDemoTrip();
+    return openDemoTrip(EMBED ? LINE_DEMO_URL : PUBLIC_DEMOS[key]);
   }
   const host = location.hostname;
   const devHost = ["localhost", "127.0.0.1", "[::1]"].includes(host) || host.endsWith(".outhere-web.pages.dev");

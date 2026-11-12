@@ -3,9 +3,12 @@
    Loaded last; every rule is scoped to html.embed (set by an inline script in
    index.html's head), so the normal app is untouched. Tokens only.
 
-   The visitor sees a finished multi-day trip with the trip panel open and can
-   pan, zoom, click days and stops. Everything that edits, saves, imports,
-   exports or opens a file picker is hidden. Drawing is off.
+   The visitor sees a finished multi-day trip (the line + stops copy of the
+   Spanish Bottom demo) with the trip panel open, and can draw on it: extend
+   or redraw the line, add stops, delete sections, all in memory (the demo is
+   never saved; a reload or "Reset demo" puts it back). Trips home, import,
+   export, file pickers, the region switcher, layers, place search and
+   geolocation are hidden.
    ========================================================================== */
 
 html.embed {
@@ -19,9 +22,8 @@ html.embed #planBtn,
 html.embed #layersBtn,
 html.embed #regionSwitcher,
 html.embed #layerPanel,
-html.embed #planningToolbar,
-html.embed #drawingHint,
-html.embed #snapTooltip,
+html.embed #placeSearch,
+html.embed #deleteWaypointBtn,
 html.embed #routeInstructions,
 html.embed #tripsHomeOverlay,
 html.embed #onboardingOverlay,
@@ -56,13 +58,30 @@ html.embed .modal-header { padding: var(--space-5) var(--space-5) 0; }
 /* Attribution (OSM license) must stay visible: sit it left of the panel. */
 html.embed .maplibregl-ctrl-bottom-right { right: var(--embed-panel-w); }
 
-/* ---- The one way out ------------------------------------------------------ */
-.embed-open { display: none; }
-html.embed .embed-open {
+/* ---- Drawing: the two line tools beside the zoom buttons ------------------ */
+/* trip-panel.js aligns the toolbar's top with the zoom control. The hint and
+   the edit toast centre on the visible map, not on the app's 520px panel. */
+html.embed .planning-toolbar { left: calc(var(--space-3) + 29px + var(--space-3)); } /* 29px: MapLibre's control width */
+html.embed body.panel-open .drawing-hint,
+html.embed body.panel-open .edit-toast { left: calc((100% - var(--embed-panel-w)) / 2); }
+html.embed .drawing-hint { bottom: var(--space-12); }
+html.embed body.is-drawing-route .edit-toast { bottom: calc(var(--space-12) + 48px); }
+
+/* ---- The way out, and back to the start ------------------------------------ */
+.embed-actions { display: none; }
+html.embed .embed-actions {
   position: absolute;
   top: var(--space-3);
   right: calc(var(--embed-panel-w) + var(--space-3));
   z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* Only after the visitor has changed the trip; quiet, never the loudest thing. */
+html.embed .embed-reset[hidden] { display: none; }
+html.embed .embed-reset { height: 32px; box-shadow: var(--shadow-2); }
+html.embed .embed-open {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -106,7 +125,16 @@ html.embed .embed-open .visually-hidden {
   }
   html.embed .modal-header { padding: var(--space-3) var(--space-4) 0; }
   html.embed .trip-title-input { font-size: var(--text-xl); } /* the 28px title eats the sheet */
-  html.embed .embed-open { right: var(--space-3); }
+  html.embed .embed-actions { right: var(--space-3); }
+  /* The map is short here: the stop kinds run across instead of down. */
+  html.embed .planning-toolbar { flex-direction: row; flex-wrap: wrap; align-items: flex-start; right: var(--space-3); }
+  html.embed .stop-kind-selector { flex-direction: row; flex-wrap: wrap; flex-basis: 100%; }
+  html.embed body.panel-open .drawing-hint,
+  html.embed body.panel-open .edit-toast { left: 50%; right: auto; top: auto; width: max-content; max-width: calc(100% - 2 * var(--space-4)); transform: translateX(-50%); }
+  html.embed .drawing-hint,
+  html.embed body.panel-open .drawing-hint { bottom: calc(var(--embed-sheet-h) + var(--space-3)); text-align: center; border-radius: var(--radius-pill); }
+  html.embed body.panel-open .edit-toast { bottom: calc(var(--embed-sheet-h) + var(--space-3)); }
+  html.embed body.is-drawing-route .edit-toast { bottom: calc(var(--embed-sheet-h) + var(--space-3) + 48px); }
   html.embed .maplibregl-ctrl-bottom-right { right: 0; }
   html.embed .maplibregl-ctrl-scale { display: none; } /* it collides with the attribution at this width */
 }

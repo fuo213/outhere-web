@@ -244,6 +244,7 @@ export const TripManager = {
   },
 
   save() {
+    if (this.demo && this.currentTrip) window.dispatchEvent(new Event("booot:demo-edited")); // embed: shows "Reset demo"
     if (!this.currentTrip || this.demo) return; // the demo is a copy: never written to storage
     const props = this.currentTrip.properties;
     if (!props.trip_id) props.trip_id = crypto.randomUUID();
@@ -1645,7 +1646,10 @@ function panelMapPadding() {
 
 /** Re-align the floating planning toolbar with the Plan map control. */
 export function alignPlanningToolbar() {
-  const planBtnEl = document.getElementById("planBtn");
+  // Embed: the Plan control is hidden; sit level with the zoom buttons instead.
+  const planBtnEl = EMBED
+    ? document.querySelector(".maplibregl-ctrl-top-left .maplibregl-ctrl-group")
+    : document.getElementById("planBtn");
   const planningToolbarEl = document.getElementById("planningToolbar");
   if (planBtnEl && planningToolbarEl) {
     planningToolbarEl.style.top = planBtnEl.getBoundingClientRect().top + "px";
