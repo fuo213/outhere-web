@@ -211,6 +211,48 @@ export function profileX(m, W) {
 }
 
 /**
+ * The drawing's frame: sizes, mile → x and elevation → y. Shared by
+ * drawProfile and the pointer code (a cursor or a dragged camp rides the line
+ * at yAt(mi)).
+ */
+export function profileFrame(m, W, { height = 220, compact = false } = {}) {
+  const narrow = W < 420;
+  const H = compact ? 46 : height;
+  const { L } = profileX(m, W);
+  const Rr = narrow ? 8 : 12;
+  const top = compact ? 12 : narrow ? 60 : 66;
+  const base = compact ? H - 6 : H - 30;
+  const plotW = W - L - Rr;
+  const X = (mi) => L + (mi / (m.total || 1)) * plotW;
+  // Vertical domain with a little headroom; flat trips don't get exaggerated wildly.
+  let loD = 0, hiD = 1;
+  if (m.hasElevation) {
+    const range = Math.max(m.hi.ft - m.lo.ft, 160);
+    const mid = (m.hi.ft + m.lo.ft) / 2;
+    loD = Math.min(m.lo.ft, mid - range / 2) - range * (compact ? 0.08 : 0.28);
+    hiD = Math.max(m.hi.ft, mid + range / 2) + range * 0.03;
+  }
+  const Y = (ft) => top + ((hiD - ft) / (hiD - loD)) * (base - top);
+  const flatY = m.hasElevation ? Y((m.hi.ft + m.lo.ft) / 2) : top + (base - top) * 0.55;
+  const yAt = (mi) => { const ft = m.elevAt(mi); return ft == null ? flatY : Y(ft); };
+  return { H, L, Rr, top, base, plotW, X, Y, flatY, yAt };
+}
+
+/**
+ * The profile mile of metre `m` of the line (the inverse of lineSpotAtMile):
+ * the walking day whose stretch holds it. Null when no day does.
+ */
+export function profileMileAtM(model, m) {
+  if (!model || model.mode !== "days") return null;
+  for (const d of model.days) {
+    if (d.empty || d.fromM == null || !(d.endMi > d.startMi)) continue;
+    const len = (d.endMi - d.startMi) * MI;
+    if (m >= d.fromM - 1 && m <= d.fromM + len + 1) return d.startMi + Math.max(0, Math.min(len, m - d.fromM)) / MI;
+  }
+  return null;
+}
+
+/**
  * The spot on the line under a profile mile. The profile is the days laid end
  * to end (rest days take a little room), so the day under the mile says which
  * pass of an out-and-back is meant. Null when the model has no line metres
@@ -262,25 +304,7 @@ function tickStep(total, plotW, minPx) {
  */
 export function drawProfile(m, W, { height = 220, compact = false, active = null, failedIds = new Set(), reveal = new Set() } = {}) {
   const narrow = W < 420;
-  const H = compact ? 46 : height;
-  const { L, plotW: _pw } = profileX(m, W);
-  const Rr = narrow ? 8 : 12;
-  const top = compact ? 12 : narrow ? 60 : 66;
-  const base = compact ? H - 6 : H - 30;
-  const plotW = W - L - Rr;
-  const X = (mi) => L + (mi / (m.total || 1)) * plotW;
-
-  // Vertical domain with a little headroom; flat trips don't get exaggerated wildly.
-  let loD = 0, hiD = 1;
-  if (m.hasElevation) {
-    const range = Math.max(m.hi.ft - m.lo.ft, 160);
-    const mid = (m.hi.ft + m.lo.ft) / 2;
-    loD = Math.min(m.lo.ft, mid - range / 2) - range * (compact ? 0.08 : 0.28);
-    hiD = Math.max(m.hi.ft, mid + range / 2) + range * 0.03;
-  }
-  const Y = (ft) => top + ((hiD - ft) / (hiD - loD)) * (base - top);
-  const flatY = m.hasElevation ? Y((m.hi.ft + m.lo.ft) / 2) : top + (base - top) * 0.55;
-  const yAt = (mi) => { const ft = m.elevAt(mi); return ft == null ? flatY : Y(ft); };
+  const { H, L, Rr, top, base, plotW, X, Y, flatY, yAt } = profileFrame(m, W, { height, compact });
 
   // Ink runs: consecutive pieces with elevation; skeleton pieces separately.
   const runs = [], skeletons = [];
@@ -538,6 +562,15 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
     else noteAbove(x, flatY - 8, t);
   }
 
+  // Echoes: where the line passes a camp's spot again (an out-and-back's way
+  // back). A faint tent, so "mile 3 and mile 11 are the same place" shows.
+  let echoes = "";
+  for (const e of m.echoes || []) {
+    if (e.mi == null) continue;
+    const x = X(e.mi), y = yAt(e.mi);
+    echoes += `<g class="camp-echo" data-mi="${e.mi.toFixed(4)}" data-camp="${esc(e.campId)}"><title>${esc(e.name || `Camp ${e.n}`)}'s spot again</title>${glyph("camp", x, y + 0.5, { s: narrow ? 0.85 : 1, seed: 33, grain: "ip" })}</g>`;
+  }
+
   // Camps on a 1.2 line can be grabbed and dragged along the profile.
   let grabs = "";
   if (m.line) {
@@ -548,7 +581,7 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
   }
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(ariaSummary(m))}">
     <defs>${defs}</defs>
-    ${bands}${dividers}${axis}${ink}${marks}${tags}${notes}${hits}${grabs}
+    ${bands}${dividers}${axis}${ink}${echoes}${marks}${tags}${notes}${hits}${grabs}
   </svg>`;
 }
 

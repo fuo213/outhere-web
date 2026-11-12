@@ -259,6 +259,60 @@ test("same campsite: candidate only on a later pass; link shares name and notes;
   assert.equal(trip.features.find((f) => f.properties._id === "C2").properties.same_place_as, undefined);
 });
 
+test("same campsite: reachable by hand (200 m), either order, and only once", () => {
+  const { trip, ix } = outAndBack();
+  // Camp 1 on the way out at 1.5 km; a camp on the way back 150 m short of the
+  // mirror point (where a hand on the profile or the map lands) is still asked.
+  trip.features.push(point("C1", { type: "camp", attach: attachAt(ix, 1500) }), point("C2", { type: "camp", attach: attachAt(ix, 4650) }));
+  let plan = M.buildPlan(trip);
+  const cand = M.sameSiteCandidate(plan, "C2");
+  assert.equal(cand?.id, "C1");
+  assert.equal(cand.later, false);
+  near(cand.d, 150, 12);
+  // 250 m off is a different spot.
+  trip.features.find((f) => f.properties._id === "C2").properties.attach = attachAt(ix, 4750);
+  assert.equal(M.sameSiteCandidate(M.buildPlan(trip), "C2"), null);
+  // Placed the way back first: the earlier camp you add next is asked too, about the later one.
+  trip.features.find((f) => f.properties._id === "C2").properties.attach = attachAt(ix, 4500);
+  plan = M.buildPlan(trip);
+  const back = M.sameSiteCandidate(plan, "C1");
+  assert.equal(back?.id, "C2");
+  assert.equal(back.later, true);
+  // Once linked, neither is asked again.
+  M.linkSameSite(trip, "C2", "C1");
+  plan = M.buildPlan(trip);
+  assert.equal(M.sameSiteCandidate(plan, "C1"), null);
+  assert.equal(M.sameSiteCandidate(plan, "C2"), null);
+});
+
+test("echoes: where the line passes a camp's spot again, until a camp is there", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(point("C1", { type: "camp", attach: attachAt(ix, 1500) }));
+  let echoes = M.campEchoes(M.buildPlan(trip));
+  assert.equal(echoes.length, 1);
+  near(echoes[0].m, 4500, 10, "the way back over Camp 1's spot");
+  assert.equal(echoes[0].campId, "C1");
+  // A camp at the turnaround has no other pass (the passes there are one visit).
+  trip.features.push(point("T", { type: "camp", attach: attachAt(ix, 3000) }));
+  echoes = M.campEchoes(M.buildPlan(trip));
+  assert.deepEqual(echoes.map((e) => e.campId), ["C1"]);
+  // A camp near the echo takes it.
+  trip.features.push(point("C3", { type: "camp", attach: attachAt(ix, 4600) }));
+  assert.equal(M.campEchoes(M.buildPlan(trip)).length, 0);
+});
+
+test("choosePass: a camp dropped on Camp 1's spot goes on the other pass, not beside Camp 1", () => {
+  const { ix } = outAndBack();
+  const c1 = { m: 1500, coord: M.pointAtM(ix, 1500) };
+  const p = pt(1.52, 0.0005); // 20 m east of Camp 1, on the trail
+  // Without the camps it is the first pass after the previous camp: right beside Camp 1.
+  near(M.choosePass(ix, p, 100, c1.m).m, 1520, 10);
+  // With them, the way back.
+  near(M.choosePass(ix, p, 100, c1.m, [c1]).m, 4480, 10);
+  // Away from any camp nothing changes.
+  near(M.choosePass(ix, pt(0.5, 0), 100, -1, [c1]).m, 500, 10);
+});
+
 // ---- transport legs (format 1.3) ----------------------------------------------
 
 import { setSectionTransport } from "../line-edit.js";

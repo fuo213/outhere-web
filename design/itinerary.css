@@ -342,30 +342,49 @@ body.is-dragging-feature .itin-day-empty {
 
 /* ---- Reading and editing along the profile (1.2 line trips) ----------------
    A cursor with the mile and elevation under it; tap pins it and offers
-   "Add a camp here". Camps on the profile can be dragged. */
+   "Add a camp here". Camps on the profile can be dragged: the tent rides the
+   line live. Nothing on the drawing selects text or scrolls under a finger. */
+.itin-profile-art { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .itin-profile[data-mode="days"] .itin-profile-art { touch-action: none; cursor: crosshair; }
 .itin-profile .camp-grab { cursor: grab; }
-.itin-profile .camp-grab:active { cursor: grabbing; }
+.itin-profile .camp-grab:active, .itin-profile.is-dragging-camp .itin-profile-art, .itin-profile.is-dragging-camp .camp-grab { cursor: grabbing; }
+/* Where the line passes a camp's spot again: a faint tent, the pointer snaps to it. */
+.itin-profile .camp-echo { opacity: 0.38; pointer-events: none; }
 .itin-scrub { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; z-index: 1; }
 .itin-scrub-line { position: absolute; top: var(--space-8); bottom: var(--space-6); left: 0; border-left: 1px dashed var(--text-secondary); }
-.itin-scrub-chip {
+.itin-scrub-dot {
   position: absolute;
-  bottom: 0; /* over the mile ticks, clear of the day tags */
-  left: var(--space-2);
+  left: calc(var(--space-1) * -1);
+  width: var(--space-2);
+  height: var(--space-2);
+  margin-top: calc(var(--space-1) * -1);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  border: 1.5px solid var(--text);
+}
+/* The readout: a small box at the spot (placed and clamped in JS), not a bar. */
+.itin-scrub-box {
+  position: absolute;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--space-1) / 2);
+  max-width: 172px;
+  padding: var(--space-2) var(--space-2);
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
+  pointer-events: none;
   white-space: nowrap;
-  font: var(--weight-regular) var(--text-sm)/1.2 var(--font-ui);
+  font: var(--weight-regular) var(--text-sm)/1.25 var(--font-ui);
   color: var(--text);
 }
-.itin-scrub-chip.is-left { left: auto; right: var(--space-2); }
-.itin-scrub-chip.is-pinned { pointer-events: auto; }
+.itin-scrub-box.is-pinned { pointer-events: auto; }
+.itin-scrub-head { font-weight: var(--weight-medium); }
+.itin-scrub-sub, .itin-scrub-ft { color: var(--text-secondary); }
+.itin-scrub-site { font: var(--weight-semi) var(--text-md)/1.2 var(--font-ui); color: var(--type-camp-text); }
 .itin-scrub-num, .itin-scrub-ft { font-family: var(--font-data); }
-.itin-scrub-ft, .itin-scrub-day { color: var(--text-secondary); }
-.itin-scrub-chip .btn { min-height: var(--space-10); }
+.itin-scrub-add { margin-top: var(--space-1); }
+@media (pointer: coarse) { .itin-scrub-add { min-height: var(--space-10); } }

@@ -18,7 +18,7 @@
  *   that day into view without echoing it back.
  */
 
-import { buildItinerary, drawProfile, drawEmpty, captionFor, profileX, lineSpotAtMile, fmt } from "./itinerary-profile.js";
+import { buildItinerary, drawProfile, drawEmpty, captionFor, profileX, profileFrame, lineSpotAtMile, fmt } from "./itinerary-profile.js";
 
 export const ACTIVE_DAY_EVENT = "booot:active-day";
 const FAILED_AFTER_MS = 20000; // elevation that hasn't arrived by now isn't coming
@@ -40,12 +40,16 @@ const S = {
   onRetryElevation: null,
   failedNow: new Set(), // route ids whose fetch reported a failure (no need to wait out the timer)
   paintedW: 0, paintedH: 0,
-  scrub: null, // { mi, pinned, dragId } a spot being read or a camp being dragged on the profile
-  onAddCamp: null, onMoveCamp: null, onOpenStop: null,
+  scrub: null, // { mi, pinned, dragId, echo } a spot being read or a camp being dragged on the profile
+  drag: null, // { id, m, view } a camp being dragged: view = the preview model drawn meanwhile
+  paintedHeight: 0,
+  onAddCamp: null, onMoveCamp: null, onOpenStop: null, onPreviewCamp: null, onCancelPreview: null,
 };
 
 /** Wire the figure + scroll container once (trip-panel.js initTripPanel). */
-export function initItineraryPanel({ figure, scroll, tail, onDrawRoute, onRetryElevation, onAddCamp, onMoveCamp, onOpenStop }) {
+export function initItineraryPanel({ figure, scroll, tail, onDrawRoute, onRetryElevation, onAddCamp, onMoveCamp, onOpenStop, onPreviewCamp, onCancelPreview }) {
+  S.onPreviewCamp = onPreviewCamp;
+  S.onCancelPreview = onCancelPreview;
   S.onAddCamp = onAddCamp;
   S.onMoveCamp = onMoveCamp;
   S.onOpenStop = onOpenStop;
@@ -99,6 +103,7 @@ export function updateItinerary(trip, sections, model = buildItinerary(trip)) {
     S.tripId = tripId;
     S.pendingSince.clear();
     S.scrub = null;
+    S.drag = null;
     S.scroll.scrollTop = 0;
     setActive(null, "panel");
   }
@@ -121,6 +126,7 @@ export function updateItinerary(trip, sections, model = buildItinerary(trip)) {
   S.model = model;
   S.sections = sections || [];
   if (S.active != null && S.active >= S.sections.length) setActive(null, "panel");
+  if (S.drag) return; // a camp is being dragged: its preview owns the drawing until release
   paint();
   S.reveal = new Set(); // reveal plays once
 }
@@ -186,8 +192,9 @@ function paint() {
     </div>`;
   } else {
     const failed = failedIds();
+    S.paintedHeight = profileHeight(W < 420);
     const svg = drawProfile(m, W, {
-      height: profileHeight(W < 420),
+      height: S.paintedHeight,
       compact: S.compact,
       active: S.active,
       failedIds: failed,
@@ -214,94 +221,217 @@ function paint() {
 
 const art = () => S.fig?.querySelector(".itin-profile-art");
 const lineMode = () => !!(S.model?.line && S.model.mode === "days" && !S.compact);
+/** The model on the page: a dragged camp's preview, else the trip's. */
+const drawn = () => S.drag?.view || S.model;
+const SNAP_PX = 10; // an echo (the line passing a camp's spot again) pulls the pointer this far
 
-/** The spot on the line under a pointer event, from its x on the drawing. */
+/**
+ * The spot on the line under a pointer event, from its x on the drawing.
+ * Pointer x is read against the trip's own model (not a drag preview), so a
+ * dragged camp never shifts the ground under the pointer. Near an echo the
+ * spot snaps onto it (`echo` set).
+ */
 function spotAt(e) {
   const el = art();
   if (!el || !S.model) return null;
   const rect = el.getBoundingClientRect();
   const geo = profileX(S.model, rect.width);
-  const mi = geo.mi(e.clientX - rect.left);
+  const px = e.clientX - rect.left;
+  let mi = geo.mi(px);
+  let echo = null;
+  for (const ec of S.model.echoes || []) {
+    if (ec.mi == null || (S.drag && ec.campId === S.drag.id)) continue;
+    const dx = Math.abs(geo.X(ec.mi) - px);
+    if (dx <= SNAP_PX && (!echo || dx < Math.abs(geo.X(echo.mi) - px))) echo = ec;
+  }
+  if (echo) mi = echo.mi;
   const spot = lineSpotAtMile(S.model, mi);
-  return spot ? { ...spot, x: geo.X(mi), W: rect.width } : null;
+  if (!spot) return null;
+  if (echo && !spot.rest) spot.m = echo.m;
+  return { ...spot, echo, x: geo.X(mi), W: rect.width };
+}
+
+/** Repaint only the drawing (keeps the .itin-profile-art element, so pointer capture holds). */
+function paintArt(model) {
+  const el = art();
+  if (!el || !model) return;
+  const W = el.getBoundingClientRect().width;
+  const svg = drawProfile(model, W, { height: S.paintedHeight || profileHeight(W < 420), active: S.active, failedIds: failedIds() });
+  const old = el.querySelector("svg");
+  if (old) old.outerHTML = svg; else el.insertAdjacentHTML("afterbegin", svg);
+  applyActive();
 }
 
 function initScrub(figure) {
-  let down = null; // { id|null, x0, y0, moved, pointerId }
+  let down = null; // { id|null, x0, y0, moved, pointerId, el }
+  let raf = 0, last = null;
+  const clearSel = () => { const sel = window.getSelection?.(); if (sel && !sel.isCollapsed) sel.removeAllRanges(); };
+
+  // One frame per pointer burst: the dragged camp follows the pointer along
+  // the line, the days re-split and the map moves the tent; the trip itself
+  // only changes on release (one undo step).
+  const frame = () => {
+    raf = 0;
+    const e = last;
+    if (!e || !down) return;
+    const sp = spotAt(e);
+    if (!sp) return;
+    if (down.id) {
+      if (sp.rest) { S.scrub = { mi: sp.mi, pinned: false, dragId: down.id, rest: true }; paintScrub(); return; }
+      if (!S.drag) { S.drag = { id: down.id, m: null, view: null }; S.fig.classList.add("is-dragging-camp"); }
+      if (S.drag.m == null || Math.abs(S.drag.m - sp.m) > 0.5) {
+        S.drag.m = sp.m;
+        S.drag.view = S.onPreviewCamp?.(down.id, sp.m) || null;
+        if (S.drag.view) paintArt(S.drag.view);
+      }
+      S.scrub = { mi: sp.mi, pinned: false, dragId: down.id, echo: sp.echo };
+    } else {
+      S.scrub = { mi: sp.mi, pinned: true, dragId: null, echo: sp.echo };
+    }
+    paintScrub();
+  };
+  const schedule = (e) => { last = { clientX: e.clientX, clientY: e.clientY }; if (!raf) raf = requestAnimationFrame(frame); };
+
   figure.addEventListener("pointermove", (e) => {
     if (!lineMode()) return;
     if (down) {
+      if (e.pointerId !== down.pointerId) return;
       if (Math.hypot(e.clientX - down.x0, e.clientY - down.y0) > 4) down.moved = true;
       if (!down.moved && down.id) return;
-      const sp = spotAt(e);
-      if (sp) { S.scrub = { mi: sp.mi, pinned: !down.id, dragId: down.id }; paintScrub(); }
+      e.preventDefault();
+      schedule(e);
       return;
     }
     if (e.pointerType === "mouse" && !S.scrub?.pinned) {
-      const sp = e.target.closest(".itin-profile-art") ? spotAt(e) : null;
-      S.scrub = sp ? { mi: sp.mi, pinned: false, dragId: null } : null;
+      const sp = e.target.closest(".itin-profile-art") && !e.target.closest(".itin-scrub-box") ? spotAt(e) : null;
+      S.scrub = sp ? { mi: sp.mi, pinned: false, dragId: null, echo: sp.echo } : null;
       paintScrub();
     }
   });
   figure.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && !down && S.scrub && !S.scrub.pinned) { S.scrub = null; paintScrub(); } });
   figure.addEventListener("pointerdown", (e) => {
-    if (!lineMode() || e.button > 0 || e.target.closest(".itin-scrub-chip")) return;
-    if (!e.target.closest(".itin-profile-art")) return;
+    if (!lineMode() || e.button > 0 || e.target.closest(".itin-scrub-box")) return;
+    const el = e.target.closest(".itin-profile-art");
+    if (!el) return;
+    // Pressing the drawing never starts a text selection (that was the
+    // highlighted page text left behind after dragging a camp) or moves focus.
+    e.preventDefault();
+    clearSel();
     const grab = e.target.closest(".camp-grab");
-    down = { id: grab?.dataset.id || null, x0: e.clientX, y0: e.clientY, moved: false };
-    try { e.target.closest(".itin-profile-art").setPointerCapture(e.pointerId); } catch { /* not capturable: fine */ }
-    if (!grab) { const sp = spotAt(e); if (sp) { S.scrub = { mi: sp.mi, pinned: true, dragId: null }; paintScrub(); } }
+    down = { id: grab?.dataset.id || null, x0: e.clientX, y0: e.clientY, moved: false, pointerId: e.pointerId, el };
+    try { el.setPointerCapture(e.pointerId); } catch { /* not capturable: fine */ }
+    figure.classList.add("is-pressing");
+    if (!grab) { const sp = spotAt(e); if (sp) { S.scrub = { mi: sp.mi, pinned: true, dragId: null, echo: sp.echo }; paintScrub(); } }
   });
+  const release = () => {
+    figure.classList.remove("is-pressing", "is-dragging-camp");
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    try { down?.el.releasePointerCapture(down.pointerId); } catch { /* already released */ }
+  };
+  /** Esc or pointercancel mid-drag: the camp goes back, nothing is saved. */
+  const cancelDrag = () => {
+    const wasPreview = !!S.drag?.view;
+    release();
+    down = null;
+    S.drag = null;
+    S.scrub = null;
+    if (wasPreview) S.onCancelPreview?.(); else paintScrub();
+    paint();
+  };
   const finish = (e, cancelled) => {
-    if (!down) return;
-    const d = down; down = null;
-    if (cancelled) { S.scrub = null; paintScrub(); return; }
+    if (!down || e.pointerId !== down.pointerId) return;
+    if (cancelled) { cancelDrag(); return; }
+    const d = down;
+    release();
+    down = null;
+    clearSel();
     // A tap on the drawing (pointer capture swallows the click) still goes to that day.
     if (!d.id && !d.moved) { const sp = spotAt(e); if (sp) scrollToDay(sp.day.i, "panel", { frame: true }); return; }
     if (d.id) {
       if (!d.moved) { S.scrub = null; paintScrub(); S.onOpenStop?.(d.id); return; } // a tap on a camp opens it
+      // Commit where the preview is (the last frame), or where the pointer let go.
       const sp = spotAt(e);
+      const m = sp && !sp.rest ? sp.m : S.drag?.m;
+      const had = !!S.drag?.view;
+      S.drag = null;
       S.scrub = null;
-      if (sp && !sp.rest) S.onMoveCamp?.(d.id, sp.m); else paintScrub();
+      if (m != null) S.onMoveCamp?.(d.id, m);
+      else { if (had) S.onCancelPreview?.(); paint(); }
     }
   };
   figure.addEventListener("pointerup", (e) => finish(e, false));
   figure.addEventListener("pointercancel", (e) => finish(e, true));
-  // Esc or a press outside the profile lets go of a pinned spot.
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S.scrub && !down) { S.scrub = null; paintScrub(); } });
+  figure.addEventListener("lostpointercapture", (e) => { if (down && e.pointerId === down.pointerId && down.id && down.moved) cancelDrag(); });
+  // Belt and braces: nothing on the profile starts a selection or a native drag.
+  figure.addEventListener("selectstart", (e) => { if (e.target.closest?.(".itin-profile-art") || down) e.preventDefault(); });
+  figure.addEventListener("dragstart", (e) => { if (e.target.closest?.(".itin-profile-art")) e.preventDefault(); });
+  // Esc cancels a drag, or lets go of a pinned spot; a press outside the profile lets go too.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (down?.id && down.moved) { e.preventDefault(); e.stopPropagation(); cancelDrag(); return; }
+    if (S.scrub && !down) { S.scrub = null; paintScrub(); }
+  }, true);
   document.addEventListener("pointerdown", (e) => { if (S.scrub?.pinned && !figure.contains(e.target)) { S.scrub = null; paintScrub(); } });
 }
 
-/** Draw the cursor and its readout from S.scrub (also after every repaint). */
+/**
+ * Draw the cursor and its readout box from S.scrub (also after every repaint).
+ * The box is small and sits at the spot on the line (above it when there is
+ * room, else below), always inside the drawing.
+ */
 function paintScrub() {
   const el = art();
   el?.querySelector(".itin-scrub")?.remove();
+  el?.querySelector(".itin-scrub-box")?.remove();
   if (!el || !S.scrub || !lineMode()) return;
+  const model = drawn();
   const W = el.getBoundingClientRect().width;
-  const geo = profileX(S.model, W);
+  const H = el.querySelector("svg")?.getBoundingClientRect().height || S.paintedHeight || 200;
+  const fr = profileFrame(model, W, { height: S.paintedHeight || H });
   const sp = lineSpotAtMile(S.model, S.scrub.mi);
   if (!sp) return;
-  const x = geo.X(S.scrub.mi);
-  const ft = sp.ft == null ? "" : ` · <span class="itin-scrub-ft">${fmt.ft(sp.ft)}</span>`;
+  const x = profileX(S.model, W).X(S.scrub.mi);
   const dragging = S.scrub.dragId ? S.model.days.flatMap((d) => d.stops).find((st) => st.id === S.scrub.dragId) : null;
-  let body;
-  if (dragging) body = `<span class="itin-scrub-text">${sp.rest ? "Not on a rest day" : `${escapeText(dragging.name || "Camp")} to mile`} ${sp.rest ? "" : `<span class="itin-scrub-num">${(sp.m / 1609.344).toFixed(1)}</span>`}</span>`;
-  else body = `<span class="itin-scrub-text">Mile <span class="itin-scrub-num">${(sp.m / 1609.344).toFixed(1)}</span>${ft}${sp.rest ? "" : ` · <span class="itin-scrub-day">Day ${sp.day.n}</span>`}</span>`;
-  const add = S.scrub.pinned && !S.scrub.dragId && !sp.rest ? `<button type="button" class="btn btn--quiet btn--sm" data-action="add-camp">Add a camp here</button>` : "";
-  const flip = x > W / 2;
-  el.insertAdjacentHTML("beforeend", `<div class="itin-scrub" style="left:${x.toFixed(1)}px">
-    <span class="itin-scrub-line"></span>
-    <div class="itin-scrub-chip${flip ? " is-left" : ""}${S.scrub.pinned ? " is-pinned" : ""}" role="group" aria-label="Spot on the line">${body}${add}</div>
-  </div>`);
+  // Where the box hangs from: the dragged tent (in the preview) or the line under the cursor.
+  let y;
+  if (dragging && S.drag?.view) {
+    const st = S.drag.view.days.flatMap((d) => d.stops).find((q) => q.id === S.scrub.dragId);
+    y = st ? fr.yAt(st.mi) - 14 : fr.yAt(S.scrub.mi);
+  } else y = profileFrame(S.model, W, { height: S.paintedHeight || H }).yAt(S.scrub.mi);
+  const mile = `<span class="itin-scrub-num">${(sp.m / 1609.344).toFixed(1)}</span>`;
+  const ft = sp.ft == null ? "" : `<span class="itin-scrub-ft">${fmt.ft(sp.ft)}</span>`;
+  const campName = dragging ? escapeText(dragging.name || (S.model.campNo?.has(dragging.id) ? `Camp ${S.model.campNo.get(dragging.id)}` : "Camp")) : "";
+  const echo = S.scrub.echo ? `<span class="itin-scrub-site">${escapeText(S.scrub.echo.name || `Camp ${S.scrub.echo.n}`)}’s spot</span>` : "";
+  let lines;
+  if (dragging) {
+    lines = sp.rest || S.scrub.rest
+      ? `<span class="itin-scrub-head">${campName}</span><span class="itin-scrub-sub">Not on a rest day</span>`
+      : `<span class="itin-scrub-head">${campName} to mile ${mile}</span>${echo}`;
+  } else {
+    lines = `${echo}<span class="itin-scrub-head">Mile ${mile}</span><span class="itin-scrub-sub">${[ft, sp.rest ? "Rest day" : `Day ${sp.day.n}`].filter(Boolean).join(" · ")}</span>`;
+  }
+  const add = S.scrub.pinned && !S.scrub.dragId && !sp.rest ? `<button type="button" class="btn btn--quiet btn--sm itin-scrub-add" data-action="add-camp">Add a camp here</button>` : "";
+  const dot = dragging ? "" : `<span class="itin-scrub-dot" style="top:${y.toFixed(1)}px"></span>`;
+  el.insertAdjacentHTML("beforeend", `<div class="itin-scrub${dragging ? " is-dragging" : ""}" style="left:${x.toFixed(1)}px"><span class="itin-scrub-line"></span>${dot}</div>
+    <div class="itin-scrub-box${S.scrub.pinned ? " is-pinned" : ""}" role="group" aria-label="Spot on the line">${lines}${add}</div>`);
+  // Place the box: centred on the spot, above it if it fits, clamped inside the drawing.
+  const box = el.querySelector(".itin-scrub-box");
+  const bw = box.offsetWidth, bh = box.offsetHeight, gap = 10, pad = 2;
+  const left = Math.max(pad, Math.min(W - bw - pad, x - bw / 2));
+  let top = y - gap - bh;
+  if (top < pad) top = Math.min(H - bh - pad, y + gap + (dragging ? 14 : 0));
+  box.style.left = `${left.toFixed(1)}px`;
+  box.style.top = `${Math.max(pad, top).toFixed(1)}px`;
 }
 
 const escapeText = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
 function addCampFromScrub() {
-  const sp = S.scrub && lineSpotAtMile(S.model, S.scrub.mi);
+  const sc = S.scrub;
+  const sp = sc && lineSpotAtMile(S.model, sc.mi);
   S.scrub = null;
   paintScrub();
-  if (sp && !sp.rest) S.onAddCamp?.(sp.m);
+  if (sp && !sp.rest) S.onAddCamp?.(sc.echo ? sc.echo.m : sp.m);
 }
 
 function armObserver() {

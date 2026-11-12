@@ -29,11 +29,12 @@ export const OVERLAP_M = 30;
  *  line (switchbacks beside a spring) are one visit; an out-and-back's two
  *  passes, further apart than this, are two (see visitsNear). */
 export const SEPARATE_VISIT_M = 1000;
-/** A later camp this close to an earlier one (and on a different pass) may be
- *  the same campsite: the app asks "Same as Camp 1?". Past SAME_SITE_KEEP_M
- *  apart (a camp was moved) the link is dropped. */
-export const SAME_SITE_M = 100;
-export const SAME_SITE_KEEP_M = 150;
+/** A camp this close to one on another pass of the line may be the same
+ *  campsite: the app asks "Same as Camp 1?". A question is cheap, a missed
+ *  one is not: 100 m was too tight to hit by hand on the map or the profile.
+ *  Past SAME_SITE_KEEP_M apart (a camp was moved) the link is dropped. */
+export const SAME_SITE_M = 200;
+export const SAME_SITE_KEEP_M = 300;
 
 const RAD = Math.PI / 180;
 const R = 6371008.8;
@@ -214,15 +215,22 @@ export function visitsNear(ix, p, radius = NEAR_M) {
 /**
  * Where a time stop dropped at p goes: the first pass after `afterM` (the
  * previous camp), else the first pass. Null when no pass is within radius.
+ * `camps` ([{ m, coord }], optional): a pass that would put the stop right
+ * beside one of these camps on the same pass (an out-and-back's camp, clicked
+ * again) gives way to another pass through the same spot, so a camp dropped
+ * on Camp 1's spot after "Return the same way" goes on the way back.
  */
-export function choosePass(ix, p, radius, afterM = -1) {
+export function choosePass(ix, p, radius, afterM = -1, camps = []) {
   const near = passesNear(ix, p, radius);
   if (!near.length) return null;
   // Only passes as close as the nearest one compete (overlapping trail); a
   // neighbouring switchback a little further away is not what was clicked.
   const d0 = Math.min(...near.map((q) => q.d));
   const passes = near.filter((q) => q.d <= d0 + OVERLAP_M);
-  const pick = passes.find((q) => q.m > afterM + 1) || passes[0];
+  const crowded = (q) => camps.some((c) => Math.abs(c.m - q.m) < SEPARATE_VISIT_M && hav(c.coord, q.coord) <= SAME_SITE_M);
+  const free = passes.filter((q) => !crowded(q));
+  const pool = free.length && free.length < passes.length ? free : passes;
+  const pick = pool.find((q) => q.m > afterM + 1) || pool[0];
   return { ...pick, passes, passIndex: passes.indexOf(pick) };
 }
 
@@ -380,25 +388,55 @@ export function passLabel(entry) {
 // ---------------------------------------------------------------------------
 
 /**
- * Is the camp `id` (just added) probably the same campsite as an earlier one?
- * An earlier camp within `radius` metres as the crow flies but on a different
- * pass of the line (more than SEPARATE_VISIT_M further along): an out-and-back
- * or a lollipop. A camp that already repeats another is not asked again.
- * @returns {{ id, n, name, d }|null} the camp to link to (its root when that
- *   one repeats an even earlier camp), n = its camp number.
+ * Is the camp `id` (just added or moved) probably the same campsite as
+ * another? A camp within `radius` metres as the crow flies but on a different
+ * pass of the line (more than SEPARATE_VISIT_M along): an out-and-back or a
+ * lollipop. An earlier camp wins; a later one counts too (you placed the way
+ * back first), as long as it is not linked to anything yet. A camp that
+ * already repeats another, or is repeated, is not asked again.
+ * @returns {{ id, n, name, d, later }|null} the camp to link with (its root
+ *   when that one repeats an even earlier camp), n = its camp number,
+ *   later = it comes after `id` along the line (it then links to `id`).
  */
 export function sameSiteCandidate(plan, id, radius = SAME_SITE_M) {
   const me = plan.camps.find((c) => c.id === id);
-  if (!me || me.f.properties.same_place_as) return null;
+  if (!me || me.f.properties.same_place_as || plan.camps.some((c) => c.f.properties.same_place_as === id)) return null;
   let best = null;
   for (const c of plan.camps) {
-    if (c.id === id || c.m >= me.m - SEPARATE_VISIT_M) continue;
+    if (c.id === id || Math.abs(c.m - me.m) <= SEPARATE_VISIT_M) continue;
+    const later = c.m > me.m;
+    if (later && (c.f.properties.same_place_as || plan.camps.some((x) => x.f.properties.same_place_as === c.id))) continue;
     const d = hav(c.coord, me.coord);
-    if (d <= radius && (!best || d < best.d)) best = { c, d };
+    // A later camp that already has a closer earlier partner is that one's question, not ours.
+    if (later && plan.camps.some((x) => x !== me && x !== c && x.m < c.m - SEPARATE_VISIT_M && hav(x.coord, c.coord) < d)) continue;
+    // Earlier camps first; among them (or among later ones) the closest.
+    if (d <= radius && (!best || (best.later && !later) || (best.later === later && d < best.d))) best = { c, d, later };
   }
   if (!best) return null;
   const root = best.c.sameAs ? plan.camps.find((x) => x.n === best.c.sameAs) || best.c : best.c;
-  return { id: root.id, n: root.n, name: root.f.properties.name || "", d: best.d };
+  return { id: root.id, n: root.n, name: root.f.properties.name || "", d: best.d, later: best.later };
+}
+
+/**
+ * Where the line passes a camp's spot again ("echoes"): for each camp, the
+ * other visits of the line within reach of it (an out-and-back's other pass,
+ * a lollipop's stem) that have no camp of their own there yet. The profile
+ * marks them so that "mile 3 and mile 11 are the same place" can be seen,
+ * and snaps to them.
+ * @returns {[{ m, coord, campId, n, name }]} in walking order
+ */
+export function campEchoes(plan) {
+  if (!plan?.ix) return [];
+  const out = [];
+  for (const c of plan.camps) {
+    for (const v of visitsNear(plan.ix, c.coord, NEAR_M)) {
+      if (Math.abs(v.m - c.m) <= SEPARATE_VISIT_M || v.d > OVERLAP_M) continue;
+      const taken = plan.camps.some((o) => o !== c && Math.abs(o.m - v.m) < SEPARATE_VISIT_M && hav(o.coord, v.coord) <= SAME_SITE_M);
+      if (taken || out.some((e) => Math.abs(e.m - v.m) < 30)) continue;
+      out.push({ m: v.m, coord: v.coord, campId: c.id, n: c.n, name: c.f.properties.name || "" });
+    }
+  }
+  return out.sort((a, b) => a.m - b.m);
 }
 
 /** Ids of the camps that are one campsite with `id` (itself included). */

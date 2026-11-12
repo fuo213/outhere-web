@@ -23,7 +23,7 @@ import { offRouteConsequence } from "./line-panel.js"; // circular; runtime only
 import {
   isLineTrip, mainRoute, lineIndex, choosePass, locateM, nearestOnLine, passesNear, resolveAttach,
   buildPlan, stopKind, round6, OVERLAP_M, MI, pointAtM,
-  sameSiteCandidate, linkSameSite, unlinkSameSite, shareCampFields,
+  sameSiteCandidate, linkSameSite, unlinkSameSite, shareCampFields, campEchoes,
 } from "./line-model.js";
 import { moveStopAlong } from "./line-edit.js";
 
@@ -149,8 +149,11 @@ function placement(k, pt, { zoom = map.getZoom(), atM = null, exclude = null } =
     if (atM != null) return { coord: ix.coords.length ? resolveAttach(ix, locateM(ix, atM)).coord : pt, attach: { route_id: rid, ...locateM(ix, atM) } };
     // First pass after the previous camp (the last camp along the line).
     const plan = buildPlan(trip);
-    const prev = plan.camps.filter((c) => c.id !== exclude).at(-1);
-    const pick = choosePass(ix, pt, radius, prev ? prev.m : -1);
+    const others = plan.camps.filter((c) => c.id !== exclude);
+    const prev = others.at(-1);
+    // Dropped on an existing camp's spot: the pass beside that camp gives way
+    // to the line's other pass there (the way back of an out-and-back).
+    const pick = choosePass(ix, pt, radius, prev ? prev.m : -1, others);
     if (!pick) return { coord: pt, attach: null };
     return { coord: pick.coord, attach: { route_id: rid, ...locateM(ix, pick.m) } };
   }
@@ -203,6 +206,8 @@ export function moveStopAlongLine(id, m) {
   const plan = buildPlan(TripManager.currentTrip);
   const c = plan.camps.find((x) => x.id === id);
   showToast(`Moved ${c ? `Camp ${c.n}` : `the ${KIND_LABEL[k].toLowerCase()}`} to mile ${(m / MI).toFixed(1)}`, { undoable: true });
+  // Dropped on another camp's site (another pass of the same ground): ask.
+  if (k === "camp" && sameSiteCandidate(plan, id)) { askSame.add(id); openStopMenu(id); }
 }
 
 function moveStopTo(id, pt, zoom) {
@@ -264,6 +269,9 @@ export function openStopMenu(id, { fly = false } = {}) {
     ? `<div class="stop-menu__ask" role="group" aria-label="Same campsite?"><span class="stop-menu__ask-q">Same as Camp ${cand.n}${cand.name ? `, ${escapeHTML(cand.name)}` : ""}?</span><span class="stop-menu__ask-btns"><button type="button" class="btn btn--quiet btn--sm" data-same="yes">Yes, same site</button><button type="button" class="btn btn--ghost btn--sm" data-same="no">No</button></span></div>`
     : camp?.sameAs ? `<div class="stop-menu__row"><span class="stop-menu__label">Same site as Camp ${camp.sameAs}</span><button type="button" class="btn btn--ghost btn--sm" data-same="unlink">Separate</button></div>`
       : camp?.again?.length ? `<p class="stop-menu__note">You sleep here again at Camp ${camp.again.join(", ")}. Name and notes are shared.</p>` : "";
+  // The line comes back past this camp (an out-and-back): offer the same site again.
+  const echo = camp && !cand ? campEchoes(plan).find((e) => e.campId === id) : null;
+  const againHTML = echo ? `<button type="button" class="btn btn--ghost btn--sm stop-menu__again" data-act="again" data-m="${Math.round(echo.m)}">Camp here again ${echo.m > camp.m ? "on the way back" : "on the way out"}</button>` : "";
   const sel = (name, opts, val) => `<select class="input input--sm" data-field="${name}">${opts.map((o) => `<option value="${o}"${o === val ? " selected" : ""}>${cap(o)}</option>`).join("")}</select>`;
   const html = `
     <form class="stop-menu" data-kind="${escapeAttr(k)}" autocomplete="off">
@@ -273,6 +281,7 @@ export function openStopMenu(id, { fly = false } = {}) {
         ${mi ? `<span class="stop-menu__at">${escapeHTML(mi)}</span>` : ""}
       </div>
       ${sameHTML}
+      ${againHTML}
       ${offRoute ? `<p class="stop-menu__warn">Off your route. ${escapeHTML(offRouteConsequence(k))}</p>` : ""}
       <input class="input input--sm" data-field="name" type="text" value="${escapeAttr(p.name || "")}" placeholder="Name (optional)" aria-label="Name" />
       ${k === "camp" ? `<div class="stop-menu__row"><span class="stop-menu__label">Nights</span><span class="stepper"><button type="button" class="stepper__btn" data-step="-1" aria-label="One night fewer"${nights <= 1 ? " disabled" : ""}>−</button><span class="stepper__num" aria-live="polite">${nights}</span><button type="button" class="stepper__btn" data-step="1" aria-label="One more night">+</button></span></div>` : ""}
@@ -322,9 +331,34 @@ export function openStopMenu(id, { fly = false } = {}) {
     const act = e.target.closest("[data-act]")?.dataset.act;
     if (act === "delete") deleteStop(id);
     else if (act === "move") startMove(id);
+    else if (act === "again") campAgainAt(id, +e.target.closest("[data-m]").dataset.m);
     else if (act === "spur") startSpurFrom(id);
     else if (act === "unspur") deleteSpursOf(id);
   });
+}
+
+/** "Camp here again on the way back": a new camp at metre m, linked to camp `id` as one site. */
+function campAgainAt(id, m) {
+  const trip = TripManager.currentTrip;
+  const route = mainRoute(trip);
+  const site = findStop(id);
+  if (!route || !site) return;
+  const ix = lineIndex(route);
+  const at = locateM(ix, m);
+  snapshot("camp here again");
+  const props = { type: "camp", point_type: "camp", name: site.properties.name || "", notes: site.properties.notes || "", nights: 1, water_nearby: false, water_notes: "", attach: { route_id: route.properties._id, ...at } };
+  // Silent add (no render yet): the link goes in first.
+  props._id = crypto.randomUUID();
+  trip.features.push({ type: "Feature", geometry: { type: "Point", coordinates: round6(resolveAttach(ix, at).coord) }, properties: props });
+  (trip.unassigned ||= []).push(props._id);
+  const siteM = buildPlan(trip).camps.find((c) => c.id === id)?.m ?? 0;
+  if (m > siteM) linkSameSite(trip, props._id, id); else linkSameSite(trip, id, props._id);
+  TripManager.render();
+  TripManager.save();
+  const plan = buildPlan(trip);
+  const n = (cid) => plan.camps.find((c) => c.id === cid)?.n || "";
+  showToast(`Added Camp ${n(props._id)} at mile ${(m / MI).toFixed(1)}, the same site as Camp ${n(id)}`, { undoable: true });
+  openStopMenu(props._id);
 }
 
 function answerSameSite(id, answer, cand) {
@@ -333,7 +367,13 @@ function answerSameSite(id, answer, cand) {
   if (answer === "yes" && cand) {
     snapshot("same campsite");
     changed = true;
-    linkSameSite(trip, id, cand.id);
+    if (cand.later) {
+      // The camp you just placed comes first along the line: it becomes the
+      // site, keeping the later camp's name and notes.
+      const me = findStop(id), other = findStop(cand.id);
+      if (me && other) { me.properties.name = other.properties.name || ""; me.properties.notes = other.properties.notes || ""; }
+      linkSameSite(trip, cand.id, id);
+    } else linkSameSite(trip, id, cand.id);
     TripManager.render();
     TripManager.save();
     showToast(`Camp ${buildPlan(trip).camps.find((c) => c.id === id)?.n || ""} is the same site as Camp ${cand.n}. Name and notes are shared.`, { undoable: true });

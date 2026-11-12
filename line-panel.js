@@ -198,7 +198,7 @@ function transportRow(t, d) {
     <span class="stop-name is-transport">${escapeHTML(transportLabel(t.seg))}, ${(t.len / MI).toFixed(1)} mi</span>
     <span class="stop-at">${at}</span>
     <span></span>
-    <span class="stop-note">Not hiked. Left out of the day\u2019s miles, climb and time.</span>`;
+    <span class="stop-note">Not hiked. Left out of the day\u2019s miles and climb.</span>`;
   row.setAttribute("aria-label", `${transportLabel(t.seg)}, ${(t.len / MI).toFixed(1)} miles, ${at} into day ${d.n}. Not hiked`);
   return row;
 }
