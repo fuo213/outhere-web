@@ -138,4 +138,8 @@ html.embed .embed-open .visually-hidden {
   html.embed body.is-drawing-route .edit-toast { bottom: calc(var(--embed-sheet-h) + var(--space-3)); }
   html.embed .maplibregl-ctrl-bottom-right { right: 0; }
   html.embed .maplibregl-ctrl-scale { display: none; } /* it collides with the attribution at this width */
+  /* The map is about 300px tall: pinch zooms, so the buttons go; and the edit
+     toast, while it shows, stands in for the drawing hint instead of stacking on it. */
+  html.embed .maplibregl-ctrl-bottom-left .maplibregl-ctrl-group { display: none; }
+  html.embed body:has(.edit-toast.visible) .drawing-hint { opacity: 0; }
 }
