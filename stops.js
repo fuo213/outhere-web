@@ -197,6 +197,7 @@ export function moveStopAlongLine(id, m) {
   snapshot(`move ${KIND_LABEL[k].toLowerCase()}`);
   if (!moveStopAlong(trip, id, m)) return;
   askSame.delete(id);
+  closeStopMenu(); // its popup still shows the old mile
   TripManager.render();
   TripManager.save();
   const plan = buildPlan(TripManager.currentTrip);
