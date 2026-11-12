@@ -29,6 +29,12 @@ export const OVERLAP_M = 30;
  *  line (switchbacks beside a spring) are one visit; an out-and-back's two
  *  passes, further apart than this, are two (see visitsNear). */
 export const SEPARATE_VISIT_M = 1000;
+/** A camp this close to one on another pass of the line may be the same
+ *  campsite: the app asks "Same as Camp 1?". A question is cheap, a missed
+ *  one is not: 100 m was too tight to hit by hand on the map or the profile.
+ *  Past SAME_SITE_KEEP_M apart (a camp was moved) the link is dropped. */
+export const SAME_SITE_M = 200;
+export const SAME_SITE_KEEP_M = 300;
 
 const RAD = Math.PI / 180;
 const R = 6371008.8;
@@ -54,7 +60,14 @@ export function stopKind(p) {
 export const isTimeStop = (p) => p?.type === "camp" || p?.type === "break";
 
 /** A 1.2 (line + stops) trip. Older trips keep the day-assignment model. */
-export const isLineTrip = (trip) => trip?.properties?.schema_version === "1.2";
+export const isLineTrip = (trip) => ["1.2", "1.3"].includes(trip?.properties?.schema_version);
+
+/** Transport legs (format 1.3): a segment with mode "transport" is drawn, not hiked. */
+export const TRANSPORT_KINDS = ["boat", "shuttle", "drive"];
+export const isTransportSeg = (seg) => seg?.mode === "transport";
+export const hasTransport = (route) => !!route?.properties?.segments?.some(isTransportSeg);
+export const TRANSPORT_LABEL = { boat: "Boat", shuttle: "Shuttle", drive: "Drive" };
+export const transportLabel = (seg) => TRANSPORT_LABEL[seg?.transport_kind] || "Transport";
 
 export function mainRoute(trip) {
   return (trip?.features || []).find((f) => f.properties?.type === "route" && f.geometry?.type === "LineString" && f.geometry.coordinates.length >= 2) || null;
@@ -202,15 +215,22 @@ export function visitsNear(ix, p, radius = NEAR_M) {
 /**
  * Where a time stop dropped at p goes: the first pass after `afterM` (the
  * previous camp), else the first pass. Null when no pass is within radius.
+ * `camps` ([{ m, coord }], optional): a pass that would put the stop right
+ * beside one of these camps on the same pass (an out-and-back's camp, clicked
+ * again) gives way to another pass through the same spot, so a camp dropped
+ * on Camp 1's spot after "Return the same way" goes on the way back.
  */
-export function choosePass(ix, p, radius, afterM = -1) {
+export function choosePass(ix, p, radius, afterM = -1, camps = []) {
   const near = passesNear(ix, p, radius);
   if (!near.length) return null;
   // Only passes as close as the nearest one compete (overlapping trail); a
   // neighbouring switchback a little further away is not what was clicked.
   const d0 = Math.min(...near.map((q) => q.d));
   const passes = near.filter((q) => q.d <= d0 + OVERLAP_M);
-  const pick = passes.find((q) => q.m > afterM + 1) || passes[0];
+  const crowded = (q) => camps.some((c) => Math.abs(c.m - q.m) < SEPARATE_VISIT_M && hav(c.coord, q.coord) <= SAME_SITE_M);
+  const free = passes.filter((q) => !crowded(q));
+  const pool = free.length && free.length < passes.length ? free : passes;
+  const pick = pool.find((q) => q.m > afterM + 1) || pool[0];
   return { ...pick, passes, passIndex: passes.indexOf(pick) };
 }
 
@@ -255,6 +275,14 @@ export function buildPlan(trip) {
   timed.sort((a, b) => a.m - b.m);
   plan.camps = timed.filter((t) => t.kind === "camp").map((t, k) => ({ ...t, n: k + 1, nights: Math.max(1, parseInt(t.f.properties.nights, 10) || 1) }));
   const campNo = new Map(plan.camps.map((c) => [c.id, c.n]));
+  // Same campsite used twice (`same_place_as`): each linked camp knows the
+  // number of the camp it repeats; the first one knows which camps repeat it.
+  for (const c of plan.camps) {
+    const root = c.f.properties.same_place_as;
+    c.sameAs = root && campNo.has(root) && root !== c.id ? campNo.get(root) : null;
+    c.again = [];
+  }
+  for (const c of plan.camps) if (c.sameAs) plan.camps.find((x) => x.n === c.sameAs).again.push(c.n);
   plan.campLabel = (id) => (campNo.has(id) ? `Camp ${campNo.get(id)}` : "Camp");
 
   // Days: Start → camp 1 → … → Finish, rest days after multi-night camps.
@@ -270,6 +298,22 @@ export function buildPlan(trip) {
     if (c) for (let r = 1; r < c.nights; r++) plan.days.push({ kind: "rest", key: `rest:${c.id}:${r}`, fromM: c.m, toM: c.m, from: b, to: b, camp: c });
   }
   plan.days.forEach((d, i) => { d.i = i; d.n = i + 1; d.date = start ? addDays(start, i) : null; d.stops = []; d.spurs = []; });
+  // Transport legs (boat, shuttle, drive) inside each walking day: listed as
+  // their own rows and left out of the hiked distance.
+  for (const d of plan.days) {
+    d.transport = []; d.transportM = 0;
+    if (d.kind !== "move") continue;
+    for (const leg of ix.legs) {
+      const seg = route.properties.segments?.[leg.k];
+      if (!isTransportSeg(seg)) continue;
+      const a = Math.max(d.fromM, leg.startM), b = Math.min(d.toM, leg.endM);
+      if (b - a < 0.05) continue;
+      d.transport.push({ leg: leg.k, seg, kind: seg.transport_kind || null, fromM: a, toM: b, m: a, len: b - a });
+      d.transportM += b - a;
+    }
+    d.hikedM = Math.max(0, d.toM - d.fromM - d.transportM);
+  }
+  plan.hikedM = plan.days.reduce((a, d) => a + (d.kind === "move" ? d.hikedM : 0), 0);
   const moveDayAt = (m) => plan.days.find((d) => d.kind === "move" && m >= d.fromM - 1e-6 && m < d.toM - 1e-6) ||
     plan.days.filter((d) => d.kind === "move").at(-1) || plan.days[0];
   const arrivalDay = (campId) => plan.days.find((d) => d.kind === "move" && d.camp?.id === campId);
@@ -340,6 +384,157 @@ export function passLabel(entry) {
 }
 
 // ---------------------------------------------------------------------------
+// The same campsite used twice (`same_place_as`, format 1.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Is the camp `id` (just added or moved) probably the same campsite as
+ * another? A camp within `radius` metres as the crow flies but on a different
+ * pass of the line (more than SEPARATE_VISIT_M along): an out-and-back or a
+ * lollipop. An earlier camp wins; a later one counts too (you placed the way
+ * back first), as long as it is not linked to anything yet. A camp that
+ * already repeats another, or is repeated, is not asked again.
+ * @returns {{ id, n, name, d, later }|null} the camp to link with (its root
+ *   when that one repeats an even earlier camp), n = its camp number,
+ *   later = it comes after `id` along the line (it then links to `id`).
+ */
+export function sameSiteCandidate(plan, id, radius = SAME_SITE_M) {
+  const me = plan.camps.find((c) => c.id === id);
+  if (!me || me.f.properties.same_place_as || plan.camps.some((c) => c.f.properties.same_place_as === id)) return null;
+  let best = null;
+  for (const c of plan.camps) {
+    if (c.id === id || Math.abs(c.m - me.m) <= SEPARATE_VISIT_M) continue;
+    const later = c.m > me.m;
+    if (later && (c.f.properties.same_place_as || plan.camps.some((x) => x.f.properties.same_place_as === c.id))) continue;
+    const d = hav(c.coord, me.coord);
+    // A later camp that already has a closer earlier partner is that one's question, not ours.
+    if (later && plan.camps.some((x) => x !== me && x !== c && x.m < c.m - SEPARATE_VISIT_M && hav(x.coord, c.coord) < d)) continue;
+    // Earlier camps first; among them (or among later ones) the closest.
+    if (d <= radius && (!best || (best.later && !later) || (best.later === later && d < best.d))) best = { c, d, later };
+  }
+  if (!best) return null;
+  const root = best.c.sameAs ? plan.camps.find((x) => x.n === best.c.sameAs) || best.c : best.c;
+  return { id: root.id, n: root.n, name: root.f.properties.name || "", d: best.d, later: best.later };
+}
+
+/**
+ * Where the line passes a camp's spot again ("echoes"): for each camp, the
+ * other visits of the line within reach of it (an out-and-back's other pass,
+ * a lollipop's stem) that have no camp of their own there yet. The profile
+ * marks them so that "mile 3 and mile 11 are the same place" can be seen,
+ * and snaps to them.
+ * @returns {[{ m, coord, campId, n, name }]} in walking order
+ */
+export function campEchoes(plan) {
+  if (!plan?.ix) return [];
+  const out = [];
+  for (const c of plan.camps) {
+    for (const v of visitsNear(plan.ix, c.coord, NEAR_M)) {
+      if (Math.abs(v.m - c.m) <= SEPARATE_VISIT_M || v.d > OVERLAP_M) continue;
+      const taken = plan.camps.some((o) => o !== c && Math.abs(o.m - v.m) < SEPARATE_VISIT_M && hav(o.coord, v.coord) <= SAME_SITE_M);
+      if (taken || out.some((e) => Math.abs(e.m - v.m) < 30)) continue;
+      out.push({ m: v.m, coord: v.coord, campId: c.id, n: c.n, name: c.f.properties.name || "" });
+    }
+  }
+  return out.sort((a, b) => a.m - b.m);
+}
+
+/** Ids of the camps that are one campsite with `id` (itself included). */
+export function campGroup(trip, id) {
+  const camps = trip.features.filter((f) => f.properties?.type === "camp");
+  const me = camps.find((f) => f.properties._id === id);
+  if (!me) return [];
+  const rootId = me.properties.same_place_as && camps.some((f) => f.properties._id === me.properties.same_place_as) ? me.properties.same_place_as : id;
+  return camps.filter((f) => f.properties._id === rootId || f.properties.same_place_as === rootId).map((f) => f.properties._id);
+}
+
+/** Say camp `id` is the same campsite as `rootId`; it takes the root's name and notes. */
+export function linkSameSite(trip, id, rootId) {
+  const f = trip.features.find((x) => x.properties?._id === id && x.properties.type === "camp");
+  const root = trip.features.find((x) => x.properties?._id === rootId && x.properties.type === "camp");
+  if (!f || !root || id === rootId) return false;
+  f.properties.same_place_as = rootId;
+  f.properties.name = root.properties.name || "";
+  f.properties.notes = root.properties.notes || "";
+  return true;
+}
+
+/** Make a camp its own campsite again (name and notes stay as they are). */
+export function unlinkSameSite(trip, id) {
+  const f = trip.features.find((x) => x.properties?._id === id);
+  if (!f || !f.properties.same_place_as) return false;
+  delete f.properties.same_place_as;
+  return true;
+}
+
+/** After editing name / notes of camp `id`: the rest of its campsite group gets the same. */
+export function shareCampFields(trip, id) {
+  const src = trip.features.find((x) => x.properties?._id === id);
+  if (!src) return;
+  for (const gid of campGroup(trip, id)) {
+    if (gid === id) continue;
+    const g = trip.features.find((x) => x.properties._id === gid);
+    g.properties.name = src.properties.name || "";
+    g.properties.notes = src.properties.notes || "";
+  }
+}
+
+/**
+ * Drop links that stopped being true: the camp it repeats is gone, is off the
+ * route, comes later along the line, or is now more than SAME_SITE_KEEP_M away.
+ */
+export function reconcileSameSite(trip, plan) {
+  const byId = new Map(plan.camps.map((c) => [c.id, c]));
+  for (const f of trip.features) {
+    const p = f.properties;
+    if (p?.type !== "camp" || !p.same_place_as) continue;
+    const me = byId.get(p._id), root = byId.get(p.same_place_as);
+    if (!root || (me && (root.m >= me.m || hav(root.coord, me.coord) > SAME_SITE_KEEP_M))) delete p.same_place_as;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hiked totals: transport legs don't count
+// ---------------------------------------------------------------------------
+
+/** Metre intervals [a, b] of the line that are hiked (every leg that is not transport). */
+export function hikedIntervals(route) {
+  const ix = lineIndex(route), segs = route.properties.segments || [];
+  const out = [];
+  for (const leg of ix.legs) {
+    if (isTransportSeg(segs[leg.k])) continue;
+    const last = out.at(-1);
+    if (last && Math.abs(last[1] - leg.startM) < 0.01) last[1] = leg.endM; else out.push([leg.startM, leg.endM]);
+  }
+  return out;
+}
+
+/**
+ * Keep the route's own totals honest: main_route_distance_mi and the
+ * elevation gain/loss count hiked stretches only (format 1.3). With no
+ * transport on the line nothing is touched, unless `reset` asks for the
+ * whole-line figures back (a transport leg was just cleared).
+ */
+export function refreshHikedStats(route, { reset = false } = {}) {
+  const rp = route.properties;
+  const transport = hasTransport(route);
+  if (!transport && !reset) return;
+  const ix = lineIndex(route);
+  const prof = rp.elevation_profile;
+  const ivs = transport ? hikedIntervals(route) : [[0, ix.total]];
+  rp.main_route_distance_mi = ivs.reduce((a, [x, y]) => a + (y - x), 0) / MI;
+  if (Array.isArray(prof) && prof.length >= 2) {
+    let gain = 0, loss = 0;
+    for (const [x, y] of ivs) {
+      const sl = sliceProfile(prof, ix.total, x, y);
+      if (!sl) continue;
+      const g = gainLoss(sl); gain += g.gain; loss += g.loss;
+    }
+    rp.elevation_gain_ft = gain; rp.elevation_loss_ft = loss;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Keeping trip.days (mobile reads it) and stop geometry in step with the plan
 // ---------------------------------------------------------------------------
 
@@ -350,6 +545,13 @@ export function passLabel(entry) {
  */
 export function syncLineTrip(trip, plan = buildPlan(trip)) {
   if (!isLineTrip(trip)) return plan;
+  // A link that stopped being true (moved, deleted) is dropped; the plan's
+  // sameAs / again follow it.
+  if (trip.features.some((f) => f.properties?.same_place_as)) {
+    reconcileSameSite(trip, plan);
+    for (const c of plan.camps) if (c.sameAs && !c.f.properties.same_place_as) c.sameAs = null;
+    for (const c of plan.camps) c.again = plan.camps.filter((x) => x.sameAs === c.n).map((x) => x.n);
+  }
   const old = trip.days || [];
   const byKey = new Map(old.filter((d) => d._key).map((d) => [d._key, d]));
   const routeId = plan.route?.properties._id;
@@ -375,6 +577,7 @@ export function syncLineTrip(trip, plan = buildPlan(trip)) {
       if (r) f.geometry = { type: "Point", coordinates: round6(r.coord) };
     }
   }
+  if (plan.route) refreshHikedStats(plan.route);
   if (plan.route) {
     const spurMi = plan.days.reduce((a, d) => a + d.spurs.reduce((b, s) => b + s.rt, 0), 0);
     if (spurMi > 0) plan.route.properties.dayhike_distance_mi = spurMi; else delete plan.route.properties.dayhike_distance_mi;
@@ -440,7 +643,17 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
     }
     if (coords.length < 2) continue;
     const ep = sliceProfile(prof, ix.total, d.fromM, d.toM);
-    const { gain, loss } = ep ? gainLoss(ep) : { gain: 0, loss: 0 };
+    // Elevation gain and loss count hiked stretches only.
+    let gain = 0, loss = 0;
+    if (ep && !d.transport?.length) ({ gain, loss } = gainLoss(ep));
+    else if (ep) {
+      let from = d.fromM;
+      const spans = [...d.transport.map((t) => [t.fromM, t.toM]), [d.toM, d.toM]];
+      for (const [a, b] of spans) {
+        if (a - from > 0.5) { const sl = sliceProfile(prof, ix.total, from, a); if (sl) { const g = gainLoss(sl); gain += g.gain; loss += g.loss; } }
+        from = Math.max(from, b);
+      }
+    }
     const id = `${rp._id}~${d.i}`;
     pieces.set(d.i, id);
     features.push({
@@ -448,7 +661,7 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
       geometry: { type: "LineString", coordinates: coords },
       properties: {
         type: "route", _id: id, name: rp.name, segments, routing: rp.routing,
-        main_route_distance_mi: (d.toM - d.fromM) / MI,
+        main_route_distance_mi: (d.hikedM ?? d.toM - d.fromM) / MI,
         ...(ep ? { elevation_profile: ep, elevation_gain_ft: gain, elevation_loss_ft: loss } : {}),
       },
     });
@@ -466,7 +679,7 @@ export function displayTrip(trip, plan = buildPlan(trip)) {
     for (const s of d.stops) if (!ids.includes(s.id)) ids.push(s.id);
     for (const s of d.spurs) ids.push(s.id);
     return {
-      id: trip.days?.[i]?.id || d.key, date: d.date, features: ids, notes: "",
+      id: trip.days?.[i]?.id || d.key, date: d.date, features: ids, notes: "", _fromM: d.fromM,
       _stops: d.stops.map((s) => ({ id: s.id, kind: s.kind === "break" ? "rest" : s.kind, name: s.f.properties.name || "", notes: s.f.properties.notes || "", dayMi: Math.max(0, s.dayM) / MI })),
     };
   });

@@ -11,8 +11,8 @@ import { MAP_FONT } from "./config.js";
 import { TripManager, escapeHTML } from "./trip-panel.js"; // circular; runtime only
 import { startRouteDrawing, isDrawingRoute, isDeleteMode, fetchElevationProfile, routeBetween } from "./planning.js"; // circular; runtime only
 import { isStopToolActive, addStopAt } from "./stops.js"; // circular; runtime only
-import { isLineTrip, mainRoute, lineIndex, sliceM, passesNear, nearestOnLine, hav, MI, buildPlan } from "./line-model.js";
-import { redrawLine, appendReturn, sectionAt, sectionCoords, sectionEnds, deleteSection, replaceSection, deleteLine } from "./line-edit.js";
+import { isLineTrip, mainRoute, lineIndex, sliceM, passesNear, nearestOnLine, hav, MI, buildPlan, TRANSPORT_KINDS, TRANSPORT_LABEL } from "./line-model.js";
+import { redrawLine, appendReturn, sectionAt, sectionCoords, sectionEnds, deleteSection, replaceSection, deleteLine, setSectionTransport } from "./line-edit.js";
 
 /** "Camp 2" for camps a redraw took off the route (session only; the flag
  *  in the itinerary falls back to the camp's name or "A camp"). */
@@ -307,6 +307,19 @@ function redrawSelection() {
   startRedraw(L.startM);
 }
 
+/** Mark the selected section as a boat, shuttle or drive (kind), or as hiked again (null). Undoable. */
+export function setTransport(leg, kind) {
+  const trip = TripManager.currentTrip;
+  const route = isLineTrip(trip) ? mainRoute(trip) : null;
+  if (!route?.properties.segments?.[leg]) return;
+  snapshot(kind ? `mark a section as ${kind}` : "hike a section again");
+  const changed = setSectionTransport(trip, leg, kind);
+  if (!changed) { undoStack.pop(); return; }
+  TripManager.render();
+  TripManager.save();
+  showToast(kind ? `Marked as ${kind}. It stays on the map but isn\u2019t counted as hiking.` : "Counted as hiking again", { undoable: true });
+}
+
 function commitDelete(label, run, headline = null) {
   const trip = TripManager.currentTrip;
   const route = mainRoute(trip);
@@ -368,6 +381,12 @@ function openLineMenu(m, coord, ix, route) {
   const back = !route.properties.return_same_way && !loop;
   const sec = selection && !selection.whole ? sectionAt(route, m) : null;
   const gap = !!sec && isGapSection(route, sec.leg);
+  const curKind = sec && route.properties.segments?.[sec.leg]?.mode === "transport" ? route.properties.segments[sec.leg].transport_kind || "" : null;
+  const transportHTML = sec ? `
+      <div class="line-menu__row" role="group" aria-label="Not hiked">
+        <span class="line-menu__label">Not hiked</span>
+        <span class="seg">${TRANSPORT_KINDS.map((k) => `<button type="button" class="seg__btn" data-act="transport" data-kind="${k}" aria-pressed="${curKind === k}">${TRANSPORT_LABEL[k]}</button>`).join("")}</span>
+      </div>` : "";
   const html = `
     <div class="line-menu" role="menu">
       <p class="line-menu__at">Mile <span class="line-menu__num">${mi}</span></p>
@@ -377,6 +396,7 @@ function openLineMenu(m, coord, ix, route) {
            <button type="button" class="line-menu__item" data-act="snap-section" role="menuitem">Snap to trails</button>`
         : `<button type="button" class="line-menu__item" data-act="redraw" role="menuitem">Redraw from here</button>`}
       ${back ? `<button type="button" class="line-menu__item" data-act="back" role="menuitem">Return the same way</button>` : ""}
+      ${transportHTML}
       <hr class="line-menu__sep">
       ${selection?.whole
         ? `<button type="button" class="line-menu__item line-menu__item--danger" data-act="delete-line" role="menuitem">Delete whole line</button>
@@ -384,13 +404,15 @@ function openLineMenu(m, coord, ix, route) {
         : `${gap && sec.where === "middle" ? "" : `<button type="button" class="line-menu__item line-menu__item--danger" data-act="delete-section" role="menuitem">Delete this section</button>`}
            <button type="button" class="line-menu__item" data-act="select-line" role="menuitem">Select whole line</button>`}
     </div>`;
-  linePopup = new maplibregl.Popup({ className: "line-popup", closeButton: false, closeOnClick: true, maxWidth: "220px", offset: 8 })
+  linePopup = new maplibregl.Popup({ className: "line-popup", closeButton: false, closeOnClick: true, maxWidth: "260px", offset: 8 })
     .setLngLat(coord).setHTML(html).addTo(map);
   linePopup.getElement().addEventListener("click", (ev) => {
-    const act = ev.target.closest("[data-act]")?.dataset.act;
+    const btn = ev.target.closest("[data-act]");
+    const act = btn?.dataset.act;
     if (!act) return;
     closeLineMenu();
-    if (act === "redraw") startRedraw(m);
+    if (act === "transport") { const k = btn.dataset.kind; setTransport(sec.leg, btn.getAttribute("aria-pressed") === "true" ? null : k); clearSelection(); }
+    else if (act === "redraw") startRedraw(m);
     else if (act === "redraw-section") redrawSelection();
     else if (act === "snap-section") snapSelection();
     else if (act === "back") returnSameWay();

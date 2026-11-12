@@ -11,7 +11,7 @@ import { openStopMenu, glyphForKind } from "./stops.js"; // circular; runtime on
 import { returnSameWay, offRouteLabel } from "./route-edit.js"; // circular; runtime only
 import { ruleSVG } from "./itinerary-profile.js";
 import { glyphIcon } from "./sketch.js";
-import { MI, passLabel, hav } from "./line-model.js";
+import { MI, passLabel, hav, transportLabel } from "./line-model.js";
 
 const KIND_LABEL = { camp: "Camp", break: "Break", water: "Water", hazard: "Hazard", scenic: "Viewpoint", note: "Note" };
 const NAME_CLASS = { camp: "is-camp", water: "is-water", break: "is-rest" };
@@ -73,7 +73,7 @@ function buildSection(d, trip, plan, mday, { last, loop }) {
 
   let sum = "";
   if (d.kind === "move") {
-    const mi = (d.toM - d.fromM) / MI;
+    const mi = (d.hikedM ?? d.toM - d.fromM) / MI; // hiked miles: transport legs don't count
     sum = `${mi.toFixed(1)} mi`;
     const gain = mday?.pieces?.reduce((a, p) => a + (p.gain || 0), 0) || 0;
     const loss = mday?.pieces?.reduce((a, p) => a + (p.loss || 0), 0) || 0;
@@ -102,12 +102,13 @@ function buildSection(d, trip, plan, mday, { last, loop }) {
   const rows = [
     ...d.stops.map((s) => ({ m: s.m, s })),
     ...d.spurs.map((sp) => ({ m: sp.m + 0.01, sp })),
+    ...(d.transport || []).map((t) => ({ m: t.fromM - 0.01, t })),
   ].sort((a, b) => a.m - b.m);
   if (d.kind === "rest") {
     for (const sp of d.spurs) list.appendChild(spurRow(sp));
     if (!d.spurs.length) list.insertAdjacentHTML("beforeend", `<p class="line-hint">A day in camp. Draw a day hike from ${escapeHTML(endLabel(d.to))} to fill it.</p>`);
   } else {
-    for (const r of rows) list.appendChild(r.s ? stopRow(r.s, plan, d) : spurRow(r.sp));
+    for (const r of rows) list.appendChild(r.s ? stopRow(r.s, plan, d) : r.t ? transportRow(r.t, d) : spurRow(r.sp));
     if (!plan.camps.length) list.insertAdjacentHTML("beforeend", `<p class="line-hint">Add a camp on your line to split it into days.</p>`);
   }
   if (last && !loop && !plan.route.properties.return_same_way) {
@@ -160,6 +161,8 @@ function stopRow(s, plan, d) {
     notes.push([src, rel].filter(Boolean).join(", "));
   }
   if (camp && camp.nights > 1) notes.push(`${camp.nights} nights`);
+  if (camp?.sameAs) notes.push(`Same site as Camp ${camp.sameAs}`);
+  else if (camp?.again?.length) notes.push(`Used again at Camp ${camp.again.join(", ")}`);
   const pl = passLabel(s);
   if (pl === "out") notes.push("On the way out");
   else if (pl === "back") notes.push("On the way back");
@@ -181,6 +184,22 @@ function stopRow(s, plan, d) {
     ${off ? `<span class="stop-note stop-note--off">${escapeHTML(off)}</span>` : ""}
     ${notes.length ? `<span class="stop-note">${escapeHTML(notes.join(" · "))}</span>` : ""}`;
   row.setAttribute("aria-label", `${name}${at ? `, ${at} into day ${d.n}` : ""}. Open`);
+  return row;
+}
+
+/** A boat, shuttle or drive inside the day: its own row, not part of the hiked miles. */
+function transportRow(t, d) {
+  const row = document.createElement("div");
+  row.className = "stop-row stop-row--transport";
+  row.dataset.type = "transport";
+  const at = `${(Math.max(0, t.fromM - d.fromM) / MI).toFixed(1)} mi`;
+  row.innerHTML = `
+    ${glyphIcon("route", { seed: seedOf(`t${t.leg}`), size: 24 })}
+    <span class="stop-name is-transport">${escapeHTML(transportLabel(t.seg))}, ${(t.len / MI).toFixed(1)} mi</span>
+    <span class="stop-at">${at}</span>
+    <span></span>
+    <span class="stop-note">Not hiked. Left out of the day\u2019s miles and climb.</span>`;
+  row.setAttribute("aria-label", `${transportLabel(t.seg)}, ${(t.len / MI).toFixed(1)} miles, ${at} into day ${d.n}. Not hiked`);
   return row;
 }
 

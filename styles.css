@@ -2781,3 +2781,15 @@ body.is-drawing-route .edit-toast { bottom: 236px; }
   line-height: var(--leading-normal);
   color: var(--text-secondary);
 }
+
+/* "Same as Camp 1?" in the stop menu */
+.stop-menu__ask { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); background: var(--type-camp-tint); border: 1px solid var(--type-camp-border); border-radius: var(--radius-md); }
+.stop-menu__ask-q { font: var(--weight-medium) var(--text-md)/1.3 var(--font-ui); color: var(--text); }
+.stop-menu__ask-btns { display: flex; gap: var(--space-1); }
+.stop-menu__note { margin: 0; font: var(--weight-regular) var(--text-sm)/1.35 var(--font-ui); color: var(--text-secondary); }
+
+/* Line menu: mark a section as boat / shuttle / drive */
+.line-menu__row { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-2); }
+.line-menu__label { font: var(--weight-medium) var(--text-sm)/1 var(--font-ui); color: var(--text-secondary); }
+.line-menu__row .seg__btn { flex: 1; height: 30px; padding: 0 var(--space-2); }
+.line-menu__row .seg { display: flex; }

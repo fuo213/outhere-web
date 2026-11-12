@@ -185,3 +185,179 @@ test("conversion: a day hike from a camp leaves from that camp", () => {
   assert.deepEqual(plan.camps.map((c) => c.id), ["BC", "LC"]);
   assert.equal(plan.days.find((d) => d.spurs.length).camp.id, "BC");
 });
+
+// ---- profile metre mapping, moving a camp, same campsite ---------------------
+
+import { moveStopAlong } from "../line-edit.js";
+import { lineSpotAtMile, buildItinerary } from "../itinerary-profile.js";
+
+test("profile mile on an out-and-back names the pass; rest days place nothing", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(point("C1", { type: "camp", nights: 2, attach: attachAt(ix, 3000) }));
+  const view = M.displayTrip(trip);
+  const model = buildItinerary(view);
+  model.line = true;
+  const d0 = model.days[0];
+  assert.equal(d0.fromM, 0);
+  // 1.5 km into day 1 is the way out; the same ground on the day after the rest day is the way back.
+  const out = lineSpotAtMile(model, 1500 / M.MI);
+  near(out.m, 1500, 5, "out pass");
+  const lastDay = model.days.at(-1);
+  const back = lineSpotAtMile(model, lastDay.startMi + 1500 / M.MI); // 1.5 km into the last day = 4.5 km of line
+  near(back.m, 4500, 5, "back pass");
+  assert.ok(back.m > out.m + 2000);
+  const rest = model.days.find((d) => d.empty);
+  const r = lineSpotAtMile(model, (rest.startMi + rest.endMi) / 2);
+  assert.equal(r.rest, true);
+  near(r.m, 3000, 5, "rest day gives its camp");
+  assert.equal(lineSpotAtMile(model, model.total + 5), null);
+});
+
+test("moveStopAlong re-attaches a camp to the pass at that metre and days follow", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(point("C1", { type: "camp", attach: attachAt(ix, 1500) }), point("C2", { type: "camp", attach: attachAt(ix, 4500) }));
+  assert.ok(moveStopAlong(trip, "C1", 4000));
+  const c1 = trip.features.find((f) => f.properties._id === "C1");
+  near(M.resolveAttach(ix, c1.properties.attach).m, 4000, 1);
+  const plan = M.buildPlan(trip);
+  assert.deepEqual(plan.camps.map((c) => c.id), ["C1", "C2"]); // 4000 < 4500
+  assert.ok(moveStopAlong(trip, "C1", 5000));
+  assert.deepEqual(M.buildPlan(trip).camps.map((c) => c.id), ["C2", "C1"]);
+  assert.equal(moveStopAlong(trip, "nope", 100), false);
+});
+
+test("same campsite: candidate only on a later pass; link shares name and notes; stale links drop", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(
+    point("C1", { type: "camp", name: "Lake camp", notes: "wind", attach: attachAt(ix, 1500) }),
+    point("C0", { type: "camp", attach: attachAt(ix, 1550) }),   // same pass, 50 m on: not a candidate
+    point("C2", { type: "camp", attach: attachAt(ix, 4500) }),   // way back, same ground
+  );
+  let plan = M.buildPlan(trip);
+  assert.equal(M.sameSiteCandidate(plan, "C0"), null);
+  const cand = M.sameSiteCandidate(plan, "C2");
+  assert.equal(cand.id, "C1"); // closest earlier camp on another pass (C0 is 50 m off, C1 on the same pass as C0 but closer in space)
+  assert.ok(M.linkSameSite(trip, "C2", cand.id));
+  const c2 = trip.features.find((f) => f.properties._id === "C2").properties;
+  assert.equal(c2.same_place_as, "C1");
+  assert.equal(c2.name, "Lake camp"); assert.equal(c2.notes, "wind");
+  // Editing either shares name and notes.
+  c2.name = "Lake camp (shady)";
+  M.shareCampFields(trip, "C2");
+  assert.equal(trip.features.find((f) => f.properties._id === "C1").properties.name, "Lake camp (shady)");
+  plan = M.buildPlan(trip);
+  assert.equal(plan.camps.find((c) => c.id === "C2").sameAs, plan.camps.find((c) => c.id === "C1").n);
+  assert.deepEqual(M.campGroup(trip, "C2").sort(), ["C1", "C2"]);
+  // Moving it far from the site drops the link.
+  moveStopAlong(trip, "C2", 5500);
+  M.syncLineTrip(trip);
+  assert.equal(trip.features.find((f) => f.properties._id === "C2").properties.same_place_as, undefined);
+  // Deleting the first camp drops it too.
+  moveStopAlong(trip, "C2", 4500); M.linkSameSite(trip, "C2", "C1");
+  trip.features = trip.features.filter((f) => f.properties._id !== "C1");
+  M.syncLineTrip(trip);
+  assert.equal(trip.features.find((f) => f.properties._id === "C2").properties.same_place_as, undefined);
+});
+
+test("same campsite: reachable by hand (200 m), either order, and only once", () => {
+  const { trip, ix } = outAndBack();
+  // Camp 1 on the way out at 1.5 km; a camp on the way back 150 m short of the
+  // mirror point (where a hand on the profile or the map lands) is still asked.
+  trip.features.push(point("C1", { type: "camp", attach: attachAt(ix, 1500) }), point("C2", { type: "camp", attach: attachAt(ix, 4650) }));
+  let plan = M.buildPlan(trip);
+  const cand = M.sameSiteCandidate(plan, "C2");
+  assert.equal(cand?.id, "C1");
+  assert.equal(cand.later, false);
+  near(cand.d, 150, 12);
+  // 250 m off is a different spot.
+  trip.features.find((f) => f.properties._id === "C2").properties.attach = attachAt(ix, 4750);
+  assert.equal(M.sameSiteCandidate(M.buildPlan(trip), "C2"), null);
+  // Placed the way back first: the earlier camp you add next is asked too, about the later one.
+  trip.features.find((f) => f.properties._id === "C2").properties.attach = attachAt(ix, 4500);
+  plan = M.buildPlan(trip);
+  const back = M.sameSiteCandidate(plan, "C1");
+  assert.equal(back?.id, "C2");
+  assert.equal(back.later, true);
+  // Once linked, neither is asked again.
+  M.linkSameSite(trip, "C2", "C1");
+  plan = M.buildPlan(trip);
+  assert.equal(M.sameSiteCandidate(plan, "C1"), null);
+  assert.equal(M.sameSiteCandidate(plan, "C2"), null);
+});
+
+test("echoes: where the line passes a camp's spot again, until a camp is there", () => {
+  const { trip, ix } = outAndBack();
+  trip.features.push(point("C1", { type: "camp", attach: attachAt(ix, 1500) }));
+  let echoes = M.campEchoes(M.buildPlan(trip));
+  assert.equal(echoes.length, 1);
+  near(echoes[0].m, 4500, 10, "the way back over Camp 1's spot");
+  assert.equal(echoes[0].campId, "C1");
+  // A camp at the turnaround has no other pass (the passes there are one visit).
+  trip.features.push(point("T", { type: "camp", attach: attachAt(ix, 3000) }));
+  echoes = M.campEchoes(M.buildPlan(trip));
+  assert.deepEqual(echoes.map((e) => e.campId), ["C1"]);
+  // A camp near the echo takes it.
+  trip.features.push(point("C3", { type: "camp", attach: attachAt(ix, 4600) }));
+  assert.equal(M.campEchoes(M.buildPlan(trip)).length, 0);
+});
+
+test("choosePass: a camp dropped on Camp 1's spot goes on the other pass, not beside Camp 1", () => {
+  const { ix } = outAndBack();
+  const c1 = { m: 1500, coord: M.pointAtM(ix, 1500) };
+  const p = pt(1.52, 0.0005); // 20 m east of Camp 1, on the trail
+  // Without the camps it is the first pass after the previous camp: right beside Camp 1.
+  near(M.choosePass(ix, p, 100, c1.m).m, 1520, 10);
+  // With them, the way back.
+  near(M.choosePass(ix, p, 100, c1.m, [c1]).m, 4480, 10);
+  // Away from any camp nothing changes.
+  near(M.choosePass(ix, pt(0.5, 0), 100, -1, [c1]).m, 500, 10);
+});
+
+// ---- transport legs (format 1.3) ----------------------------------------------
+
+import { setSectionTransport } from "../line-edit.js";
+
+test("transport legs: marked sections leave hiked miles, climb and the day total; way back follows; cleared restores", () => {
+  const route = makeLine([[0, 0], [1, 0], [2, 0], [3, 0]]);
+  route.properties.elevation_profile = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]; // 3 km climbing steadily
+  const trip = makeTrip([route]);
+  assert.ok(M.isLineTrip(trip));
+  M.syncLineTrip(trip);
+  const rp = route.properties;
+  assert.equal(M.hasTransport(route), false);
+  assert.deepEqual(setSectionTransport(trip, 1, "boat"), [1]);
+  assert.equal(rp.segments[1].mode, "transport");
+  assert.equal(rp.segments[1].transport_kind, "boat");
+  const plan = M.buildPlan(trip);
+  assert.equal(plan.days.length, 1);
+  near(plan.days[0].transportM, 1000, 15, "transport m");
+  near(plan.days[0].hikedM, 2000, 25, "hiked m");
+  near(rp.main_route_distance_mi, 2000 / M.MI, 0.02, "route miles are hiked miles");
+  near(rp.elevation_gain_ft, 667, 25, "gain leaves the boat leg out"); // 2/3 of 1000 ft
+  const view = M.displayTrip(trip, plan);
+  const day = view.features.find((f) => f.properties.type === "route");
+  near(day.properties.main_route_distance_mi, 2000 / M.MI, 0.02);
+  near(day.properties.elevation_gain_ft, 667, 25);
+  assert.equal(day.properties.segments.filter((s) => s.mode === "transport").length, 1);
+  // Clearing makes it hiked again, back to a straight manual leg (no OSM ways known) and the whole line's totals.
+  assert.deepEqual(setSectionTransport(trip, 1, null), [1]);
+  assert.equal(rp.segments[1].mode, "manual");
+  near(rp.main_route_distance_mi, 3000 / M.MI, 0.03);
+  assert.equal(setSectionTransport(trip, 1, null), null); // nothing to clear
+  assert.equal(setSectionTransport(trip, 1, "teleport"), null);
+});
+
+test("transport on the way out marks the linked way back too, and survives appendReturn", () => {
+  const route = makeLine([[0, 0], [1, 0], [2, 0]]);
+  const trip = makeTrip([route]);
+  setSectionTransport(trip, 0, "shuttle");
+  appendReturn(trip);
+  const segs = route.properties.segments;
+  assert.equal(segs.length, 4);
+  assert.equal(segs[3].mode, "transport");            // mirrored with its kind
+  assert.equal(segs[3].transport_kind, "shuttle");
+  setSectionTransport(trip, 0, "drive");              // changing the way out changes the way back
+  assert.equal(segs[3].transport_kind, "drive");
+  setSectionTransport(trip, 3, null);                 // clearing from the way back clears both
+  assert.ok(segs.every((s) => s.mode !== "transport"));
+});

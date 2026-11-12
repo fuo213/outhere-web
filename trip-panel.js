@@ -28,7 +28,7 @@ import {
   isDrawingRoute,
   retryElevation,
 } from "./planning.js";
-import { buildItinerary, kindOf, ruleSVG, mentionsMeal } from "./itinerary-profile.js";
+import { buildItinerary, kindOf, ruleSVG, mentionsMeal, profileMileAtM } from "./itinerary-profile.js";
 import { initItineraryPanel, updateItinerary, setItineraryCompact } from "./itinerary-panel.js";
 import { glyphIcon, glyphDefsSVG } from "./sketch.js";
 import { confirm as confirmMotion } from "./design/motion.js";
@@ -36,9 +36,10 @@ import { TripsStore, hideTripsHome, showTripsHome } from "./trips-home.js"; // c
 import { frameBounds, boundsOf } from "./map-trip-style.js"; // circular; only used at runtime
 import { getActiveRegionId } from "./region-picker.js"; // circular; only used at runtime
 import { initGpxImport, refreshGpxActions } from "./gpx-import.js"; // circular; only used at runtime
-import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices, canConvertToLine } from "./line-model.js";
+import { isLineTrip, syncLineTrip, displayTrip, convertTypedVertices, canConvertToLine, hasTransport, mainRoute, campEchoes } from "./line-model.js";
+import { moveStopAlong } from "./line-edit.js";
 import { renderLineDays } from "./line-panel.js"; // circular; only used at runtime
-import { initStops, closeStopMenu } from "./stops.js"; // circular; only used at runtime
+import { initStops, closeStopMenu, addCampAtM, moveStopAlongLine, openStopMenu } from "./stops.js"; // circular; only used at runtime
 import { initRouteEdit, closeLineMenu, snapshot, showToast } from "./route-edit.js"; // circular; only used at runtime
 
 // ---------------------------------------------------------------------------
@@ -55,7 +56,8 @@ import { initRouteEdit, closeLineMenu, snapshot, showToast } from "./route-edit.
 // trips keep the day-assignment model and export as 1.1.
 const TRIP_SCHEMA_VERSION = "1.1";
 const LINE_SCHEMA_VERSION = "1.2";
-const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1", "1.2"];
+const READABLE_SCHEMA_VERSIONS = ["1.0", "1.1", "1.2", "1.3"];
+// 1.3 (transport legs) is written only when the line has one; every other line trip stays 1.2.
 
 /** The current line plan (1.2 trips), rebuilt on every render. */
 let linePlan = null;
@@ -387,7 +389,7 @@ export const TripManager = {
 export function buildTripExport(trip) {
   if (!trip) return null;
   const out = JSON.parse(JSON.stringify(trip));
-  out.properties.schema_version = isLineTrip(trip) ? LINE_SCHEMA_VERSION : TRIP_SCHEMA_VERSION;
+  out.properties.schema_version = isLineTrip(trip) ? (hasTransport(mainRoute(trip)) ? "1.3" : LINE_SCHEMA_VERSION) : TRIP_SCHEMA_VERSION;
   for (const d of out.days || []) delete d._key; // internal: which camp a day ends at
   // The UI edits `readme`; write `notes` from the same value for mobile.
   out.properties.notes = out.properties.readme || "";
@@ -613,7 +615,7 @@ function validateTripExport(trip) {
   return problems;
 }
 
-const SEGMENT_MODES = ["trail", "straight", "manual", "imported"];
+const SEGMENT_MODES = ["trail", "straight", "manual", "imported", "transport"]; // transport: 1.3
 const SEGMENT_REASONS = ["no_path", "no_graph", "cross_region"];
 const isIndex = (n) => Number.isInteger(n) && n >= 0;
 
@@ -629,6 +631,7 @@ function validateRoutingProvenance(f, where, push) {
         const at = `${where}.segments[${k}]`;
         if (!seg || typeof seg !== "object") { push(`${at}: not an object`); return; }
         if (!SEGMENT_MODES.includes(seg.mode)) push(`${at}: mode "${seg.mode}" not one of ${SEGMENT_MODES.join("|")}`);
+        if (seg.transport_kind !== undefined && (seg.mode !== "transport" || !["boat", "shuttle", "drive"].includes(seg.transport_kind))) push(`${at}: transport_kind needs mode "transport" and one of boat|shuttle|drive`);
         if (seg.reason !== undefined && !SEGMENT_REASONS.includes(seg.reason)) push(`${at}: reason "${seg.reason}" not one of ${SEGMENT_REASONS.join("|")}`);
         if (!isIndex(seg.from_vertex) || !isIndex(seg.to_vertex)) push(`${at}: from_vertex/to_vertex must be non-negative integers`);
         if (seg.coord_range !== undefined) {
@@ -760,6 +763,40 @@ function renderUnassignedPool() {
   }
 }
 
+/** The profile model of a 1.2 line: the day-split view, plus where the line passes a camp's spot again. */
+function lineProfileModel(plan, view) {
+  const model = buildItinerary(view);
+  model.line = true;
+  model.echoes = campEchoes(plan).map((e) => ({ ...e, mi: profileMileAtM(model, e.m) })).filter((e) => e.mi != null);
+  model.campNo = new Map(plan.camps.map((c) => [c.id, c.n]));
+  return model;
+}
+
+/**
+ * Dragging a camp on the profile: a throwaway copy of the trip with the camp
+ * moved, drawn on the map and returned as the profile model. Nothing is saved
+ * or snapshotted until the drag is let go (moveStopAlongLine).
+ */
+let campPreview = null; // { id, src, trip }
+function previewCampAt(id, m) {
+  const trip = TripManager.currentTrip;
+  if (!trip || !isLineTrip(trip)) return null;
+  if (!campPreview || campPreview.id !== id || campPreview.src !== trip) {
+    closeStopMenu(); // it would show the old mile
+    campPreview = { id, src: trip, trip: structuredClone(trip) };
+  }
+  const t = campPreview.trip;
+  if (!moveStopAlong(t, id, m)) return null;
+  const plan = syncLineTrip(t);
+  const view = displayTrip(t, plan);
+  map.getSource("trip")?.setData({ type: "FeatureCollection", features: [...view.features, ...buildRoutingOverlay(view)] });
+  return lineProfileModel(plan, view);
+}
+function cancelCampPreview() {
+  campPreview = null;
+  TripManager.render(); // the map (and profile) go back to the trip as saved
+}
+
 /** The continuous day story (direction A): one column, no accordions. */
 function renderDaySections() {
   const container = document.getElementById("daySections");
@@ -774,8 +811,7 @@ function renderDaySections() {
 
   if (linePlan && lineView) {
     if (activeDayId && !trip.days.some(d => d.id === activeDayId)) setActiveDayHighlight(null);
-    const model = buildItinerary(lineView);
-    model.line = true;
+    const model = lineProfileModel(linePlan, lineView);
     const sections = renderLineDays(container, trip, linePlan, model);
     updateItinerary(trip, sections, model);
     return;
@@ -1827,6 +1863,13 @@ export function initTripPanel() {
     tail: document.getElementById("itineraryTail"),
     onDrawRoute: () => startRouteDrawing(),
     onRetryElevation: (routeId) => retryElevation(routeId),
+    // From the profile the camp may be off-screen or under the panel: bring it
+    // into view so its menu (and "Same as Camp 1?") is seen.
+    onAddCamp: (m) => { const id = addCampAtM(m); if (id) frameFeature(id); },
+    onMoveCamp: (id, m) => { campPreview = null; moveStopAlongLine(id, m); },
+    onPreviewCamp: (id, m) => previewCampAt(id, m),
+    onCancelPreview: () => cancelCampPreview(),
+    onOpenStop: (id) => { frameFeature(id); openStopMenu(id); },
   });
   // Drawing a route: collapse the profile to a strip so the map leads.
   const toolbarEl = document.getElementById("planningToolbar");

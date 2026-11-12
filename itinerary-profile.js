@@ -93,8 +93,11 @@ export function buildItinerary(trip) {
       const coords = f.geometry.coordinates, cum = cumMiles(coords);
       const prof = f.properties.elevation_profile;
       routeMiles += cum.at(-1);
+      const segs = Array.isArray(f.properties.segments) ? f.properties.segments : [];
+      // Transport legs (format 1.3) are drawn but not hiked.
+      const transportMi = segs.reduce((a, s) => (s.mode === "transport" && Array.isArray(s.coord_range) ? a + (cum[s.coord_range[1]] ?? 0) - (cum[s.coord_range[0]] ?? 0) : a), 0);
       return {
-        id: f.properties._id, coords, cum, miles: cum.at(-1),
+        id: f.properties._id, coords, cum, miles: cum.at(-1), hikedMiles: Math.max(0, cum.at(-1) - transportMi), transportMiles: transportMi,
         profile: Array.isArray(prof) && prof.length >= 2 && prof.every(Number.isFinite) ? prof : null,
         segments: Array.isArray(f.properties.segments) ? f.properties.segments : [],
         gain: f.properties.elevation_gain_ft || 0, loss: f.properties.elevation_loss_ft || 0,
@@ -151,7 +154,8 @@ export function buildItinerary(trip) {
     mi0 += width;
     return {
       i: g.i, n: g.i + 1, id: g.d.id ?? null, date: g.d.date ?? null, loose: !!g.loose,
-      startMi, endMi: mi0, routeMiles: off, empty: !g.pieces.length, pieces: g.pieces, stops, spurs, gaps,
+      fromM: Number.isFinite(g.d._fromM) ? g.d._fromM : null, // 1.2: metres along the line where the day starts
+      startMi, endMi: mi0, routeMiles: g.pieces.reduce((a, p) => a + p.hikedMiles, 0), empty: !g.pieces.length, pieces: g.pieces, stops, spurs, gaps,
     };
   });
 
@@ -187,13 +191,86 @@ export function buildItinerary(trip) {
     return null;
   };
   return {
-    mode, days, total: mi0, routeMiles, hi, lo, elevAt,
+    mode, days, total: mi0, routeMiles: days.reduce((a, d) => a + d.routeMiles, 0), hi, lo, elevAt,
     gain: days.reduce((a, d) => a + d.pieces.reduce((b, p) => b + p.gain, 0), 0),
     loss: days.reduce((a, d) => a + d.pieces.reduce((b, p) => b + p.loss, 0), 0),
     hasElevation: hasAny, complete: hasAll,
     pendingIds: days.flatMap((d) => d.pieces.filter((p) => !p.profile).map((p) => p.id)),
     looseCount: mode === "days" ? looseRoutes.length : 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Reading the drawing back: a pixel on the profile is a metre of the line
+// ---------------------------------------------------------------------------
+
+/** Horizontal layout shared by drawProfile and the pointer code. */
+export function profileX(m, W) {
+  const L = 6, Rr = W < 420 ? 8 : 12, plotW = W - L - Rr;
+  return { L, plotW, X: (mi) => L + (mi / (m.total || 1)) * plotW, mi: (x) => Math.max(0, Math.min(m.total, ((x - L) / plotW) * (m.total || 1))) };
+}
+
+/**
+ * The drawing's frame: sizes, mile → x and elevation → y. Shared by
+ * drawProfile and the pointer code (a cursor or a dragged camp rides the line
+ * at yAt(mi)).
+ */
+export function profileFrame(m, W, { height = 220, compact = false } = {}) {
+  const narrow = W < 420;
+  const H = compact ? 46 : height;
+  const { L } = profileX(m, W);
+  const Rr = narrow ? 8 : 12;
+  const top = compact ? 12 : narrow ? 60 : 66;
+  const base = compact ? H - 6 : H - 30;
+  const plotW = W - L - Rr;
+  const X = (mi) => L + (mi / (m.total || 1)) * plotW;
+  // Vertical domain with a little headroom; flat trips don't get exaggerated wildly.
+  let loD = 0, hiD = 1;
+  if (m.hasElevation) {
+    const range = Math.max(m.hi.ft - m.lo.ft, 160);
+    const mid = (m.hi.ft + m.lo.ft) / 2;
+    loD = Math.min(m.lo.ft, mid - range / 2) - range * (compact ? 0.08 : 0.28);
+    hiD = Math.max(m.hi.ft, mid + range / 2) + range * 0.03;
+  }
+  const Y = (ft) => top + ((hiD - ft) / (hiD - loD)) * (base - top);
+  const flatY = m.hasElevation ? Y((m.hi.ft + m.lo.ft) / 2) : top + (base - top) * 0.55;
+  const yAt = (mi) => { const ft = m.elevAt(mi); return ft == null ? flatY : Y(ft); };
+  return { H, L, Rr, top, base, plotW, X, Y, flatY, yAt };
+}
+
+/**
+ * The profile mile of metre `m` of the line (the inverse of lineSpotAtMile):
+ * the walking day whose stretch holds it. Null when no day does.
+ */
+export function profileMileAtM(model, m) {
+  if (!model || model.mode !== "days") return null;
+  for (const d of model.days) {
+    if (d.empty || d.fromM == null || !(d.endMi > d.startMi)) continue;
+    const len = (d.endMi - d.startMi) * MI;
+    if (m >= d.fromM - 1 && m <= d.fromM + len + 1) return d.startMi + Math.max(0, Math.min(len, m - d.fromM)) / MI;
+  }
+  return null;
+}
+
+/**
+ * The spot on the line under a profile mile. The profile is the days laid end
+ * to end (rest days take a little room), so the day under the mile says which
+ * pass of an out-and-back is meant. Null when the model has no line metres
+ * (a 1.1 trip) or the mile is on no day. A rest day gives its camp's metre
+ * with `rest: true` (nothing to place there).
+ * @returns {{ m: number, mi: number, ft: number|null, day: object, rest: boolean }|null}
+ */
+export function lineSpotAtMile(model, mi) {
+  if (!model || model.mode !== "days") return null;
+  const days = model.days.filter((d) => d.endMi > d.startMi && d.fromM != null);
+  let day = days.find((d) => mi >= d.startMi && mi <= d.endMi);
+  if (!day) return null;
+  // A mile exactly on a boundary belongs to the day that starts there (unless it is the last).
+  const next = days.find((d) => d !== day && d.startMi === mi);
+  if (next) day = next;
+  const rest = day.empty;
+  const m = rest ? day.fromM : day.fromM + (Math.max(day.startMi, Math.min(day.endMi, mi)) - day.startMi) * MI;
+  return { m, mi, ft: model.elevAt(mi), day, rest };
 }
 
 // ---------------------------------------------------------------------------
@@ -227,24 +304,7 @@ function tickStep(total, plotW, minPx) {
  */
 export function drawProfile(m, W, { height = 220, compact = false, active = null, failedIds = new Set(), reveal = new Set() } = {}) {
   const narrow = W < 420;
-  const H = compact ? 46 : height;
-  const L = 6, Rr = narrow ? 8 : 12;
-  const top = compact ? 12 : narrow ? 60 : 66;
-  const base = compact ? H - 6 : H - 30;
-  const plotW = W - L - Rr;
-  const X = (mi) => L + (mi / (m.total || 1)) * plotW;
-
-  // Vertical domain with a little headroom; flat trips don't get exaggerated wildly.
-  let loD = 0, hiD = 1;
-  if (m.hasElevation) {
-    const range = Math.max(m.hi.ft - m.lo.ft, 160);
-    const mid = (m.hi.ft + m.lo.ft) / 2;
-    loD = Math.min(m.lo.ft, mid - range / 2) - range * (compact ? 0.08 : 0.28);
-    hiD = Math.max(m.hi.ft, mid + range / 2) + range * 0.03;
-  }
-  const Y = (ft) => top + ((hiD - ft) / (hiD - loD)) * (base - top);
-  const flatY = m.hasElevation ? Y((m.hi.ft + m.lo.ft) / 2) : top + (base - top) * 0.55;
-  const yAt = (mi) => { const ft = m.elevAt(mi); return ft == null ? flatY : Y(ft); };
+  const { H, L, Rr, top, base, plotW, X, Y, flatY, yAt } = profileFrame(m, W, { height, compact });
 
   // Ink runs: consecutive pieces with elevation; skeleton pieces separately.
   const runs = [], skeletons = [];
@@ -502,9 +562,26 @@ export function drawProfile(m, W, { height = 220, compact = false, active = null
     else noteAbove(x, flatY - 8, t);
   }
 
+  // Echoes: where the line passes a camp's spot again (an out-and-back's way
+  // back). A faint tent, so "mile 3 and mile 11 are the same place" shows.
+  let echoes = "";
+  for (const e of m.echoes || []) {
+    if (e.mi == null) continue;
+    const x = X(e.mi), y = yAt(e.mi);
+    echoes += `<g class="camp-echo" data-mi="${e.mi.toFixed(4)}" data-camp="${esc(e.campId)}"><title>${esc(e.name || `Camp ${e.n}`)}'s spot again</title>${glyph("camp", x, y + 0.5, { s: narrow ? 0.85 : 1, seed: 33, grain: "ip" })}</g>`;
+  }
+
+  // Camps on a 1.2 line can be grabbed and dragged along the profile.
+  let grabs = "";
+  if (m.line) {
+    for (const d of m.days) for (const s of d.stops) {
+      if (d.empty || s.kind !== "camp") continue;
+      grabs += `<circle class="camp-grab" data-id="${esc(s.id)}" cx="${X(s.mi).toFixed(1)}" cy="${yAt(s.mi).toFixed(1)}" r="16" fill="transparent"><title>${esc(s.name || "Camp")}: drag to move</title></circle>`;
+    }
+  }
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(ariaSummary(m))}">
     <defs>${defs}</defs>
-    ${bands}${dividers}${axis}${ink}${marks}${tags}${notes}${hits}
+    ${bands}${dividers}${axis}${ink}${echoes}${marks}${tags}${notes}${hits}${grabs}
   </svg>`;
 }
 

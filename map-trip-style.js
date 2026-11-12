@@ -28,7 +28,7 @@ import { TripManager } from "./trip-panel.js"; // circular; runtime only
 /** Layers that carry trip point features (popups, delete mode). */
 export const TRIP_POINT_LAYERS = ["trip-chart-points", "trip-chart-points-minor"];
 /** Layers whose features carry `day_index` (click a day's line). */
-const DAY_LINE_LAYERS = ["trip-chart-band", "trip-chart-ink", "trip-chart-ink-manual", "trip-chart-ink-gap", "trip-chart-hit"];
+const DAY_LINE_LAYERS = ["trip-chart-band", "trip-chart-ink", "trip-chart-ink-manual", "trip-chart-ink-transport", "trip-chart-ink-gap", "trip-chart-hit"];
 
 const RATIO = () => Math.max(2, Math.ceil(window.devicePixelRatio || 1));
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -458,7 +458,7 @@ export function addTripChartLayers() {
   const t = (type) => ["==", ["get", "type"], type];
   const mode = ["get", "leg_mode"];
   const main = ["==", ["get", "kind"], "main"];
-  const inkLine = ["all", t("route_leg"), main, ["!", ["in", mode, ["literal", ["manual", "straight"]]]]];
+  const inkLine = ["all", t("route_leg"), main, ["!", ["in", mode, ["literal", ["manual", "straight", "transport"]]]]];
 
   // 1. Paper casing under the whole route, so it reads over the topo.
   map.addLayer({
@@ -487,6 +487,12 @@ export function addTripChartLayers() {
     id: "trip-chart-ink-manual", type: "line", source: src, filter: ["all", t("route_leg"), main, ["==", mode, "manual"]],
     layout: { "line-join": "round" },
     paint: { "line-color": ["case", fs("muted"), C.ink300, C.ink], "line-width": zoomWidth(INK_W, { active: 1.15, muted: 0.7 }), "line-dasharray": [2.2, 1.6], "line-opacity": byState(1, 0.3, 1) },
+  });
+  // Transport (boat, shuttle, drive): not hiked, so a quieter dash-dot, not the ink dashes of an off-trail leg.
+  map.addLayer({
+    id: "trip-chart-ink-transport", type: "line", source: src, filter: ["all", t("route_leg"), main, ["==", mode, "transport"]],
+    layout: { "line-join": "round" },
+    paint: { "line-color": ["case", fs("muted"), C.ink300, C.inkSoft], "line-width": zoomWidth(INK_W.map(([z, w]) => [z, w * 0.8]), { active: 1.15, muted: 0.7 }), "line-dasharray": [3.4, 1.4, 0.4, 1.4], "line-opacity": byState(1, 0.3, 1) },
   });
   map.addLayer({
     id: "trip-chart-ink-gap", type: "line", source: src, filter: ["all", t("route_leg"), ["==", mode, "straight"]],

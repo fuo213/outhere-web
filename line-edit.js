@@ -20,7 +20,7 @@
 
 import {
   mainRoute, lineIndex, sliceM, locateM, resolveAttach, passesNear, buildPlan,
-  isTimeStop, round6, hav, MI, NEAR_M, OVERLAP_M,
+  isTimeStop, round6, hav, MI, NEAR_M, OVERLAP_M, TRANSPORT_KINDS, refreshHikedStats,
 } from "./line-model.js";
 import { gainLoss } from "./elevation.js";
 
@@ -41,7 +41,8 @@ function assemble(legRecs) {
     for (let j = 1; j < pts.length; j++) coords.push(pts[j]);
     const seg = { mode: leg.seg.mode || "trail", from_vertex: k, to_vertex: k + 1, coord_range: [s, coords.length - 1], length_m: r1(len(pts)) };
     if (leg.seg.reason && seg.mode === "straight") seg.reason = leg.seg.reason;
-    if (seg.mode === "trail" && Array.isArray(leg.seg.osm_way_ids)) seg.osm_way_ids = leg.seg.osm_way_ids;
+    if ((seg.mode === "trail" || seg.mode === "transport") && Array.isArray(leg.seg.osm_way_ids)) seg.osm_way_ids = leg.seg.osm_way_ids;
+    if (seg.mode === "transport" && TRANSPORT_KINDS.includes(leg.seg.transport_kind)) seg.transport_kind = leg.seg.transport_kind;
     if (Number.isInteger(leg.seg.mirror_of)) seg.mirror_of = leg.seg.mirror_of;
     segments.push(seg);
   });
@@ -75,7 +76,7 @@ function mirrorLegs(recs) {
   for (let k = recs.length - 1; k >= 0; k--) {
     if (Number.isInteger(recs[k].seg.mirror_of)) continue;
     const s = recs[k].seg;
-    out.push({ coords: [...recs[k].coords].reverse(), seg: { mode: s.mode, reason: s.reason, osm_way_ids: s.osm_way_ids ? [...s.osm_way_ids].reverse() : undefined, mirror_of: k } });
+    out.push({ coords: [...recs[k].coords].reverse(), seg: { mode: s.mode, reason: s.reason, transport_kind: s.transport_kind, osm_way_ids: s.osm_way_ids ? [...s.osm_way_ids].reverse() : undefined, mirror_of: k } });
   }
   return out;
 }
@@ -366,4 +367,53 @@ export function appendReturn(trip) {
     rp.elevation_gain_ft = gain; rp.elevation_loss_ft = loss;
   }
   return true;
+}
+
+/**
+ * Move a time stop (camp or break) to metre `m` of the line, on whichever pass
+ * that metre belongs to. The stop keeps its id, name and notes; its pass label
+ * is recomputed by syncLineTrip. Returns false when there is nothing to move.
+ */
+export function moveStopAlong(trip, id, m) {
+  const route = mainRoute(trip);
+  const f = trip.features.find((x) => x.properties?._id === id);
+  if (!route || !f || !isTimeStop(f.properties)) return false;
+  const ix = lineIndex(route);
+  const at = locateM(ix, Math.max(0, Math.min(ix.total, m)));
+  f.properties.attach = { route_id: route.properties._id, ...at };
+  f.geometry = { type: "Point", coordinates: round6(resolveAttach(ix, at).coord) };
+  delete f.properties.pass;
+  return true;
+}
+
+/**
+ * Mark section `leg` as transport (kind: boat | shuttle | drive) or, with
+ * kind null, hiked again. The way back of a linked out-and-back follows (a
+ * boat out is a boat back). Totals are refreshed. A cleared leg becomes a
+ * trail leg when it still knows its OSM ways, else a straight `manual` one.
+ * @returns {number[]|null} the legs changed, or null when nothing changed
+ */
+export function setSectionTransport(trip, leg, kind) {
+  const route = mainRoute(trip);
+  const segs = route?.properties.segments;
+  if (!segs?.[leg] || (kind != null && !TRANSPORT_KINDS.includes(kind))) return null;
+  const legs = [leg, ...segs.flatMap((s, k) => (s.mirror_of === leg ? [k] : [])), ...(Number.isInteger(segs[leg].mirror_of) ? [segs[leg].mirror_of] : [])];
+  const changed = [];
+  for (const k of new Set(legs)) {
+    const s = segs[k];
+    if (kind) {
+      if (s.mode === "transport" && s.transport_kind === kind) continue;
+      s.mode = "transport"; s.transport_kind = kind; delete s.reason;
+    } else {
+      if (s.mode !== "transport") continue;
+      s.mode = Array.isArray(s.osm_way_ids) && s.osm_way_ids.length ? "trail" : "manual";
+      delete s.transport_kind;
+    }
+    changed.push(k);
+  }
+  if (!changed.length) return null;
+  const vs = route.properties.vertex_snapped;
+  if (Array.isArray(vs)) changed.forEach((k) => { vs[k + 1] = segs[k].mode === "trail"; });
+  refreshHikedStats(route, { reset: true });
+  return changed.sort((a, b) => a - b);
 }
